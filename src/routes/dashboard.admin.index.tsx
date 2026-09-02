@@ -130,7 +130,7 @@ function AdminDashboard() {
                   </p>
                   <p className="text-xs text-muted-foreground">{fmtTime(log.timestamp)}</p>
                 </div>
-                <Badge variant={log.status === "late" ? "secondary" : "default"} className="text-[10px]">
+                <Badge tone={log.status === "late" ? "amber" : "green"}>
                   {log.status}
                 </Badge>
               </div>
