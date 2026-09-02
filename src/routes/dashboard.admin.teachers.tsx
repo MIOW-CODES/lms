@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import {
   createTeacher,
   deleteProfile,
-  enrollBiometrics,
+  enrollRfid,
   listTeacherDirectory,
   updateProfile,
   type TeacherRecord,
@@ -470,7 +470,7 @@ function TeacherDetailModal({
     setBusy(true);
     try {
       if (kind === "rfid") {
-        await enrollBiometrics(teacher.id, { rfid_uid: value });
+        await enrollRfid(teacher.id, { rfid_uid: value });
         setNewRfid("");
         toast.success("Keycard bound.");
       } else {

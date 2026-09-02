@@ -63,12 +63,15 @@ function AdminDashboard() {
       <div className="mb-8 rounded-2xl bg-sidebar p-7 text-sidebar-foreground relative overflow-hidden">
         <div className="absolute top-[-20px] right-[-20px] h-28 w-28 rounded-full bg-white/5" />
         <div className="absolute bottom-[-30px] right-10 h-20 w-20 rounded-full bg-white/5" />
-        <h1 className="font-display text-2xl font-bold relative z-10">{greeting}, {firstName} ☀️</h1>
+        <h1 className="font-display text-2xl font-bold relative z-10">
+          {greeting}, {firstName} ☀️
+        </h1>
         <p className="mt-1 text-sm text-sidebar-foreground/70 relative z-10">
           You have {students?.length ?? "—"} students across {courseCount ?? "—"} courses.
         </p>
         <p className="mt-3 text-xs italic text-sidebar-foreground/40 relative z-10">
-          "Education is the most powerful weapon which you can use to change the world." — Nelson Mandela
+          "Education is the most powerful weapon which you can use to change the world." — Nelson
+          Mandela
         </p>
       </div>
 
@@ -76,30 +79,46 @@ function AdminDashboard() {
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card className="p-4 hover:border-accent transition-colors">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Students</p>
-            <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-bold text-green-600">+{students?.length ?? 0}</span>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Students
+            </p>
+            <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-bold text-green-600">
+              +{students?.length ?? 0}
+            </span>
           </div>
-          <p className="font-display text-2xl font-extrabold text-accent-foreground">{students?.length ?? "—"}</p>
+          <p className="font-display text-2xl font-extrabold text-accent-foreground">
+            {students?.length ?? "—"}
+          </p>
         </Card>
         <Card className="p-4 hover:border-accent transition-colors">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Courses</p>
-            <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-bold text-green-600">Active</span>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Courses
+            </p>
+            <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-bold text-green-600">
+              Active
+            </span>
           </div>
           <p className="font-display text-2xl font-extrabold">{courseCount ?? "—"}</p>
         </Card>
         <Card className="p-4 hover:border-accent transition-colors">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Attendance</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Attendance
+            </p>
             <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-bold text-green-600">
-              {todayIns.length > 0 ? `${Math.round(((todayIns.length - lateToday) / todayIns.length) * 100)}%` : "—"}
+              {todayIns.length > 0
+                ? `${Math.round(((todayIns.length - lateToday) / todayIns.length) * 100)}%`
+                : "—"}
             </span>
           </div>
           <p className="font-display text-2xl font-extrabold">{todayIns.length}</p>
         </Card>
         <Card className="p-4 hover:border-accent transition-colors">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Announcements</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Announcements
+            </p>
             <Megaphone className="h-4 w-4 text-muted-foreground" />
           </div>
           <p className="font-display text-2xl font-extrabold">{announcementCount ?? "—"}</p>
@@ -112,7 +131,10 @@ function AdminDashboard() {
         <div className="lg:col-span-2">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-bold uppercase tracking-wide">Recent Activity</h2>
-            <Link to="/dashboard/admin/students" className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
+            <Link
+              to="/dashboard/admin/students"
+              className="text-xs font-semibold text-primary hover:underline flex items-center gap-1"
+            >
               View all <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
@@ -122,17 +144,17 @@ function AdminDashboard() {
             )}
             {todayLogs.slice(0, 8).map((log) => (
               <div key={log.id} className="flex items-center gap-3 px-4 py-3">
-                <div className={`h-2 w-2 rounded-full flex-shrink-0 ${log.status === "late" ? "bg-yellow-500" : "bg-green-500"}`} />
+                <div
+                  className={`h-2 w-2 rounded-full flex-shrink-0 ${log.status === "late" ? "bg-yellow-500" : "bg-green-500"}`}
+                />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm">
-                    <span className="font-semibold">{nameOf.get(log.student_id) ?? "Unknown"}</span>
-                    {" "}scanned {log.scan_type === "in" ? "in" : "out"}
+                    <span className="font-semibold">{nameOf.get(log.student_id) ?? "Unknown"}</span>{" "}
+                    scanned {log.scan_type === "in" ? "in" : "out"}
                   </p>
                   <p className="text-xs text-muted-foreground">{fmtTime(log.timestamp)}</p>
                 </div>
-                <Badge tone={log.status === "late" ? "amber" : "green"}>
-                  {log.status}
-                </Badge>
+                <Badge tone={log.status === "late" ? "amber" : "green"}>{log.status}</Badge>
               </div>
             ))}
           </Card>
@@ -142,7 +164,10 @@ function AdminDashboard() {
         <div>
           <h2 className="text-sm font-bold uppercase tracking-wide mb-3">Quick Actions</h2>
           <div className="space-y-2">
-            <Link to="/dashboard/admin/students" className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-4 transition-colors hover:border-accent">
+            <Link
+              to="/dashboard/admin/students"
+              className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-4 transition-colors hover:border-accent"
+            >
               <Users className="h-5 w-5 text-primary" />
               <div>
                 <p className="text-sm font-semibold">Students</p>
@@ -150,7 +175,10 @@ function AdminDashboard() {
               </div>
               <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
             </Link>
-            <Link to="/dashboard/admin/courses" className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-4 transition-colors hover:border-accent">
+            <Link
+              to="/dashboard/admin/courses"
+              className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-4 transition-colors hover:border-accent"
+            >
               <BookOpen className="h-5 w-5 text-sky-500" />
               <div>
                 <p className="text-sm font-semibold">Courses</p>
@@ -158,7 +186,10 @@ function AdminDashboard() {
               </div>
               <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
             </Link>
-            <Link to="/dashboard/admin/announcements" className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-4 transition-colors hover:border-accent">
+            <Link
+              to="/dashboard/admin/announcements"
+              className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-4 transition-colors hover:border-accent"
+            >
               <Megaphone className="h-5 w-5 text-amber-500" />
               <div>
                 <p className="text-sm font-semibold">Announcements</p>
@@ -166,7 +197,10 @@ function AdminDashboard() {
               </div>
               <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
             </Link>
-            <Link to="/dashboard/admin/attendance" className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-4 transition-colors hover:border-accent">
+            <Link
+              to="/dashboard/admin/attendance"
+              className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-4 transition-colors hover:border-accent"
+            >
               <CalendarCheck className="h-5 w-5 text-green-500" />
               <div>
                 <p className="text-sm font-semibold">Attendance</p>

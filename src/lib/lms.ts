@@ -31,7 +31,7 @@ import {
   listTeachersFn,
   listTeacherDirectoryFn,
   createTeacherFn,
-  enrollBiometricsFn,
+  enrollRfidFn,
   logAttendanceFn,
   myQuizSummariesFn,
   quizAttemptInfoFn,
@@ -838,11 +838,11 @@ export async function createTeacher(input: {
  * Register or clear an RFID card. Admins may enroll any account
  * (admin-assisted registration); everyone else only their own record.
  */
-export async function enrollBiometrics(
+export async function enrollRfid(
   id: string,
   fields: { rfid_uid?: string | null },
 ): Promise<Profile> {
-  return (await enrollBiometricsFn({
+  return (await enrollRfidFn({
     data: { id, ...fields, token: sessionToken() } as never,
   })) as Profile;
 }

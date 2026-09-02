@@ -1,4 +1,4 @@
-// Profiles & kiosk auth — CRUD, PIN login, RFID, biometrics.
+// Profiles & kiosk auth — CRUD, PIN login, RFID.
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db, supabaseAdmin } from "@/integrations/db/client.server";
@@ -8,7 +8,7 @@ import { createSessionToken, revokeSessions, sessionSecret } from "@/lib/server/
 import { schemas } from "@/lib/server/schemas.server";
 import { type ProfileRow, type ProfileRole, type HttpError } from "@/lib/server/db-types";
 
-/* ---------- Safe profile shaping (strip credentials/biometrics) ---------- */
+/* ---------- Safe profile shaping (strip credentials) ---------- */
 
 export function safeProfile(p: ProfileRow) {
   return {
@@ -435,7 +435,7 @@ export async function createTeacher(input: z.infer<typeof schemas.teacherInput>)
   return { ...safeProfile(created), courses: [] as { id: string; title: string; code: string }[] };
 }
 
-export async function enrollBiometrics(id: string, fields: { rfid_uid?: string | null }) {
+export async function enrollRfid(id: string, fields: { rfid_uid?: string | null }) {
   const row: Record<string, unknown> = {};
   if ("rfid_uid" in fields) row["rfid_uid"] = fields.rfid_uid ?? null;
   if (Object.keys(row).length === 0) throw new Error("Nothing to enroll");
