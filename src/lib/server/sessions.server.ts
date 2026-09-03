@@ -26,11 +26,13 @@ export function sessionSecret(): string {
 }
 
 export function createSessionToken(profileId: string, jti: string = randomUUID()): string {
-  // exp = 0 means "never expires"; omit exp field in payload when TTL is 0.
+  // exp = 0 means "never expires"; verified payload keeps exp=0 for the verify check.
   const exp = SESSION_TTL_MS > 0 ? Date.now() + SESSION_TTL_MS : 0;
   const payload = Buffer.from(JSON.stringify({ sub: profileId, jti, exp })).toString("base64url");
   // Persist jti for revocation; best-effort so login never blocks on DB.
-  const row = { jti, profile_id: profileId, expires_at: exp ? new Date(exp).toISOString() : null } as any;
+  // Use a far-future date for never-expire tokens so the NOT NULL constraint is satisfied.
+  const NEVER = "9999-12-31T23:59:59.999Z";
+  const row = { jti, profile_id: profileId, expires_at: exp ? new Date(exp).toISOString() : NEVER } as any;
   try {
     const pending: any = db.from("sessions").insert(row);
     if (pending && typeof pending.then === "function")
