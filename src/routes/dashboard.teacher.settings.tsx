@@ -75,6 +75,10 @@ const TABS: Array<{ value: Tab; label: string; icon: React.ReactNode }> = [
   },
 ];
 
+// Face recognition gate — default OFF when unset. When off, the face
+// enrollment card and modal below are hidden entirely.
+const FACE_ENABLED = import.meta.env.VITE_FACE_ENABLED === "true";
+
 const PREFIXES = ["", "Dr.", "Prof.", "Mr.", "Ms.", "Mrs.", "Engr."];
 
 function Field({ label, ...props }: { label: string } & InputHTMLAttributes<HTMLInputElement>) {
@@ -630,25 +634,27 @@ function TeacherSettingsPage() {
                 )}
               </Card>
 
-              <Card className="p-6">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="font-display text-lg font-bold">Face Verification</h2>
-                    <p className="text-xs text-muted-foreground">
-                      Biometric profile used at the gate kiosk and for faculty sign-in.
-                    </p>
+              {FACE_ENABLED ? (
+                <Card className="p-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="font-display text-lg font-bold">Face Verification</h2>
+                      <p className="text-xs text-muted-foreground">
+                        Biometric profile used at the gate kiosk and for faculty sign-in.
+                      </p>
+                    </div>
+                    <Badge tone="green">
+                      <ScanFace className="h-3 w-3" /> {settings.faceStatus}
+                    </Badge>
                   </div>
-                  <Badge tone="green">
-                    <ScanFace className="h-3 w-3" /> {settings.faceStatus}
-                  </Badge>
-                </div>
-                <button
-                  onClick={() => setFaceOpen(true)}
-                  className="mt-4 flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-muted"
-                >
-                  <Camera className="h-4 w-4" /> Capture / update face enrollment
-                </button>
-              </Card>
+                  <button
+                    onClick={() => setFaceOpen(true)}
+                    className="mt-4 flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-muted"
+                  >
+                    <Camera className="h-4 w-4" /> Capture / update face enrollment
+                  </button>
+                </Card>
+              ) : null}
             </>
           )}
 
@@ -789,36 +795,38 @@ function TeacherSettingsPage() {
         </div>
       </div>
 
-      {/* Face enrollment modal — live webcam preview */}
-      <Modal
-        open={faceOpen}
-        onClose={() => !capturing && setFaceOpen(false)}
-        title="Face Verification Enrollment"
-      >
-        <p className="mb-3 text-sm text-muted-foreground">
-          Center your face in the frame and hold still. The captured descriptor replaces your stored
-          face embedding.
-        </p>
-        {faceOpen && (
-          <CameraPanel scanning={capturing} videoRef={videoRef} className="aspect-video" />
-        )}
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            onClick={() => setFaceOpen(false)}
-            disabled={capturing}
-            className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold transition-colors hover:bg-muted disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => void captureFace()}
-            disabled={capturing}
-            className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-lift transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            <ScanFace className="h-4 w-4" /> {capturing ? "Capturing…" : "Capture"}
-          </button>
-        </div>
-      </Modal>
+      {/* Face enrollment modal — hidden unless VITE_FACE_ENABLED=true */}
+      {FACE_ENABLED ? (
+        <Modal
+          open={faceOpen}
+          onClose={() => !capturing && setFaceOpen(false)}
+          title="Face Verification Enrollment"
+        >
+          <p className="mb-3 text-sm text-muted-foreground">
+            Center your face in the frame and hold still. The captured descriptor replaces your
+            stored face embedding.
+          </p>
+          {faceOpen && (
+            <CameraPanel scanning={capturing} videoRef={videoRef} className="aspect-video" />
+          )}
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              onClick={() => setFaceOpen(false)}
+              disabled={capturing}
+              className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold transition-colors hover:bg-muted disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => void captureFace()}
+              disabled={capturing}
+              className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-lift transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              <ScanFace className="h-4 w-4" /> {capturing ? "Capturing…" : "Capture"}
+            </button>
+          </div>
+        </Modal>
+      ) : null}
     </AppShell>
   );
 }

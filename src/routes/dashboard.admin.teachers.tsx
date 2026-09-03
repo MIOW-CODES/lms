@@ -75,6 +75,10 @@ const EMPTY_FORM = {
 const INPUT =
   "h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring";
 
+// Face recognition gate — default OFF when unset. When off, the face
+// enrolled badges and the enrollment panel below are hidden entirely.
+const FACE_ENABLED = import.meta.env.VITE_FACE_ENABLED === "true";
+
 function TeachersPage() {
   const profile = useProfile(["admin"]);
   const qc = useQueryClient();
@@ -301,9 +305,11 @@ function TeachersPage() {
                       <Badge tone={t.has_rfid ? "green" : "amber"}>
                         {t.has_rfid ? "Card bound" : "No card"}
                       </Badge>
-                      <Badge tone={t.is_face_enrolled ? "green" : "amber"}>
-                        {t.is_face_enrolled ? "Face enrolled" : "No face"}
-                      </Badge>
+                      {FACE_ENABLED ? (
+                        <Badge tone={t.is_face_enrolled ? "green" : "amber"}>
+                          {t.is_face_enrolled ? "Face enrolled" : "No face"}
+                        </Badge>
+                      ) : null}
                     </div>
                   </td>
                   <td className="p-4 text-right">
@@ -657,36 +663,38 @@ function TeacherDetailModal({
           </button>
         </div>
 
-        <div className="rounded-xl border border-border/60 bg-card/60 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-sm font-semibold">Face enrollment</p>
-              <p className="text-xs text-muted-foreground">
-                {teacher.is_face_enrolled
-                  ? `Enrolled${teacher.biometric_enrolled_at ? ` · ${new Date(teacher.biometric_enrolled_at).toLocaleDateString()}` : ""}`
-                  : "No descriptor on file — the kiosk will fall back to card or PIN."}
-              </p>
-            </div>
-            <button
-              onClick={() => setFaceOpen((v) => !v)}
-              className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold hover:bg-muted"
-            >
-              <ScanFace className="h-4 w-4" /> {faceOpen ? "Close camera" : "Enroll face"}
-            </button>
-          </div>
-          {faceOpen && (
-            <div className="mt-3 space-y-3">
-              <CameraPanel scanning={capturing} videoRef={videoRef} className="aspect-video" />
+        {FACE_ENABLED ? (
+          <div className="rounded-xl border border-border/60 bg-card/60 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold">Face enrollment</p>
+                <p className="text-xs text-muted-foreground">
+                  {teacher.is_face_enrolled
+                    ? `Enrolled${teacher.biometric_enrolled_at ? ` · ${new Date(teacher.biometric_enrolled_at).toLocaleDateString()}` : ""}`
+                    : "No descriptor on file — the kiosk will fall back to card or PIN."}
+                </p>
+              </div>
               <button
-                onClick={captureFace}
-                disabled={capturing}
-                className="h-10 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                onClick={() => setFaceOpen((v) => !v)}
+                className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold hover:bg-muted"
               >
-                {capturing ? "Capturing…" : "Capture descriptor"}
+                <ScanFace className="h-4 w-4" /> {faceOpen ? "Close camera" : "Enroll face"}
               </button>
             </div>
-          )}
-        </div>
+            {faceOpen && (
+              <div className="mt-3 space-y-3">
+                <CameraPanel scanning={capturing} videoRef={videoRef} className="aspect-video" />
+                <button
+                  onClick={captureFace}
+                  disabled={capturing}
+                  className="h-10 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                >
+                  {capturing ? "Capturing…" : "Capture descriptor"}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
 
       <button

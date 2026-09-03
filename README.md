@@ -75,8 +75,17 @@ See `.env.example` for the full list. Required:
 
 - **RFID tap** — auto-captures 10-13 digit card scanner keystrokes
 - **PIN login** — manual fallback with rate limiting (5 attempts / 15 min)
-- **Face verification** — WebRTC camera capture (placeholder for ML models)
+- **Face verification** — optional kiosk step gated by `VITE_FACE_ENABLED` (face-api.js tiny nets, see below)
 - HMAC-SHA256 session tokens with JTI revocation
+
+### Face recognition
+
+Off by default — set `VITE_FACE_ENABLED=true` to enable. What it is: face-api.js
+tiny nets (self-hosted models) capture a 128D descriptor and do a 1:1 match
+against the enrolled descriptor; a mismatch falls back to PIN. What it is NOT:
+no liveness / anti-spoofing, never the sole gate, never a 1:N search.
+Threat model: casual misuse only — photo-spoof resistance needs depth hardware.
+Consent + one-click removal: `enrollFace(id, null)` deletes the descriptor.
 
 ### Admin Dashboard
 

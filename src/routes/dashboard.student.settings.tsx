@@ -82,6 +82,10 @@ const TABS: Array<{ value: Tab; label: string; icon: React.ReactNode }> = [
   { value: "preferences", label: "Preferences", icon: <Palette className="h-4 w-4" /> },
 ];
 
+// Face recognition gate — default OFF when unset. When off, the face
+// enrollment card and retake modal below are hidden entirely.
+const FACE_ENABLED = import.meta.env.VITE_FACE_ENABLED === "true";
+
 function Field({ label, ...props }: { label: string } & InputHTMLAttributes<HTMLInputElement>) {
   return (
     <label className="block">
@@ -549,25 +553,27 @@ function StudentSettings() {
                 )}
               </Card>
 
-              <Card className="p-6">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="font-display text-lg font-bold">Facial Recognition</h2>
-                    <p className="text-xs text-muted-foreground">
-                      Biometric profile used at the sign-in kiosk.
-                    </p>
+              {FACE_ENABLED ? (
+                <Card className="p-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="font-display text-lg font-bold">Facial Recognition</h2>
+                      <p className="text-xs text-muted-foreground">
+                        Biometric profile used at the sign-in kiosk.
+                      </p>
+                    </div>
+                    <Badge tone="green">
+                      <ScanFace className="h-3 w-3" /> {settings.faceStatus}
+                    </Badge>
                   </div>
-                  <Badge tone="green">
-                    <ScanFace className="h-3 w-3" /> {settings.faceStatus}
-                  </Badge>
-                </div>
-                <button
-                  onClick={() => setFaceOpen(true)}
-                  className="mt-4 flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-muted"
-                >
-                  <Camera className="h-4 w-4" /> Retake face snapshot
-                </button>
-              </Card>
+                  <button
+                    onClick={() => setFaceOpen(true)}
+                    className="mt-4 flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-muted"
+                  >
+                    <Camera className="h-4 w-4" /> Retake face snapshot
+                  </button>
+                </Card>
+              ) : null}
 
               <Card className="p-6">
                 <h2 className="font-display text-lg font-bold">Reset Account PIN</h2>
@@ -789,33 +795,35 @@ function StudentSettings() {
         </div>
       </div>
 
-      {/* Face retake modal */}
-      <Modal
-        open={faceOpen}
-        onClose={() => !capturing && setFaceOpen(false)}
-        title="Retake Face Snapshot"
-      >
-        <p className="mb-3 text-sm text-muted-foreground">
-          Center your face in the frame and hold still while we capture a new biometric profile.
-        </p>
-        <CameraPanel scanning={capturing} videoRef={videoRef} className="aspect-video" />
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            onClick={() => setFaceOpen(false)}
-            disabled={capturing}
-            className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold transition-colors hover:bg-muted disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => void retakeFace()}
-            disabled={capturing}
-            className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-lift transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            <ScanFace className="h-4 w-4" /> {capturing ? "Scanning…" : "Capture"}
-          </button>
-        </div>
-      </Modal>
+      {/* Face retake modal — hidden unless VITE_FACE_ENABLED=true */}
+      {FACE_ENABLED ? (
+        <Modal
+          open={faceOpen}
+          onClose={() => !capturing && setFaceOpen(false)}
+          title="Retake Face Snapshot"
+        >
+          <p className="mb-3 text-sm text-muted-foreground">
+            Center your face in the frame and hold still while we capture a new biometric profile.
+          </p>
+          <CameraPanel scanning={capturing} videoRef={videoRef} className="aspect-video" />
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              onClick={() => setFaceOpen(false)}
+              disabled={capturing}
+              className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold transition-colors hover:bg-muted disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => void retakeFace()}
+              disabled={capturing}
+              className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-lift transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              <ScanFace className="h-4 w-4" /> {capturing ? "Scanning…" : "Capture"}
+            </button>
+          </div>
+        </Modal>
+      ) : null}
     </AppShell>
   );
 }

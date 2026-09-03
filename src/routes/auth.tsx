@@ -43,6 +43,11 @@ export const Route = createFileRoute("/auth")({
 
 const VERIFY_STEPS = ["Locating face…", "Comparing descriptor…", "Identity confirmed"];
 
+// Face recognition gate — default OFF when unset. When off, the kiosk skips
+// the face step entirely: the RFID/PIN-identified profile goes straight to
+// the session success path (no CameraPanel verify view, no model load).
+const FACE_ENABLED = import.meta.env.VITE_FACE_ENABLED === "true";
+
 function AuthPage() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<"scan" | "pin">("scan");
@@ -76,6 +81,12 @@ function AuthPage() {
   const startVerify = async (p: Profile) => {
     timers.current.forEach(clearTimeout);
     timers.current = [];
+    if (!FACE_ENABLED) {
+      saveSession(p);
+      toast.success(`Welcome, ${p.full_name.split(" ")[0]}!`);
+      timers.current.push(setTimeout(() => navigate({ to: dashboardPathFor(p.role) }), 900));
+      return;
+    }
     setVerifying(p);
     setStep(0);
     setDone(false);
@@ -201,7 +212,7 @@ function AuthPage() {
           </p>
           <div className="flex flex-wrap gap-2">
             <Badge tone="indigo">RFID Attendance</Badge>
-            <Badge tone="green">Face Verification</Badge>
+            {FACE_ENABLED ? <Badge tone="green">Face Verification</Badge> : null}
             <Badge tone="sky">DepEd Transmutation</Badge>
           </div>
         </div>
@@ -222,7 +233,7 @@ function AuthPage() {
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-6 shadow-lift sm:p-8">
-            {!verifying ? (
+            {!verifying || !FACE_ENABLED ? (
               <>
                 <h1 className="sr-only">Sign in to MSU-IIT IDS Online Workspace (MIOW)</h1>
                 <MiowLockup size="lg" aria-hidden />
@@ -326,7 +337,7 @@ function AuthPage() {
                       disabled={busy || !login.trim() || !pin}
                       className="h-11 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
                     >
-                      Continue to face verification
+                      {FACE_ENABLED ? "Continue to face verification" : "Sign in"}
                     </button>
                   </form>
                 )}
@@ -370,7 +381,9 @@ function AuthPage() {
             )}
           </div>
           <p className="mt-4 text-center text-xs text-muted-foreground">
-            Protected by RFID + biometric verification · MSU-IIT Integrated Development School
+            {FACE_ENABLED
+              ? "Protected by RFID + biometric verification · MSU-IIT Integrated Development School"
+              : "Protected by RFID + PIN sign-in · MSU-IIT Integrated Development School"}
           </p>
         </div>
       </div>
