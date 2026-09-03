@@ -25,9 +25,12 @@ export function safeProfile(p: ProfileRow) {
     employee_id: p.employee_id,
     prefix: p.prefix,
     department: p.department,
-    // Credentials never leave the server.
+    biometric_enrolled_at: p.biometric_enrolled_at,
+    is_face_enrolled: !!p.face_embedding,
+    // Credentials and biometrics never leave the server.
     pin: null,
     rfid_uid: null,
+    face_embedding: null,
     has_pin: !!p.pin_hash || !!p.pin,
     has_rfid: !!p.rfid_uid,
   };
@@ -221,7 +224,7 @@ export function selfServicePatch(patch: Record<string, unknown>): Record<string,
   return out;
 }
 
-const CREDENTIAL_KEYS = ["pin", "rfid_uid", "email", "username", "password"];
+const CREDENTIAL_KEYS = ["pin", "rfid_uid", "email", "username", "password", "face_embedding"];
 
 export async function authorizeProfileUpdate(
   token: string,
