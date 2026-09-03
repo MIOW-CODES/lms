@@ -64,7 +64,7 @@ test.describe("Student face retake", () => {
     await page.goto("/dashboard/student/settings");
     await page.getByRole("button", { name: /Hardware & Security/ }).click();
     await page.getByRole("button", { name: /Retake face snapshot/ }).click();
-    await expect(page.getByText("Retake Face Snapshot")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("heading", { name: "Retake Face Snapshot" })).toBeVisible({ timeout: 10000 });
 
     await page.getByRole("button", { name: /Capture/ }).click();
 
@@ -74,6 +74,6 @@ test.describe("Student face retake", () => {
     ).toBeVisible({ timeout: 30000 });
     await expect(page.getByText("Facial profile updated")).toHaveCount(0);
     // Modal stays open on failure (it only closes on success).
-    await expect(page.getByText("Retake Face Snapshot")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Retake Face Snapshot" })).toBeVisible();
   });
 });

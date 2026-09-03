@@ -21,6 +21,10 @@ export function ensureFaceModels(): Promise<void> {
   if (!modelsPromise) {
     modelsPromise = (async () => {
       const faceapi = await import("face-api.js");
+      // CPU backend: kiosk/test machines often lack a usable GPU, and a
+      // WebGL init failure can hang or crash the tab with no error surfaced.
+      await faceapi.tf.setBackend("cpu");
+      await faceapi.tf.ready();
       await Promise.all([
         faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL_URL),
         faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_MODEL_URL),
@@ -41,6 +45,9 @@ export function ensureFaceModels(): Promise<void> {
  */
 export async function videoToDescriptor(video: HTMLVideoElement): Promise<string | null> {
   try {
+    // face-api's detector never settles on a video with no stream data
+    // (no rejection, no resolution) — bail out before calling it.
+    if (video.readyState < 2 || video.videoWidth === 0) return null;
     await ensureFaceModels();
     const faceapi = await import("face-api.js");
     const detection = await faceapi
