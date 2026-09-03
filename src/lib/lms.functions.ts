@@ -122,6 +122,27 @@ export const enrollRfidFn = createServerFn({ method: "POST" })
     return server.enrollRfid(data.id, fields);
   });
 
+// Face enrolment. Same permission rule as RFID: admins may enroll anyone;
+// everyone else may only enroll their OWN record.
+export const enrollFaceFn = createServerFn({ method: "POST" })
+  .inputValidator((data) => server.schemas.face.parse(data))
+  .handler(async ({ data }) => {
+    const caller = await server.requireSession(data.token);
+    if (caller.role !== "admin" && caller.id !== data.id) throw new Error("Forbidden");
+    return server.enrollFace(data.id, data.face_embedding);
+  });
+
+// 1:1 face verification. Same permission rule as enrolment, and strictly
+// 1:1 — the live embedding is compared ONLY against the stored embedding
+// for the given id, never searched across profiles.
+export const verifyFaceFn = createServerFn({ method: "POST" })
+  .inputValidator((data) => server.schemas.faceVerify.parse(data))
+  .handler(async ({ data }) => {
+    const caller = await server.requireSession(data.token);
+    if (caller.role !== "admin" && caller.id !== data.id) throw new Error("Forbidden");
+    return server.verifyFaceMatch(data.id, data.face_embedding);
+  });
+
 // Role administration is ADMIN-only (teachers cannot reassign roles).
 export const listAllUsersFn = createServerFn({ method: "POST" })
   .inputValidator((data) => server.schemas.session.parse(data))

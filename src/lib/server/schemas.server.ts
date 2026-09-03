@@ -106,6 +106,16 @@ export const schemas = {
       .optional(),
     ...token,
   }),
+  face: z.object({
+    id: uuid,
+    face_embedding: z.string().max(20000),
+    ...token,
+  }),
+  faceVerify: z.object({
+    id: uuid,
+    face_embedding: z.string().max(20000),
+    ...token,
+  }),
   profilePatch: z.object({
     id: uuid,
     patch: z

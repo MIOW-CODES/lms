@@ -32,6 +32,8 @@ import {
   listTeacherDirectoryFn,
   createTeacherFn,
   enrollRfidFn,
+  enrollFaceFn,
+  verifyFaceFn,
   logAttendanceFn,
   myQuizSummariesFn,
   quizAttemptInfoFn,
@@ -849,6 +851,27 @@ export async function enrollRfid(
   return (await enrollRfidFn({
     data: { id, ...fields, token: sessionToken() } as never,
   })) as Profile;
+}
+
+/**
+ * Register or clear a face descriptor (128-D embedding JSON). Admins may
+ * enroll any account; everyone else only their own record. Pass null to
+ * clear the enrolment.
+ */
+export async function enrollFace(id: string, embedding: string | null): Promise<Profile> {
+  return (await enrollFaceFn({
+    data: { id, face_embedding: embedding, token: sessionToken() } as never,
+  })) as Profile;
+}
+
+/**
+ * 1:1 face check against one profile's enrolled descriptor. Returns true
+ * when the live embedding matches the stored one within the threshold.
+ */
+export async function verifyFace(id: string, embedding: string): Promise<boolean> {
+  return (await verifyFaceFn({
+    data: { id, face_embedding: embedding, token: sessionToken() } as never,
+  })) as boolean;
 }
 
 /** Full user directory (admin-only) for the Users & Roles console. */

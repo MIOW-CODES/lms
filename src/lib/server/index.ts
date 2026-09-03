@@ -34,6 +34,8 @@ export {
   updateUserRole,
   createTeacher,
   enrollRfid,
+  enrollFace,
+  verifyFaceMatch,
   uploadAvatar,
   avatarUrlForPath,
   selfServicePatch,

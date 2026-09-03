@@ -6,6 +6,7 @@ import { getBucket } from "@/lib/rate-limit";
 import { unwrap, withoutToken } from "@/lib/server/utils.server";
 import { createSessionToken, revokeSessions, sessionSecret } from "@/lib/server/sessions.server";
 import { schemas } from "@/lib/server/schemas.server";
+import { isMatch } from "@/lib/face";
 import { type ProfileRow, type ProfileRole, type HttpError } from "@/lib/server/db-types";
 
 /* ---------- Safe profile shaping (strip credentials) ---------- */
@@ -447,6 +448,34 @@ export async function enrollRfid(id: string, fields: { rfid_uid?: string | null 
   const fresh = await getProfileById(id);
   if (!fresh) throw new Error("User not found");
   return fresh;
+}
+
+/* ---------- Face enrolment & 1:1 verification ---------- */
+
+// Face enrolment. Stores (or clears, when null) the 128-D descriptor JSON
+// plus the enrolment timestamp. Never returns the embedding itself —
+// callers get the safe profile (is_face_enrolled flag included).
+export async function enrollFace(id: string, face_embedding: string | null) {
+  const row: Record<string, unknown> = {
+    face_embedding: face_embedding ?? null,
+    biometric_enrolled_at: face_embedding ? new Date().toISOString() : null,
+  };
+  await unwrap(db.from("profiles").update(row).eq("id", id));
+  const fresh = await getProfileById(id);
+  if (!fresh) throw new Error("User not found");
+  return fresh;
+}
+
+// 1:1 face check: compares the live embedding ONLY against the stored
+// embedding for the given id. Returns false when nothing is enrolled.
+// Never performs a 1:N search across profiles.
+export async function verifyFaceMatch(id: string, liveEmbedding: string): Promise<boolean> {
+  const p = await unwrap<ProfileRow | null>(
+    db.from("profiles").select("face_embedding").eq("id", id).is("deleted_at", null).maybeSingle(),
+  );
+  const stored = p?.face_embedding;
+  if (!stored) return false;
+  return isMatch(stored, liveEmbedding);
 }
 
 export async function listAllUsers() {
