@@ -32,6 +32,7 @@ import {
 } from "@/components/lms";
 import {
   findProfileByCredential,
+  enrollFace,
   updateProfile,
   updateSessionProfile,
   uploadAvatar,
@@ -51,6 +52,7 @@ import {
   type UserSettings,
 } from "@/lib/settings";
 import { cn } from "@/lib/utils";
+import { ensureFaceModels, videoToDescriptor } from "@/lib/face";
 
 export const Route = createFileRoute("/dashboard/student/settings")({
   head: () => ({
@@ -161,6 +163,7 @@ function StudentSettings() {
   const [confirmPin, setConfirmPin] = useState("");
   const [pinBusy, setPinBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Preference state
   const [theme, setTheme] = useState<ThemeMode>("system");
@@ -290,11 +293,16 @@ function StudentSettings() {
     }
   };
 
-  const retakeFace = () => {
+  const retakeFace = async () => {
     setCapturing(true);
-    window.setTimeout(() => {
-      setCapturing(false);
-      setFaceOpen(false);
+    try {
+      await ensureFaceModels();
+      const embedding = videoRef.current ? await videoToDescriptor(videoRef.current) : null;
+      if (!embedding) {
+        toast.error("Camera not ready — allow webcam access and try again");
+        return;
+      }
+      await enrollFace(profile.id, embedding);
       persist(
         {
           ...settings,
@@ -303,7 +311,12 @@ function StudentSettings() {
         "Facial profile updated",
       );
       logAudit("Face re-enrollment", `${profile.full_name} retook their face snapshot`);
-    }, 1800);
+      setFaceOpen(false);
+    } catch {
+      toast.error("Could not update facial profile. Try again.");
+    } finally {
+      setCapturing(false);
+    }
   };
 
   const changePin = async () => {
@@ -785,7 +798,7 @@ function StudentSettings() {
         <p className="mb-3 text-sm text-muted-foreground">
           Center your face in the frame and hold still while we capture a new biometric profile.
         </p>
-        <CameraPanel scanning={capturing} className="aspect-video" />
+        <CameraPanel scanning={capturing} videoRef={videoRef} className="aspect-video" />
         <div className="mt-4 flex justify-end gap-2">
           <button
             onClick={() => setFaceOpen(false)}
@@ -795,7 +808,7 @@ function StudentSettings() {
             Cancel
           </button>
           <button
-            onClick={retakeFace}
+            onClick={() => void retakeFace()}
             disabled={capturing}
             className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-lift transition-opacity hover:opacity-90 disabled:opacity-50"
           >
