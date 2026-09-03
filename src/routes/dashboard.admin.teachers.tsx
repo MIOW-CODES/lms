@@ -3,14 +3,24 @@
 // create/edit/remove actions. All mutations route through the signed-token
 // server functions in lms.functions.ts (tables are default-deny), and the
 // role is forced to 'teacher' server-side.
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, GraduationCap, KeyRound, Nfc, Plus, Search, Trash2 } from "lucide-react";
+import {
+  BookOpen,
+  GraduationCap,
+  KeyRound,
+  Nfc,
+  Plus,
+  ScanFace,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   createTeacher,
   deleteProfile,
+  enrollFace,
   enrollRfid,
   listTeacherDirectory,
   updateProfile,
@@ -20,12 +30,14 @@ import {
   ADMIN_NAV,
   AppShell,
   Badge,
+  CameraPanel,
   Card,
   EmptyState,
   Modal,
   useProfile,
   useRfidScanner,
 } from "@/components/lms";
+import { ensureFaceModels, videoToDescriptor } from "@/lib/face";
 
 export const Route = createFileRoute("/dashboard/admin/teachers")({
   head: () => ({
@@ -289,6 +301,9 @@ function TeachersPage() {
                       <Badge tone={t.has_rfid ? "green" : "amber"}>
                         {t.has_rfid ? "Card bound" : "No card"}
                       </Badge>
+                      <Badge tone={t.is_face_enrolled ? "green" : "amber"}>
+                        {t.is_face_enrolled ? "Face enrolled" : "No face"}
+                      </Badge>
                     </div>
                   </td>
                   <td className="p-4 text-right">
@@ -423,6 +438,9 @@ function TeacherDetailModal({
   const [newRfid, setNewRfid] = useState("");
   const [newPin, setNewPin] = useState("");
   const [busy, setBusy] = useState(false);
+  const [faceOpen, setFaceOpen] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [hydrated, setHydrated] = useState<string | null>(null);
 
   // Seed the editable fields the first time a given faculty row is opened.
@@ -434,6 +452,7 @@ function TeacherDetailModal({
     setEmployeeId(teacher.employee_id ?? "");
     setNewRfid("");
     setNewPin("");
+    setFaceOpen(false);
   }
 
   if (!teacher) return null;
@@ -483,6 +502,26 @@ function TeacherDetailModal({
       toast.error(err instanceof Error ? err.message : "Update failed.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const captureFace = async () => {
+    setCapturing(true);
+    try {
+      await ensureFaceModels();
+      const embedding = videoRef.current ? await videoToDescriptor(videoRef.current) : null;
+      if (!embedding) {
+        toast.error("Camera frame unavailable — check permissions.");
+        return;
+      }
+      await enrollFace(teacher.id, embedding);
+      toast.success("Face descriptor enrolled.");
+      setFaceOpen(false);
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Enrollment failed.");
+    } finally {
+      setCapturing(false);
     }
   };
 
@@ -616,6 +655,37 @@ function TeacherDetailModal({
           >
             Reset PIN
           </button>
+        </div>
+
+        <div className="rounded-xl border border-border/60 bg-card/60 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold">Face enrollment</p>
+              <p className="text-xs text-muted-foreground">
+                {teacher.is_face_enrolled
+                  ? `Enrolled${teacher.biometric_enrolled_at ? ` · ${new Date(teacher.biometric_enrolled_at).toLocaleDateString()}` : ""}`
+                  : "No descriptor on file — the kiosk will fall back to card or PIN."}
+              </p>
+            </div>
+            <button
+              onClick={() => setFaceOpen((v) => !v)}
+              className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold hover:bg-muted"
+            >
+              <ScanFace className="h-4 w-4" /> {faceOpen ? "Close camera" : "Enroll face"}
+            </button>
+          </div>
+          {faceOpen && (
+            <div className="mt-3 space-y-3">
+              <CameraPanel scanning={capturing} videoRef={videoRef} className="aspect-video" />
+              <button
+                onClick={captureFace}
+                disabled={capturing}
+                className="h-10 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                {capturing ? "Capturing…" : "Capture descriptor"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
