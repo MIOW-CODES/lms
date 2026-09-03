@@ -27,6 +27,7 @@ import {
   useRfidScanner,
 } from "@/components/lms";
 import {
+  enrollFace,
   findProfileByCredential,
   updateSessionProfile,
   updateTeacherSettings,
@@ -39,6 +40,7 @@ import {
   type TeacherSettings,
 } from "@/lib/settings";
 import { cn } from "@/lib/utils";
+import { ensureFaceModels, videoToDescriptor } from "@/lib/face";
 
 export const Route = createFileRoute("/dashboard/teacher/settings")({
   head: () => ({
@@ -127,27 +129,6 @@ function Toggle({
       </span>
     </button>
   );
-}
-
-/**
- * Derive a compact face descriptor from the live webcam frame: the frame is
- * downscaled to an 8×16 luminance grid, which is stored as the profile's
- * face_embedding vector for kiosk/sign-in matching.
- */
-function frameToEmbedding(video: HTMLVideoElement): string | null {
-  const canvas = document.createElement("canvas");
-  canvas.width = 16;
-  canvas.height = 8;
-  const ctx = canvas.getContext("2d");
-  if (!ctx || !video.videoWidth) return null;
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const vector: number[] = [];
-  for (let i = 0; i < data.length; i += 4) {
-    const lum = (0.299 * data[i]! + 0.587 * data[i + 1]! + 0.114 * data[i + 2]!) / 255;
-    vector.push(Number(lum.toFixed(4)));
-  }
-  return JSON.stringify(vector);
 }
 
 function TeacherSettingsPage() {
@@ -345,15 +326,15 @@ function TeacherSettingsPage() {
   };
 
   const captureFace = async () => {
-    const video = videoRef.current;
     setCapturing(true);
     try {
-      const embedding = video ? frameToEmbedding(video) : null;
+      await ensureFaceModels();
+      const embedding = videoRef.current ? await videoToDescriptor(videoRef.current) : null;
       if (!embedding) {
         toast.error("Camera not ready — allow webcam access and try again");
         return;
       }
-      await updateTeacherSettings({ face_embedding: embedding });
+      await enrollFace(profile.id, embedding);
       persist(
         {
           ...settings,
