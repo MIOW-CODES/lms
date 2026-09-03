@@ -392,11 +392,7 @@ describeRealDB("Real PIN login", () => {
       const txt = await page.locator("body").textContent();
       if (/Sign-in failed|Invalid credentials|Account locked|Too many attempts/.test(txt || ""))
         throw new Error("login failed: " + txt?.slice(0, 200));
-      if (
-        !/Locating face|Matching biometrics|Liveness check|Identity confirmed|Verified/.test(
-          txt || "",
-        )
-      ) {
+      if (!/Locating face|Comparing descriptor|Identity confirmed|Verified/.test(txt || "")) {
         if (/\/dashboard\//.test(page.url())) return;
         throw new Error(
           "waiting for face verification (url=" +

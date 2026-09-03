@@ -11,8 +11,10 @@ import {
   loadSession,
   pinLogin,
   saveSession,
+  verifyFace,
   type Profile,
 } from "@/lib/lms";
+import { ensureFaceModels, videoToDescriptor } from "@/lib/face";
 import { Badge, CameraPanel, useRfidScanner } from "@/components/lms";
 import { cn } from "@/lib/utils";
 import { MiowLockup } from "@/components/brand";
@@ -39,12 +41,7 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
-const VERIFY_STEPS = [
-  "Locating face…",
-  "Matching biometrics…",
-  "Liveness check…",
-  "Identity confirmed",
-];
+const VERIFY_STEPS = ["Locating face…", "Comparing descriptor…", "Identity confirmed"];
 
 function AuthPage() {
   const navigate = useNavigate();
@@ -57,6 +54,8 @@ function AuthPage() {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const verifyVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
 
   // Non-critical kiosk chrome: a transient backend blip must never take the
   // sign-in page down, so this query degrades to an empty list instead of
@@ -74,21 +73,55 @@ function AuthPage() {
     return () => timers.current.forEach(clearTimeout);
   }, [navigate]);
 
-  const startVerify = (p: Profile) => {
+  const startVerify = async (p: Profile) => {
+    timers.current.forEach(clearTimeout);
+    timers.current = [];
     setVerifying(p);
     setStep(0);
     setDone(false);
-    VERIFY_STEPS.forEach((_, i) => {
-      timers.current.push(setTimeout(() => setStep(i), i * 700));
-    });
-    timers.current.push(
-      setTimeout(() => {
-        setDone(true);
-        saveSession(p);
-        toast.success(`Welcome, ${p.full_name.split(" ")[0]}!`);
-        timers.current.push(setTimeout(() => navigate({ to: dashboardPathFor(p.role) }), 900));
-      }, VERIFY_STEPS.length * 700),
-    );
+    setVerifyError(null);
+    // Give the verify camera a moment to mount and stream before grabbing a
+    // frame; the model load below usually covers this on the first run.
+    for (let i = 0; i < 15; i++) {
+      const v = verifyVideoRef.current;
+      if (v && v.readyState >= 2 && v.videoWidth > 0) break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    let embedding: string | null = null;
+    try {
+      await ensureFaceModels();
+      embedding = verifyVideoRef.current ? await videoToDescriptor(verifyVideoRef.current) : null;
+    } catch {
+      embedding = null;
+    }
+    if (!embedding) {
+      const msg = "Camera unavailable — use PIN instead";
+      setVerifyError(msg);
+      toast.error(msg);
+      setVerifying(null);
+      setMode("pin");
+      return;
+    }
+    setStep(1);
+    let match = false;
+    try {
+      match = await verifyFace(p.id, embedding);
+    } catch {
+      match = false;
+    }
+    if (!match) {
+      const msg = "Face not recognized — use PIN instead";
+      setVerifyError(msg);
+      toast.error(msg);
+      setVerifying(null);
+      setMode("pin");
+      return;
+    }
+    setStep(VERIFY_STEPS.length - 1);
+    setDone(true);
+    saveSession(p);
+    toast.success(`Welcome, ${p.full_name.split(" ")[0]}!`);
+    timers.current.push(setTimeout(() => navigate({ to: dashboardPathFor(p.role) }), 900));
   };
 
   const handleUid = async (code: string) => {
@@ -121,7 +154,7 @@ function AuthPage() {
         profile: "profile" in res ? res.profile?.role : undefined,
       });
       if (res.ok) {
-        startVerify(res.profile);
+        void startVerify(res.profile);
       } else if (res.reason === "locked") {
         toast.error(
           `Account locked after too many failed attempts — try again in ~${res.retryAfterMinutes ?? 15} min.`,
@@ -196,6 +229,14 @@ function AuthPage() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   Enter your ID/username and PIN to continue.
                 </p>
+                {verifyError ? (
+                  <p
+                    role="alert"
+                    className="mt-3 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive"
+                  >
+                    {verifyError}
+                  </p>
+                ) : null}
 
                 <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
                   {(
@@ -292,7 +333,11 @@ function AuthPage() {
               </>
             ) : (
               <div className="flex flex-col items-center py-2 text-center">
-                <CameraPanel scanning={!done} className="aspect-[4/3] w-full" />
+                <CameraPanel
+                  scanning={!done}
+                  videoRef={verifyVideoRef}
+                  className="aspect-[4/3] w-full"
+                />
                 <div className="mt-5 flex items-center gap-2">
                   {done ? (
                     <ShieldCheck className="h-5 w-5 text-emerald-500" />
