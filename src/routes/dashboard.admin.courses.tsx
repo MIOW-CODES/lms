@@ -1330,6 +1330,15 @@ function CoursesPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (
+                      !import.meta.env["VITE_GOOGLE_CLIENT_ID"] ||
+                      !import.meta.env["VITE_GOOGLE_API_KEY"]
+                    ) {
+                      toast.info(
+                        "Google Docs import is not configured. Please paste your worksheet instead.",
+                      );
+                      return;
+                    }
                     openGooglePicker(async (docIds) => {
                       if (!docIds.length) return;
                       toast.info(`Fetching doc ${docIds[0]}…`);

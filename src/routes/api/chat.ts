@@ -1,6 +1,7 @@
 // ClassMate Assistant streaming chat endpoint.
 // Calls OpenCode Go directly with mimo-v2.5 (bypasses AI SDK streaming for reasoning models).
 import { createFileRoute } from "@tanstack/react-router";
+import { AI_GATEWAY_BASE_URL } from "@/lib/ai-gateway.server";
 
 type ChatRequestBody = {
   messages?: unknown;
@@ -88,7 +89,7 @@ export const Route = createFileRoute("/api/chat")({
         const ctx = parseWorksheetContext(body.worksheetContext);
         const oaMessages = toOpenAIMessages(messages, systemPromptFor(profile, ctx));
 
-        const apiRes = await fetch("https://opencode.ai/zen/go/v1/chat/completions", {
+        const apiRes = await fetch(`${AI_GATEWAY_BASE_URL}/chat/completions`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${apiKey}`,

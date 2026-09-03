@@ -4,13 +4,17 @@ import { createHmac, timingSafeEqual, randomUUID } from "node:crypto";
 import { db } from "@/integrations/db/client.server";
 import { unwrap } from "@/lib/server/utils.server";
 
-const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const SESSION_TTL_MS = (Number(process.env["SESSION_TTL_HOURS"] ?? "12") || 12) * 60 * 60 * 1000;
 
 export function sessionSecret(): string {
   const key = process.env["SESSION_SECRET"] ?? process.env["SUPABASE_SERVICE_ROLE_KEY"];
-  if (!key) throw new Error("Missing SESSION_SECRET");
-  if (process.env["SESSION_SECRET"] && key === process.env["SUPABASE_SERVICE_ROLE_KEY"])
-    console.warn("[security] SESSION_SECRET equals service key");
+  if (!key) throw new Error("Missing SESSION_SECRET — set it in your .env (openssl rand -hex 32)");
+  if (!process.env["SESSION_SECRET"] && process.env["SUPABASE_SERVICE_ROLE_KEY"]) {
+    console.warn(
+      "[security] No SESSION_SECRET set — falling back to SUPABASE_SERVICE_ROLE_KEY. " +
+        "Set SESSION_SECRET in production.",
+    );
+  }
   return key;
 }
 

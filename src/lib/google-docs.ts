@@ -93,7 +93,6 @@ export function openGooglePicker(onPick: (docIds: string[]) => void): void {
   (async () => {
     const token = await requestToken();
     await ensureGapi();
-    const gapi = (window as any).gapi;
     const pickerNs = (window as any).google?.picker;
     const picker = new pickerNs.PickerBuilder()
       .addView(pickerNs.ViewId.DOCS)
@@ -143,9 +142,4 @@ export async function exportDocAsText(docId: string): Promise<string> {
     if (text.trim()) lines.push(text.trimEnd());
   }
   return lines.join("\n");
-}
-
-/** Preview helper: converts pasted markdown into a short preview (first 800 chars). */
-export function previewMarkdown(md: string, max = 800): string {
-  return md.length > max ? md.slice(0, max) + "…" : md;
 }

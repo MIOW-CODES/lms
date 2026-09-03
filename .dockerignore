@@ -1,0 +1,43 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies (rebuilt in container)
+node_modules
+
+# Build artifacts (rebuilt in container)
+dist
+.output
+.nitro
+.tanstack
+.vinxi
+
+# Local file storage
+storage/
+pgdata/
+
+# Test artifacts
+playwright-report/
+test-results/
+playwright/.cache
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+.git
+.gitignore
+
+# Lock files (bun install uses bun.lock)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Debug / snapshots
+*.heapsnapshot
+*.log
+logs/
+
+# Hermes
+.hermes/
