@@ -5,10 +5,13 @@ import { db } from "@/integrations/db/client.server";
 import { unwrap } from "@/lib/server/utils.server";
 
 // SESSION_TTL_HOURS: 0 = token never expires, omit/unset = 12h default.
-const raw = process.env["SESSION_TTL_HOURS"];
+// Non-numeric or negative values fall back to 12h (never grant immortal tokens by accident).
+const _raw = process.env["SESSION_TTL_HOURS"];
+const _parsed = _raw !== undefined && _raw !== "" ? Number(_raw) : NaN;
 const SESSION_TTL_MS =
-  raw === undefined || raw === "" ? 12 * 60 * 60 * 1000 : Number(raw) * 60 * 60 * 1000;
-// When 0 → SESSION_TTL_MS = 0, meaning no expiry
+  Number.isFinite(_parsed) && _parsed >= 0
+    ? _parsed * 60 * 60 * 1000
+    : 12 * 60 * 60 * 1000;
 
 export function sessionSecret(): string {
   const key = process.env["SESSION_SECRET"] ?? process.env["SUPABASE_SERVICE_ROLE_KEY"];
