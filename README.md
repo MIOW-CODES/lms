@@ -80,12 +80,27 @@ See `.env.example` for the full list. Required:
 
 ### Face recognition
 
-Off by default — set `VITE_FACE_ENABLED=true` to enable. What it is: face-api.js
-tiny nets (self-hosted models) capture a 128D descriptor and do a 1:1 match
-against the enrolled descriptor; a mismatch falls back to PIN. What it is NOT:
-no liveness / anti-spoofing, never the sole gate, never a 1:N search.
-Threat model: casual misuse only — photo-spoof resistance needs depth hardware.
-Consent + one-click removal: `enrollFace(id, null)` deletes the descriptor.
+Off by default — set `VITE_FACE_ENABLED=true` in `.env` and **restart the dev
+server** (Vite bakes `VITE_*` vars in at startup) to enable.
+
+How it works: face-api.js tiny nets (models self-hosted under `public/models/`)
+capture a 128D descriptor from the webcam; the server compares it 1:1 against
+the enrolled descriptor (Euclidean distance, threshold 0.6). A mismatch or
+missing camera falls back to PIN — face never creates a session on its own.
+
+- **Enroll:** student Settings → Facial Recognition → Retake; teacher Settings
+  → face enrollment; admin Teachers → faculty detail → Enroll face. Clearing
+  is one click (`enrollFace(id, null)` deletes the descriptor).
+- **Kiosk:** after RFID identifies the profile, a live descriptor is compared
+  before the session is created.
+- **Tests:** `bun test tests/unit/face.test.ts` (no camera needed).
+  `tests/e2e/face-retake.spec.ts` requires a flag-on server
+  (`VITE_FACE_ENABLED=true … vite dev`) and skips cleanly otherwise.
+
+What it is NOT: no liveness / anti-spoofing, never the sole gate, never a 1:N
+search. Threat model is casual misuse only — photo-spoof resistance needs
+depth hardware. The 0.6 threshold is a starting point; tune it with a live
+kiosk test before relying on it.
 
 ### Admin Dashboard
 
