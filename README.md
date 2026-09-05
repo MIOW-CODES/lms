@@ -158,3 +158,10 @@ bun run db:seed      # Seed test data
 ## License
 
 Private — MSU-IIT IDS
+
+---
+
+## Verification Test
+
+This PR verifies that the automatic PR review workflow is functioning correctly.
+If you're reading this review in Discord #pr-reviews, the pipeline is working end-to-end.
