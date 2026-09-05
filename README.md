@@ -164,3 +164,7 @@ bun run db:seed      # Seed test data
 ## License
 
 Private — MSU-IIT IDS
+
+## Demo Change
+
+This is a test PR to verify the automated PR review workflow.
