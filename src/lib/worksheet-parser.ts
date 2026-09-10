@@ -227,19 +227,6 @@ export function parseWorksheet(text: string): ParseResult {
           continue;
         }
       }
-      // Also handle cases where stem is missing (just options on a line)
-      // e.g. from ClassMate output where stem was on a previous line
-      if (options.length >= 4 && lastStem) {
-        // This line is likely options for the previous stem
-        currentMc = {
-          num: lastStem.num,
-          stem: lastStem.stem,
-          options: options.map((option) => option.text),
-        };
-        mcItems.push(currentMc);
-        lastStem = null;
-        continue;
-      }
     }
 
     // Fill and essay prompts are commonly copied as unnumbered paragraphs.
