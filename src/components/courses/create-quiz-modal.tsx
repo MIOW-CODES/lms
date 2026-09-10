@@ -92,8 +92,7 @@ export function CreateQuizModal({ open, onClose, courses, onSaved }: CreateQuizM
           }
         }
       })
-      .catch((err) => {
-        console.error(err);
+      .catch(() => {
         toast.error(
           "Could not extract text from this file. Try a different file or paste the content directly.",
         );
