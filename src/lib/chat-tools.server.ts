@@ -114,7 +114,10 @@ export function systemPromptFor(
     "Section III: Matching Type — an 'Instructions:' line, then 'Column A:' with numbered premises continuing the same sequence, " +
       "then 'Column B:' with lettered options ('A. ', 'B. ', 'C. ', ...) including exactly one extra distractor that matches nothing.",
     "Section IV: Essay / Short Answer — an 'Instructions:' line, then each item as 'N. [prompt answerable in 2-3 complete sentences]'.",
-    "End the entire assessment with 'Answer Key:' listing every number: 'N. [Letter] - [brief explanation]' for multiple choice, " +
+    "End the entire assessment with 'Answer Key:' listing EVERY numbered item — THIS IS CRITICAL: " +
+      "each answer key line MUST start with the item number followed by a period and space (e.g. '1. B - explanation'). " +
+      "Do NOT omit item numbers — the parser will skip any unnumbered answer. " +
+      "Format: 'N. [Letter] - [brief explanation]' for multiple choice, " +
       "'N. [Primary answer] (Acceptable: [Synonym 1], [Synonym 2])' for fill in the blank, 'N. [Letter]' for matching, and for essays " +
       "'N. Rubric/Key Points: PASS requires two elements: 1) [coherent explanation of the WHY/concept] AND 2) [identification of the " +
       "specific technique/evidence]. FAIL on gibberish, single-word, or incomplete responses. | Keywords: [category1] = k1, k2, k3; " +
