@@ -104,9 +104,10 @@ function parseKeyEntry(body: string): KeyEntry {
         .map((s) => s.trim())
         .filter(Boolean)
     : [];
+  // Strip explanation after " - " or " – " for fill-in-the-blank answers
   const primary = body
     .replace(/\(acceptable:\s*[^)]*\)/i, "")
-    .replace(/[-–—]\s*$/, "")
+    .replace(/\s*[-–—]\s+.+$/, "")
     .trim();
   return { primary, acceptable };
 }
