@@ -176,7 +176,14 @@ export function parseWorksheet(text: string): ParseResult {
       lastStem = null;
       continue;
     }
-    if (!section) continue;
+    if (!section) {
+      // Auto-detect: if we see a numbered item or lettered options, assume MC
+      if (ITEM_RE.test(line) || OPT_RE.test(line)) {
+        section = "mc";
+      } else {
+        continue;
+      }
+    }
 
     if (section === "matching") {
       const columnAHeader = line.match(/^column\s*a\s*:\s*(.*)$/i);
