@@ -85,9 +85,20 @@ function CopyButton({ text }: { text: string }) {
 
 function SendToWorksheetButton({ text }: { text: string }) {
   const stripPreamble = (raw: string): string => {
-    // Strip everything before "Section I" — TOS tables, headings, preamble
-    const sectionIdx = raw.search(/^#{0,3}\s*Section\s+I[\s:—–-]/im);
-    let result = sectionIdx >= 0 ? raw.slice(sectionIdx).trim() : raw;
+    // Find "Section I" as a standalone heading (not inside a table row)
+    // Look for lines that START with "Section I" followed by colon/dash
+    const lines = raw.split("\n");
+    let startIdx = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i]!.trim();
+      // Match "Section I: Multiple Choice" or "Section I - Multiple Choice" etc.
+      // Must NOT be inside a table row (no leading |)
+      if (/^Section\s+I[\s:—–-]+/i.test(trimmed) && !trimmed.startsWith("|")) {
+        startIdx = i;
+        break;
+      }
+    }
+    let result = lines.slice(startIdx).join("\n").trim();
     // Clean up markdown artifacts
     result = result
       .replace(/\*\*/g, "")            // bold markers
@@ -101,7 +112,8 @@ function SendToWorksheetButton({ text }: { text: string }) {
   return (
     <button
       onClick={() => {
-        pasteToWorksheet(stripPreamble(text));
+        const cleaned = stripPreamble(text);
+        pasteToWorksheet(cleaned);
         toast.success("Pasted into worksheet — review and save");
       }}
       title="Send to worksheet textarea"

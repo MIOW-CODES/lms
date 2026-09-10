@@ -53,6 +53,8 @@ function clean(line: string): string {
     .replace(/^Question\s+\d+\s*[.:]\s*/i, "")
     // Strip horizontal rules (---, ***, ___)
     .replace(/^[-*_]{3,}\s*$/, "")
+    // Strip table rows (| col | col |)
+    .replace(/^\|.*\|$/, "")
     .trim();
 }
 
