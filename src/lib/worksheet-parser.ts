@@ -94,8 +94,8 @@ function parseKeyEntry(body: string): KeyEntry {
   const rubric =
     body.match(/^rubric\/?\s*key points?\s*:?\s*(.*)$/i) ?? body.match(/^rubric\s*:?\s*(.*)$/i);
   if (rubric) return { rubric: rubric[1]!.trim(), acceptable: [] };
-  // Match letter with optional dash/dot/colon separator and explanation
-  const letter = body.match(/^([A-Z])\s*[-–—:.]?\s*(.*)$/);
+  // Match single letter answer (e.g. "B", "B - explanation") but NOT words starting with uppercase (e.g. "Articulated")
+  const letter = body.match(/^([A-Z])\s*(?:[-–—:.]|\s*$)\s*(.*)$/);
   if (letter) return { letter: letter[1]!, acceptable: [] };
   const acceptableMatch = body.match(/\(acceptable:\s*([^)]*)\)/i);
   const acceptable = acceptableMatch
