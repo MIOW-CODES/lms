@@ -33,7 +33,7 @@ import {
 } from "@/components/ai-elements/tool";
 import { useAssessmentMode } from "@/lib/assessment-mode";
 import type { Profile } from "@/lib/lms";
-import { WORKSHEET_CHAT_EVENT, WORKSHEET_PASTE_EVENT, type WorksheetAssistContext } from "@/lib/worksheet-context";
+import { WORKSHEET_CHAT_EVENT, type WorksheetAssistContext } from "@/lib/worksheet-context";
 import { pasteToWorksheet } from "@/lib/worksheet-context";
 
 const TOOL_LABELS: Record<string, string> = {
@@ -67,6 +67,8 @@ type AnyPart = UIMessage["parts"][number];
 function stripWorksheetPreamble(raw: string): string {
   const lines = raw.split("\n");
   let startIdx = 0;
+
+  // Pass 1: Find "Section I:" as standalone heading (not in table row)
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i]!.trim();
     if (/^Section\s+I[\s:—–-]+/i.test(trimmed) && !trimmed.startsWith("|")) {
@@ -74,6 +76,18 @@ function stripWorksheetPreamble(raw: string): string {
       break;
     }
   }
+
+  // Pass 2: If no Section I found, find first numbered item or first option
+  if (startIdx === 0) {
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i]!.trim();
+      if (/^\d{1,3}[.)]\s+/.test(trimmed) || /^[A-Z][.)]\s+/.test(trimmed)) {
+        startIdx = i;
+        break;
+      }
+    }
+  }
+
   let result = lines.slice(startIdx).join("\n").trim();
   result = result
     .replace(/\*\*/g, "")

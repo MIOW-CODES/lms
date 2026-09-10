@@ -42,20 +42,22 @@ export interface ParseResult {
 
 /** Strip markdown decoration so copied chat output parses cleanly. */
 function clean(line: string): string {
-  return line
-    .replace(/^#{1,6}\s*/, "")
-    .replace(/^>\s?/, "")
-    .replace(/^[-*•]\s+(?=[A-Za-z][.)]\s)/, "") // bullet before a lettered option ("- A. ...")
-    .replace(/\*\*/g, "")
-    // Strip metadata labels like [WS-SCI10-001] or [QUIZ-001]
-    .replace(/^\[[\w\-]+\]\s*/i, "")
-    // Strip "Question N:" or "Question N." prefix that ClassMate sometimes adds
-    .replace(/^Question\s+\d+\s*[.:]\s*/i, "")
-    // Strip horizontal rules (---, ***, ___)
-    .replace(/^[-*_]{3,}\s*$/, "")
-    // Strip table rows (| col | col |)
-    .replace(/^\|.*\|$/, "")
-    .trim();
+  return (
+    line
+      .replace(/^#{1,6}\s*/, "")
+      .replace(/^>\s?/, "")
+      .replace(/^[-*•]\s+(?=[A-Za-z][.)]\s)/, "") // bullet before a lettered option ("- A. ...")
+      .replace(/\*\*/g, "")
+      // Strip metadata labels like [WS-SCI10-001] or [QUIZ-001]
+      .replace(/^\[[\w-]+\]\s*/i, "")
+      // Strip "Question N:" or "Question N." prefix that ClassMate sometimes adds
+      .replace(/^Question\s+\d+\s*[.:]\s*/i, "")
+      // Strip horizontal rules (---, ***, ___)
+      .replace(/^[-*_]{3,}\s*$/, "")
+      // Strip table rows (| col | col |)
+      .replace(/^\|.*\|$/, "")
+      .trim()
+  );
 }
 
 const ITEM_RE = /^(\d{1,3})[.)]\s+(.+)$/;
@@ -163,10 +165,14 @@ export function parseWorksheet(text: string): ParseResult {
     return nextAutoNum++;
   };
 
+  /** Detect if a line is a fill-in-the-blank stem (has underscores). */
+  const isFillLine = (line: string): boolean => /_{2,}/.test(line);
+
   for (const line of bodyLines) {
     if (!line) continue;
     if (/^instructions?\s*:/i.test(line)) continue;
-    if (/^table of specifications|^tos\b/i.test(line)) break;
+    // Only stop at TOS if we're already inside a section (TOS mid-body = end of content)
+    if (section && /^table of specifications|^tos\b/i.test(line)) break;
 
     const next = detectSection(line);
     if (next) {
@@ -177,9 +183,12 @@ export function parseWorksheet(text: string): ParseResult {
       continue;
     }
     if (!section) {
-      // Auto-detect: if we see a numbered item or lettered options, assume MC
+      // Auto-detect: if we see a numbered item or lettered options, assume MC.
+      // Also detect fill items (lines with underscores).
       if (ITEM_RE.test(line) || OPT_RE.test(line)) {
         section = "mc";
+      } else if (isFillLine(line)) {
+        section = "fill";
       } else {
         continue;
       }
@@ -245,7 +254,7 @@ export function parseWorksheet(text: string): ParseResult {
     }
 
     // Fill and essay prompts are commonly copied as unnumbered paragraphs.
-    if (section === "fill" && /_{2,}/.test(line)) {
+    if (section === "fill" && isFillLine(line)) {
       const entry = { num: reserveNumber(), stem: line };
       fillItems.push(entry);
       lastStem = entry;
@@ -269,22 +278,63 @@ export function parseWorksheet(text: string): ParseResult {
     else if (currentMc && !opt) currentMc.stem += " " + line;
   }
 
-  // If the body omitted item numbers, pair answer-key entries with body items
-  // in worksheet order. Explicitly numbered keys always take precedence.
+  // ── Post-parse: infer section for mixed items ──────────────────────
+  // ClassMate sometimes mixes fill items into MC without a section break.
+  // Detect fill items that ended up in mcItems (have underscores, no options).
+  for (let i = mcItems.length - 1; i >= 0; i--) {
+    const mc = mcItems[i]!;
+    if (mc.options.length === 0 && isFillLine(mc.stem)) {
+      fillItems.push({ num: mc.num, stem: mc.stem });
+      mcItems.splice(i, 1);
+    }
+  }
+
+  // ── Pair unnumbered keys with body items ───────────────────────────
+  // Explicitly numbered keys always take precedence.
   const orderedItemNumbers = [
     ...mcItems.map((item) => item.num),
     ...fillItems.map((item) => item.num),
     ...premises.map((item) => item.num),
     ...essayItems.map((item) => item.num),
   ];
-  let unnumberedIndex = 0;
+
+  // First pass: pair numbered keys
+  // Second pass: pair unnumbered keys, validating type match
+  let unnumberedMcIdx = 0;
+  let unnumberedFillIdx = 0;
+
+  // Separate unnumbered keys by type
+  const unnumberedMcKeys: KeyEntry[] = [];
+  const unnumberedFillKeys: KeyEntry[] = [];
+  for (const key of unnumberedKeys) {
+    if (key.letter) unnumberedMcKeys.push(key);
+    else if (key.primary) unnumberedFillKeys.push(key);
+  }
+
   for (const num of orderedItemNumbers) {
-    if (!keyByNum.has(num) && unnumberedKeys[unnumberedIndex]) {
-      keyByNum.set(num, unnumberedKeys[unnumberedIndex]!);
-      unnumberedIndex += 1;
+    if (keyByNum.has(num)) continue;
+    // Check if this is an MC item or a fill item
+    const isMc = mcItems.some((item) => item.num === num);
+    if (isMc && unnumberedMcKeys[unnumberedMcIdx]) {
+      keyByNum.set(num, unnumberedMcKeys[unnumberedMcIdx]!);
+      unnumberedMcIdx += 1;
+    } else if (!isMc && unnumberedFillKeys[unnumberedFillIdx]) {
+      keyByNum.set(num, unnumberedFillKeys[unnumberedFillIdx]!);
+      unnumberedFillIdx += 1;
     }
   }
 
+  // Fallback: pair remaining unnumbered keys in order (ignoring type)
+  let fallbackIdx = 0;
+  for (const num of orderedItemNumbers) {
+    if (keyByNum.has(num)) continue;
+    if (unnumberedKeys[fallbackIdx]) {
+      keyByNum.set(num, unnumberedKeys[fallbackIdx]!);
+      fallbackIdx += 1;
+    }
+  }
+
+  // ── Build questions ────────────────────────────────────────────────
   const questions: ParsedQuestion[] = [];
   let dropped = 0;
   const letterIdx = (letter?: string) => (letter ? letter.toUpperCase().charCodeAt(0) - 65 : -1);

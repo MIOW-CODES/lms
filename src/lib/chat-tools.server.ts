@@ -105,7 +105,9 @@ export function systemPromptFor(
       "(Bloom's: Remembering, Understanding, Applying, Analyzing, Evaluating, Creating). Keep the TOS outside the assessment body.",
     "PARSER-COMPATIBLE OUTPUT (strict): the assessment body must contain NO metadata brackets, internal IDs, or labels such as " +
       "'[WS-SCI10-001]' or 'Question 1: Multiple Choice'. Every item starts directly with its sequential number, a period, and " +
-      "a space ('1. ', '2. '), numbered continuously across all four sections.",
+      "a space ('1. ', '2. '), numbered continuously across all four sections. " +
+      "CRITICAL: Always include the section headings (Section I, Section II, etc.) AND always include item numbers in the Answer Key. " +
+      "The parser will skip unnumbered answer key entries and questions without section context.",
     "Use these exact section headings and syntax:",
     "Section I: Multiple Choice — an 'Instructions:' line, then each item as 'N. [stem]' followed by options 'A. ', 'B. ', 'C. ', " +
       "'D. ' (exactly 4 options, exactly one correct answer, plausible distractors).",
