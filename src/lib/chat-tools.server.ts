@@ -87,7 +87,7 @@ export function systemPromptFor(
             "Do not invent questions from outside this content. Extract key concepts, terms, facts, and procedures from the material " +
             "and create questions that test comprehension of the uploaded content.",
           "--- START OF UPLOADED FILE ---",
-          worksheetContext.sourceMaterial.slice(0, 12000),
+          worksheetContext.sourceMaterial.slice(0, 15000),
           "--- END OF UPLOADED FILE ---",
         ]
       : [

@@ -126,7 +126,16 @@ function ChatPanel({
     transport,
     onError: (err) => {
       console.error("[chat]", err);
-      toast.error("The assistant hit a problem. Please try again.");
+      const msg = err?.message ?? String(err);
+      if (msg.includes("401") || msg.includes("Session")) {
+        toast.error("Session expired — please sign in again.");
+      } else if (msg.includes("502") || msg.includes("AI service")) {
+        toast.error("AI service is temporarily unavailable. Please try again in a moment.");
+      } else if (msg.includes("network") || msg.includes("fetch")) {
+        toast.error("Network error — check your connection and try again.");
+      } else {
+        toast.error("The assistant hit a problem. Please try again.");
+      }
     },
   });
 
@@ -278,7 +287,9 @@ function ChatPanel({
           role="alert"
           className="border-t border-border bg-destructive/10 px-4 py-2 text-xs text-destructive"
         >
-          The assistant couldn't answer that. Please try again.
+          {error.message?.includes("502")
+            ? "AI service is temporarily unavailable. Please try again in a moment."
+            : "The assistant couldn't answer that. Please try again."}
         </p>
       )}
 

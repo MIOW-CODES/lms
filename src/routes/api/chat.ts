@@ -113,7 +113,7 @@ export const Route = createFileRoute("/api/chat")({
         const encoder = new TextEncoder();
         const decoder = new TextDecoder();
         let textStarted = false;
-        const textId = 0;
+        const textId = `txt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         let buffer = "";
 
         const transform = new TransformStream({
@@ -129,7 +129,7 @@ export const Route = createFileRoute("/api/chat")({
                 if (textStarted) {
                   controller.enqueue(
                     encoder.encode(
-                      `data: ${JSON.stringify({ type: "text-end", id: `txt-${textId}` })}\n\n`,
+                      `data: ${JSON.stringify({ type: "text-end", id: textId })}\n\n`,
                     ),
                   );
                 }
@@ -146,14 +146,14 @@ export const Route = createFileRoute("/api/chat")({
                 if (!textStarted) {
                   controller.enqueue(
                     encoder.encode(
-                      `data: ${JSON.stringify({ type: "text-start", id: `txt-${textId}` })}\n\n`,
+                      `data: ${JSON.stringify({ type: "text-start", id: textId })}\n\n`,
                     ),
                   );
                   textStarted = true;
                 }
                 controller.enqueue(
                   encoder.encode(
-                    `data: ${JSON.stringify({ type: "text-delta", id: `txt-${textId}`, delta: delta.content })}\n\n`,
+                    `data: ${JSON.stringify({ type: "text-delta", id: textId, delta: delta.content })}\n\n`,
                   ),
                 );
               } catch (e) {

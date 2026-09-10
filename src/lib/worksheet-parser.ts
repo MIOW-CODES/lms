@@ -47,10 +47,15 @@ function clean(line: string): string {
     .replace(/^>\s?/, "")
     .replace(/^[-*•]\s+(?=[A-Za-z][.)]\s)/, "") // bullet before a lettered option ("- A. ...")
     .replace(/\*\*/g, "")
+    // Strip metadata labels like [WS-SCI10-001] or [QUIZ-001]
+    .replace(/^\[[\w\-]+\]\s*/i, "")
+    // Strip "Question N:" prefix that ClassMate sometimes adds
+    .replace(/^Question\s+\d+\s*:\s*/i, "")
     .trim();
 }
 
 const ITEM_RE = /^(\d{1,3})[.)]\s+(.+)$/;
+// Match lettered options: A. B. C. D. (also A) B) etc.)
 const OPT_RE = /^([A-Z])[.)]\s+(.+)$/;
 
 function splitInlineItems(line: string): Array<{ num: number; text: string }> {
@@ -59,6 +64,7 @@ function splitInlineItems(line: string): Array<{ num: number; text: string }> {
 }
 
 function splitInlineOptions(line: string): Array<{ letter: string; text: string }> {
+  // Match lettered options with various separators: A. A) A:
   const matches = [...line.matchAll(/(?:^|\s)([A-Z])[.)]\s+(.+?)(?=\s+[A-Z][.)]\s+|$)/g)];
   return matches.map((match) => ({ letter: match[1]!, text: match[2]!.trim() }));
 }
@@ -88,7 +94,8 @@ function parseKeyEntry(body: string): KeyEntry {
   const rubric =
     body.match(/^rubric\/?\s*key points?\s*:?\s*(.*)$/i) ?? body.match(/^rubric\s*:?\s*(.*)$/i);
   if (rubric) return { rubric: rubric[1]!.trim(), acceptable: [] };
-  const letter = body.match(/^([A-Z])\s*(?:[-–—:.]|\s|$)\s*(.*)$/);
+  // Match letter with optional dash/dot/colon separator and explanation
+  const letter = body.match(/^([A-Z])\s*[-–—:.]?\s*(.*)$/);
   if (letter) return { letter: letter[1]!, acceptable: [] };
   const acceptableMatch = body.match(/\(acceptable:\s*([^)]*)\)/i);
   const acceptable = acceptableMatch
@@ -198,17 +205,17 @@ export function parseWorksheet(text: string): ParseResult {
         currentMc = { num, stem: item[2]!.trim(), options: [] };
         mcItems.push(currentMc);
         lastStem = null;
+        continue;
       } else {
         const entry = { num, stem: item[2]!.trim() };
         (section === "fill" ? fillItems : essayItems).push(entry);
         lastStem = entry;
         currentMc = null;
+        continue;
       }
-      continue;
     }
 
-    // Also accept natural copied output where each MC question and its four
-    // choices are on one line, without an item number.
+    // Handle case where ClassMate outputs stem without number but with inline options
     if (section === "mc") {
       const options = splitInlineOptions(line);
       if (options.length >= 2) {
@@ -220,10 +227,23 @@ export function parseWorksheet(text: string): ParseResult {
           continue;
         }
       }
+      // Also handle cases where stem is missing (just options on a line)
+      // e.g. from ClassMate output where stem was on a previous line
+      if (options.length >= 4 && lastStem) {
+        // This line is likely options for the previous stem
+        currentMc = {
+          num: lastStem.num,
+          stem: lastStem.stem,
+          options: options.map((option) => option.text),
+        };
+        mcItems.push(currentMc);
+        lastStem = null;
+        continue;
+      }
     }
 
     // Fill and essay prompts are commonly copied as unnumbered paragraphs.
-    if (section === "fill" && /_{3,}/.test(line)) {
+    if (section === "fill" && /_{2,}/.test(line)) {
       const entry = { num: reserveNumber(), stem: line };
       fillItems.push(entry);
       lastStem = entry;
