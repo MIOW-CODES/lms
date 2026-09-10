@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CloudUpload, FileText, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { type Course, createQuizWithQuestions } from "@/lib/lms";
 import { extractTextFromFile, isWorksheetAcceptedFile } from "@/lib/extract-text";
 import { parseWorksheet } from "@/lib/worksheet-parser";
-import { openWorksheetChat } from "@/lib/worksheet-context";
+import { openWorksheetChat, WORKSHEET_PASTE_EVENT } from "@/lib/worksheet-context";
 import { Modal } from "@/components/lms";
 import { PolicyFields } from "@/components/courses/policy-fields";
 import {
@@ -40,6 +40,20 @@ export function CreateQuizModal({ open, onClose, courses, onSaved }: CreateQuizM
   const [manualQuestions, setManualQuestions] = useState<ManualQuestion[]>([]);
   const [quizFileDrag, setQuizFileDrag] = useState(false);
   const [quizFileName, setQuizFileName] = useState<string | null>(null);
+
+  // Listen for "Send to worksheet" from ClassMate chat
+  useEffect(() => {
+    const onPaste = (e: Event) => {
+      const text = (e as CustomEvent<string>).detail;
+      if (typeof text === "string" && text) {
+        setQuizForm((f) => ({ ...f, questions: text }));
+        setQuizFileName(null);
+        toast.success("Worksheet content received from ClassMate");
+      }
+    };
+    window.addEventListener(WORKSHEET_PASTE_EVENT, onPaste);
+    return () => window.removeEventListener(WORKSHEET_PASTE_EVENT, onPaste);
+  }, []);
 
   const handleClose = () => {
     onClose();

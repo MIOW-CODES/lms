@@ -17,10 +17,18 @@ export interface WorksheetAssistContext {
 }
 
 export const WORKSHEET_CHAT_EVENT = "ids:open-worksheet-chat";
+export const WORKSHEET_PASTE_EVENT = "ids:paste-to-worksheet";
 
 /** Open the chat widget scoped to the active Create Worksheet form. */
 export function openWorksheetChat(ctx: WorksheetAssistContext) {
   window.dispatchEvent(
     new CustomEvent<WorksheetAssistContext>(WORKSHEET_CHAT_EVENT, { detail: ctx }),
+  );
+}
+
+/** Send AI-generated text from the chat to the Create Worksheet textarea. */
+export function pasteToWorksheet(text: string) {
+  window.dispatchEvent(
+    new CustomEvent<string>(WORKSHEET_PASTE_EVENT, { detail: text }),
   );
 }

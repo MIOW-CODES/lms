@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { AnimatePresence, motion } from "framer-motion";
-import { GraduationCap, RotateCcw, X, Copy, Check } from "lucide-react";
+import { GraduationCap, RotateCcw, X, Copy, Check, FileText } from "lucide-react";
 import { toast } from "sonner";
 import {
   Conversation,
@@ -33,7 +33,8 @@ import {
 } from "@/components/ai-elements/tool";
 import { useAssessmentMode } from "@/lib/assessment-mode";
 import type { Profile } from "@/lib/lms";
-import { WORKSHEET_CHAT_EVENT, type WorksheetAssistContext } from "@/lib/worksheet-context";
+import { WORKSHEET_CHAT_EVENT, WORKSHEET_PASTE_EVENT, type WorksheetAssistContext } from "@/lib/worksheet-context";
+import { pasteToWorksheet } from "@/lib/worksheet-context";
 
 const TOOL_LABELS: Record<string, string> = {
   list_announcements: "Reading announcements",
@@ -78,6 +79,21 @@ function CopyButton({ text }: { text: string }) {
       className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
     >
       {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
+function SendToWorksheetButton({ text }: { text: string }) {
+  return (
+    <button
+      onClick={() => {
+        pasteToWorksheet(text);
+        toast.success("Pasted into worksheet — review and save");
+      }}
+      title="Send to worksheet textarea"
+      className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+    >
+      <FileText className="h-3.5 w-3.5" />
     </button>
   );
 }
@@ -290,6 +306,12 @@ function ChatPanel({
               {m.role === "assistant" && (
                 <div className="flex justify-end">
                   <CopyButton
+                    text={m.parts
+                      .filter((p) => p.type === "text")
+                      .map((p) => ("text" in p ? p.text : ""))
+                      .join("\n")}
+                  />
+                  <SendToWorksheetButton
                     text={m.parts
                       .filter((p) => p.type === "text")
                       .map((p) => ("text" in p ? p.text : ""))
