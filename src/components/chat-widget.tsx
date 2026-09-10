@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { AnimatePresence, motion } from "framer-motion";
-import { GraduationCap, RotateCcw, X } from "lucide-react";
+import { GraduationCap, RotateCcw, X, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import {
   Conversation,
@@ -62,6 +62,25 @@ const STAFF_PROMPTS = [
 ];
 
 type AnyPart = UIMessage["parts"][number];
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    toast.success("Copied to clipboard");
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      title="Copy message"
+      className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+    >
+      {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
 
 function isToolPart(part: AnyPart): part is ToolPart {
   return part.type === "dynamic-tool" || part.type.startsWith("tool-");
@@ -268,6 +287,16 @@ function ChatPanel({
                   return null;
                 })}
               </MessageContent>
+              {m.role === "assistant" && (
+                <div className="flex justify-end">
+                  <CopyButton
+                    text={m.parts
+                      .filter((p) => p.type === "text")
+                      .map((p) => ("text" in p ? p.text : ""))
+                      .join("\n")}
+                  />
+                </div>
+              )}
             </Message>
           ))}
 
