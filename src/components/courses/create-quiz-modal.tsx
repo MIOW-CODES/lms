@@ -73,7 +73,7 @@ export function CreateQuizModal({ open, onClose, courses, onSaved }: CreateQuizM
               course: `${course.code} — ${course.title}`,
               title: quizForm.title.trim(),
               sourceMaterial: text,
-              autoMessage: `Generate ${quizForm.duration_minutes || 15} parser-ready multiple-choice and fill-in-the-blank questions based on the uploaded material for "${quizForm.title.trim()}". Follow the strict 4-section format with Answer Key.`,
+              autoMessage: `Generate ${quizForm.question_count && parseInt(quizForm.question_count) > 0 ? parseInt(quizForm.question_count) : 20} parser-ready multiple-choice and fill-in-the-blank questions based on the uploaded material for "${quizForm.title.trim()}". Follow the strict 4-section format with Answer Key.`,
             });
             toast.success("File loaded — ClassMate is generating questions now.");
           } else {
