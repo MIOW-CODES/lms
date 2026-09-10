@@ -64,6 +64,13 @@ const STAFF_PROMPTS = [
 
 type AnyPart = UIMessage["parts"][number];
 
+function extractMessageText(m: { parts: AnyPart[] }): string {
+  return m.parts
+    .filter((p) => p.type === "text")
+    .map((p) => ("text" in p ? p.text : ""))
+    .join("\n");
+}
+
 function stripWorksheetPreamble(raw: string): string {
   const lines = raw.split("\n");
   let startIdx = 0;
@@ -341,18 +348,8 @@ function ChatPanel({
               </MessageContent>
               {m.role === "assistant" && (
                 <div className="flex justify-end">
-                  <CopyButton
-                    text={m.parts
-                      .filter((p) => p.type === "text")
-                      .map((p) => ("text" in p ? p.text : ""))
-                      .join("\n")}
-                  />
-                  <SendToWorksheetButton
-                    text={m.parts
-                      .filter((p) => p.type === "text")
-                      .map((p) => ("text" in p ? p.text : ""))
-                      .join("\n")}
-                  />
+                  <CopyButton text={extractMessageText(m)} />
+                  <SendToWorksheetButton text={extractMessageText(m)} />
                 </div>
               )}
             </Message>
