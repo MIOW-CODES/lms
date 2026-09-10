@@ -5,7 +5,7 @@ import { CloudUpload, FileText, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { type Course, createQuizWithQuestions } from "@/lib/lms";
 import { extractTextFromFile, isWorksheetAcceptedFile } from "@/lib/extract-text";
 import { parseWorksheet } from "@/lib/worksheet-parser";
-import { openWorksheetChat, WORKSHEET_PASTE_EVENT } from "@/lib/worksheet-context";
+import { openWorksheetChat, onPasteToWorksheet } from "@/lib/worksheet-context";
 import { Modal } from "@/components/lms";
 import { PolicyFields } from "@/components/courses/policy-fields";
 import {
@@ -43,16 +43,11 @@ export function CreateQuizModal({ open, onClose, courses, onSaved }: CreateQuizM
 
   // Listen for "Send to worksheet" from ClassMate chat
   useEffect(() => {
-    const onPaste = (e: Event) => {
-      const text = (e as CustomEvent<string>).detail;
-      if (typeof text === "string" && text) {
-        setQuizForm((f) => ({ ...f, questions: text }));
-        setQuizFileName(null);
-        toast.success("Worksheet content received from ClassMate");
-      }
-    };
-    window.addEventListener(WORKSHEET_PASTE_EVENT, onPaste);
-    return () => window.removeEventListener(WORKSHEET_PASTE_EVENT, onPaste);
+    return onPasteToWorksheet((text) => {
+      setQuizForm((f) => ({ ...f, questions: text }));
+      setQuizFileName(null);
+      toast.success("Worksheet content received from ClassMate");
+    });
   }, []);
 
   const handleClose = () => {

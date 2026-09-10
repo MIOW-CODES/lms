@@ -64,10 +64,32 @@ const STAFF_PROMPTS = [
 
 type AnyPart = UIMessage["parts"][number];
 
+function stripWorksheetPreamble(raw: string): string {
+  const lines = raw.split("\n");
+  let startIdx = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i]!.trim();
+    if (/^Section\s+I[\s:—–-]+/i.test(trimmed) && !trimmed.startsWith("|")) {
+      startIdx = i;
+      break;
+    }
+  }
+  let result = lines.slice(startIdx).join("\n").trim();
+  result = result
+    .replace(/\*\*/g, "")
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/^[-*_]{3,}\s*$/gm, "")
+    .replace(/^\|.*\|$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return result;
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(text);
+    const clean = stripWorksheetPreamble(text);
+    await navigator.clipboard.writeText(clean);
     setCopied(true);
     toast.success("Copied to clipboard");
     setTimeout(() => setCopied(false), 2000);
@@ -75,7 +97,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      title="Copy message"
+      title="Copy worksheet"
       className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
     >
       {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
@@ -84,36 +106,10 @@ function CopyButton({ text }: { text: string }) {
 }
 
 function SendToWorksheetButton({ text }: { text: string }) {
-  const stripPreamble = (raw: string): string => {
-    // Find "Section I" as a standalone heading (not inside a table row)
-    // Look for lines that START with "Section I" followed by colon/dash
-    const lines = raw.split("\n");
-    let startIdx = 0;
-    for (let i = 0; i < lines.length; i++) {
-      const trimmed = lines[i]!.trim();
-      // Match "Section I: Multiple Choice" or "Section I - Multiple Choice" etc.
-      // Must NOT be inside a table row (no leading |)
-      if (/^Section\s+I[\s:—–-]+/i.test(trimmed) && !trimmed.startsWith("|")) {
-        startIdx = i;
-        break;
-      }
-    }
-    let result = lines.slice(startIdx).join("\n").trim();
-    // Clean up markdown artifacts
-    result = result
-      .replace(/\*\*/g, "")            // bold markers
-      .replace(/^#{1,6}\s*/gm, "")     // heading markers
-      .replace(/^[-*_]{3,}\s*$/gm, "") // horizontal rules
-      .replace(/^\|.*\|$/gm, "")       // table rows
-      .replace(/\n{3,}/g, "\n\n")      // collapse blank lines
-      .trim();
-    return result;
-  };
   return (
     <button
       onClick={() => {
-        const cleaned = stripPreamble(text);
-        pasteToWorksheet(cleaned);
+        pasteToWorksheet(stripWorksheetPreamble(text));
         toast.success("Pasted into worksheet — review and save");
       }}
       title="Send to worksheet textarea"
