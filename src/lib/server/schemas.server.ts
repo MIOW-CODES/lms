@@ -264,6 +264,14 @@ export const schemas = {
     quiz_id: uuid,
     answers: z.record(z.string().uuid(), z.string().max(500)),
     question_ids: z.array(uuid).optional(),
+    tab_switches: z
+      .array(
+        z.object({
+          at: z.number(),
+          type: z.enum(["blur", "visibilitychange"]),
+        }),
+      )
+      .optional(),
     ...token,
   }),
   quizScoped: z.object({ quiz_id: uuid, ...token }),

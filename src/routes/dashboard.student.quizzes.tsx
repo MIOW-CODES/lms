@@ -5,6 +5,8 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Eye,
+  EyeOff,
   Paperclip,
   RotateCcw,
   ShieldCheck,
@@ -13,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { setAssessmentMode } from "@/lib/assessment-mode";
+import { useAntiCheat } from "@/lib/anti-cheat";
 import {
   getQuiz,
   listCourses,
@@ -34,6 +37,7 @@ import {
   useProfile,
 } from "@/components/lms";
 import { cn } from "@/lib/utils";
+import { LoadingSkeleton } from "@/components/ui-elements";
 
 export const Route = createFileRoute("/dashboard/student/quizzes")({
   head: () => ({
@@ -108,6 +112,9 @@ function QuizzesPage() {
     return () => setAssessmentMode(false);
   }, [taking]);
 
+  // Anti-cheat: detect tab switches during active assessment
+  const { tabSwitches, switchCount, showFlash } = useAntiCheat(taking);
+
   // Resume or start attempt: restore saved timer/answers if the student
   // closed and reopened the same worksheet within this session.
   const beginAttempt = async (id: string) => {
@@ -159,7 +166,16 @@ function QuizzesPage() {
     if (secondsLeft === 0) finishRef.current?.();
   }, [secondsLeft]);
 
+  const isLoading = !courses || !quizzes || !summaries;
+
   if (!profile) return null;
+
+  if (isLoading)
+    return (
+      <AppShell nav={STUDENT_NAV} profile={profile} subtitle="Student Portal">
+        <LoadingSkeleton />
+      </AppShell>
+    );
 
   const myCourses = (courses ?? []).filter((c) => c.grade_level === profile.grade_level);
   const courseIds = new Set(myCourses.map((c) => c.id));
@@ -174,6 +190,7 @@ function QuizzesPage() {
         activeId,
         answers,
         questions.map((q) => q.id),
+        tabSwitches,
       );
       await queryClient.invalidateQueries({ queryKey: ["quiz-summaries"] });
       if (!res.ok) {
@@ -367,12 +384,12 @@ function QuizzesPage() {
                           Your answer: {r.chosen?.trim() ? r.chosen : "Not answered"}
                         </p>
                         <p className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-3 py-1.5 font-semibold text-emerald-700 dark:text-emerald-300">
-                          {r.correct_answer.startsWith("Rubric:")
+                          {r.correct_answer?.startsWith("Rubric:")
                             ? // Strip the auto-grader's "| Keywords: ..." block from the review display.
                               `Rubric: ${r.correct_answer.slice("Rubric:".length).split("| Keywords:")[0]!.trim()}`
-                            : `Answer: ${r.correct_answer.split("||")[0]}`}
+                            : `Answer: ${r.correct_answer?.split("||")[0]}`}
                         </p>
-                        {r.correct_answer.startsWith("Rubric:") && !r.correct && (
+                        {r.correct_answer?.startsWith("Rubric:") && !r.correct && (
                           <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-rose-700 dark:text-rose-300">
                             Auto-graded: answers need at least 5 real words and must cover the
                             rubric's key concepts — gibberish or one-word replies fail
@@ -459,6 +476,23 @@ function QuizzesPage() {
               <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
               Assessment integrity: the ClassMate Assistant is disabled until you submit.
             </p>
+
+            {/* Anti-cheat: tab-switch warning */}
+            {switchCount > 0 && (
+              <p
+                className={cn(
+                  "mb-4 flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors",
+                  showFlash
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                    : "border-amber-500/20 bg-amber-500/5 text-amber-600 dark:text-amber-400",
+                )}
+              >
+                <EyeOff className="h-3.5 w-3.5 shrink-0" />
+                {showFlash
+                  ? `Tab switch recorded (${switchCount} total)`
+                  : `Tab switches are being logged (${switchCount})`}
+              </p>
+            )}
 
             {/* Stepper dots */}
             <div className="mb-5 flex flex-wrap items-center gap-1.5">

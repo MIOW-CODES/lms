@@ -341,7 +341,12 @@ export interface QuizAttemptRosterEntry {
   full_name: string;
   student_no: string | null;
   section: string | null;
-  attempts: Array<{ attempt_number: number; score: number; total: number }>;
+  attempts: Array<{
+    attempt_number: number;
+    score: number;
+    total: number;
+    tab_switches?: Array<{ at: number; type: string }>;
+  }>;
   attempts_used: number;
   extra_attempts: number;
   effective_score: number | null;
@@ -472,12 +477,10 @@ export function transmutedOf(
   return transmute(initial);
 }
 
-import { logAudit } from "@/lib/settings";
+import { logAudit, SESSION_KEY } from "@/lib/settings";
 import { dbg, dbgError } from "@/lib/debug";
 
 /* ---------- Session (hardware-auth demo with signed server tokens) ---------- */
-
-const SESSION_KEY = "northview-lms-session";
 // Same-tab change signal — the browser "storage" event only fires across
 // tabs, so same-tab saves dispatch this custom event to wake subscribers.
 const PROFILE_EVENT = "ids-lms-profile-changed";
@@ -805,9 +808,16 @@ export async function submitQuizAnswers(
   quizId: string,
   answers: Record<string, string>,
   questionIds?: string[],
+  tabSwitches?: Array<{ at: number; type: "blur" | "visibilitychange" }>,
 ): Promise<SubmitQuizResult> {
   return submitQuizAttemptFn({
-    data: { quiz_id: quizId, answers, token: sessionToken(), question_ids: questionIds },
+    data: {
+      quiz_id: quizId,
+      answers,
+      token: sessionToken(),
+      question_ids: questionIds,
+      tab_switches: tabSwitches,
+    },
   });
 }
 

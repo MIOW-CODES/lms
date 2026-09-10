@@ -24,3 +24,24 @@ export function openWorksheetChat(ctx: WorksheetAssistContext) {
     new CustomEvent<WorksheetAssistContext>(WORKSHEET_CHAT_EVENT, { detail: ctx }),
   );
 }
+
+// ── Send-to-worksheet observable ─────────────────────────────────────
+// Module-level subscribers list so the chat widget can push text and the
+// create-quiz-modal can receive it without worrying about React mount order.
+
+type PasteListener = (text: string) => void;
+const listeners: PasteListener[] = [];
+
+/** Subscribe to paste events. Returns an unsubscribe function. */
+export function onPasteToWorksheet(fn: PasteListener): () => void {
+  listeners.push(fn);
+  return () => {
+    const idx = listeners.indexOf(fn);
+    if (idx >= 0) listeners.splice(idx, 1);
+  };
+}
+
+/** Send AI-generated text from the chat to the Create Worksheet textarea. */
+export function pasteToWorksheet(text: string) {
+  for (const fn of listeners) fn(text);
+}

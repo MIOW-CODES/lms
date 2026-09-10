@@ -49,3 +49,4 @@ pgdata/
 # Heap snapshots
 *.heapsnapshot
 .vercel
+.env*

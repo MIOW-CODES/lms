@@ -15,7 +15,7 @@ export const NOTIFICATION_SIGNOFF = "Sincerely,\nThe MIOW Administration Team";
 /** Official system palette (locked — see identity system). */
 export const BRAND_COLORS = {
   maroon: "#800000",
-  gold: "#FFD700",
+  gold: "#FF69B4",
   navy: "#0D1B2A",
   white: "#FFFFFF",
 } as const;

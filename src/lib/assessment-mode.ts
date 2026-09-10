@@ -3,8 +3,11 @@
  * while a Worksheet, Assignment, or Exam is actively being taken. Peer-help
  * surfaces (the ClassMate Assistant chat widget) subscribe and hide themselves
  * for the duration of the assessment.
+ *
+ * Also tracks tab-switch events for anti-cheat logging.
  */
 import { useSyncExternalStore } from "react";
+import type { TabSwitch } from "@/lib/anti-cheat";
 
 let active = false;
 const listeners = new Set<() => void>();
@@ -30,4 +33,22 @@ export function useAssessmentMode(): boolean {
     () => active,
     () => false, // server snapshot: never in assessment mode during SSR
   );
+}
+
+// ── Tab-switch accumulator ──────────────────────────────────────────
+// Stores tab switches for the current assessment attempt.
+// Flushed on submit and reset when assessment ends.
+
+let tabSwitches: TabSwitch[] = [];
+
+export function recordTabSwitch(entry: TabSwitch) {
+  tabSwitches.push(entry);
+}
+
+export function getTabSwitches(): TabSwitch[] {
+  return tabSwitches;
+}
+
+export function resetTabSwitches() {
+  tabSwitches = [];
 }

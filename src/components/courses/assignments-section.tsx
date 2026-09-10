@@ -1,3 +1,4 @@
+import React from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { type Assignment, type Course, COMPONENT_LABELS } from "@/lib/lms";
 import { MotionCard, courseStyle } from "@/components/lms";
@@ -11,7 +12,7 @@ interface AssignmentsSectionProps {
   onRemove: (assignment: Assignment) => void;
 }
 
-export function AssignmentsSection({
+export const AssignmentsSection = React.memo(function AssignmentsSection({
   assignments,
   courses,
   onEdit,
@@ -69,4 +70,4 @@ export function AssignmentsSection({
       </div>
     </section>
   );
-}
+});

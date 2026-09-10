@@ -24,9 +24,9 @@ export const COURSE_STYLE: Record<string, { chip: string; soft: string; bar: str
     bar: "bg-sky-500",
   },
   amber: {
-    chip: "bg-amber-500",
-    soft: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
-    bar: "bg-amber-500",
+    chip: "bg-pink-500",
+    soft: "bg-pink-50 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300",
+    bar: "bg-pink-500",
   },
   rose: {
     chip: "bg-rose-600",
@@ -116,7 +116,7 @@ const TONES: Record<string, string> = {
   slate: "bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300",
   indigo: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
   green: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-  amber: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
+  amber: "bg-pink-100 text-pink-800 dark:bg-pink-500/15 dark:text-pink-300",
   red: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
   sky: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300",
   violet: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
@@ -205,8 +205,16 @@ export function FadeIn({
 }
 
 export function ProgressBar({ value, barClass }: { value: number; barClass?: string }) {
+  const clamped = Math.min(100, Math.max(0, value));
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+    <div
+      className="h-2 w-full overflow-hidden rounded-full bg-muted"
+      role="progressbar"
+      aria-valuenow={clamped}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={`${clamped}% complete`}
+    >
       <motion.div
         initial={{ width: 0 }}
         animate={{ width: `${Math.min(100, Math.max(0, value))}%` }}
@@ -394,5 +402,58 @@ export function Modal({
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+/* ---------- User Avatar ---------- */
+
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("");
+}
+
+export function UserAvatar({
+  src,
+  name,
+  className = "h-8 w-8",
+}: {
+  src?: string | null;
+  name: string;
+  className?: string;
+}) {
+  if (src) {
+    return <img src={src} alt={name} className={cn("rounded-full object-cover", className)} />;
+  }
+  return (
+    <span
+      className={cn(
+        "grid place-items-center rounded-full bg-primary/10 text-primary text-xs font-bold",
+        className,
+      )}
+    >
+      {getInitials(name)}
+    </span>
+  );
+}
+
+/* ---------- Loading Skeleton ---------- */
+
+export function LoadingSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <div className="space-y-3 py-8">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center gap-4">
+          <div className="h-10 w-10 animate-pulse rounded-full bg-muted" />
+          <div className="flex-1 space-y-2">
+            <div className="h-4 w-1/3 animate-pulse rounded bg-muted" />
+            <div className="h-3 w-1/5 animate-pulse rounded bg-muted/60" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

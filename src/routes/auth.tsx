@@ -70,7 +70,7 @@ function AuthPage() {
       const p = await findProfileByRfid(code.trim());
       if (p) {
         saveSession(p);
-        toast.success(`Welcome, ${p.full_name.split(" ")[0]}!`);
+        toast.success(`Welcome, ${p.full_name?.split(" ")[0] || p.full_name || "User"}!`);
         navigate({ to: dashboardPathFor(p.role) });
       } else toast.error("Card not recognized. Please register your RFID with the registrar.");
     } catch {
@@ -96,7 +96,7 @@ function AuthPage() {
       });
       if (res.ok) {
         saveSession(res.profile);
-        toast.success(`Welcome, ${res.profile.full_name.split(" ")[0]}!`);
+        toast.success(`Welcome, ${res.profile.full_name?.split(" ")[0] || res.profile.full_name || "User"}!`);
         navigate({ to: dashboardPathFor(res.profile.role) });
       } else if (res.reason === "locked") {
         toast.error(

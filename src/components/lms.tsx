@@ -1,6 +1,7 @@
-// Barrel re-export: preserves backward compatibility for all existing
-// `import { X } from "@/components/lms"` patterns.
-// New code should import directly from the specific module.
+/**
+ * @deprecated Barrel re-export kept for backward compatibility only.
+ * New code should import directly from the specific module.
+ */
 
 export { useProfile, useSignOut, useTheme, useRfidScanner } from "@/hooks";
 

@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { AnimatePresence, motion } from "framer-motion";
-import { GraduationCap, RotateCcw, X } from "lucide-react";
+import { GraduationCap, RotateCcw, X, Copy, Check, FileText } from "lucide-react";
 import { toast } from "sonner";
 import {
   Conversation,
@@ -34,6 +34,7 @@ import {
 import { useAssessmentMode } from "@/lib/assessment-mode";
 import type { Profile } from "@/lib/lms";
 import { WORKSHEET_CHAT_EVENT, type WorksheetAssistContext } from "@/lib/worksheet-context";
+import { pasteToWorksheet } from "@/lib/worksheet-context";
 
 const TOOL_LABELS: Record<string, string> = {
   list_announcements: "Reading announcements",
@@ -62,6 +63,87 @@ const STAFF_PROMPTS = [
 ];
 
 type AnyPart = UIMessage["parts"][number];
+
+function extractMessageText(m: { parts: AnyPart[] }): string {
+  return m.parts
+    .filter((p) => p.type === "text")
+    .map((p) => ("text" in p ? p.text : ""))
+    .join("\n");
+}
+
+function stripWorksheetPreamble(raw: string): string {
+  const lines = raw.split("\n");
+  let startIdx = 0;
+
+  // Pass 1: Find "Section I:" as standalone heading (not in table row)
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i]!.trim();
+    if (/^Section\s+I[\s:—–-]+/i.test(trimmed) && !trimmed.startsWith("|")) {
+      startIdx = i;
+      break;
+    }
+  }
+
+  // Pass 2: If no Section I found, find first numbered item or first option
+  if (startIdx === 0) {
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i]!.trim();
+      if (/^\d{1,3}[.)]\s+/.test(trimmed) || /^[A-Z][.)]\s+/.test(trimmed)) {
+        startIdx = i;
+        break;
+      }
+    }
+  }
+
+  let result = lines.slice(startIdx).join("\n").trim();
+  result = result
+    .replace(/\*\*/g, "")
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/^[-*_]{3,}\s*$/gm, "")
+    .replace(/^\|.*\|$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return result;
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try {
+      const clean = stripWorksheetPreamble(text);
+      await navigator.clipboard.writeText(clean);
+      setCopied(true);
+      toast.success("Copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Could not copy — try selecting manually");
+    }
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      title="Copy worksheet"
+      className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+    >
+      {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
+function SendToWorksheetButton({ text }: { text: string }) {
+  return (
+    <button
+      onClick={() => {
+        pasteToWorksheet(stripWorksheetPreamble(text));
+        toast.success("Pasted into worksheet — review and save");
+      }}
+      title="Send to worksheet textarea"
+      className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+    >
+      <FileText className="h-3.5 w-3.5" />
+    </button>
+  );
+}
 
 function isToolPart(part: AnyPart): part is ToolPart {
   return part.type === "dynamic-tool" || part.type.startsWith("tool-");
@@ -126,7 +208,16 @@ function ChatPanel({
     transport,
     onError: (err) => {
       console.error("[chat]", err);
-      toast.error("The assistant hit a problem. Please try again.");
+      const msg = err?.message ?? String(err);
+      if (msg.includes("401") || msg.includes("Session")) {
+        toast.error("Session expired — please sign in again.");
+      } else if (msg.includes("502") || msg.includes("AI service")) {
+        toast.error("AI service is temporarily unavailable. Please try again in a moment.");
+      } else if (msg.includes("network") || msg.includes("fetch")) {
+        toast.error("Network error — check your connection and try again.");
+      } else {
+        toast.error("The assistant hit a problem. Please try again.");
+      }
     },
   });
 
@@ -259,6 +350,12 @@ function ChatPanel({
                   return null;
                 })}
               </MessageContent>
+              {m.role === "assistant" && (
+                <div className="flex justify-end">
+                  <CopyButton text={extractMessageText(m)} />
+                  <SendToWorksheetButton text={extractMessageText(m)} />
+                </div>
+              )}
             </Message>
           ))}
 
@@ -278,7 +375,9 @@ function ChatPanel({
           role="alert"
           className="border-t border-border bg-destructive/10 px-4 py-2 text-xs text-destructive"
         >
-          The assistant couldn't answer that. Please try again.
+          {error.message?.includes("502")
+            ? "AI service is temporarily unavailable. Please try again in a moment."
+            : "The assistant couldn't answer that. Please try again."}
         </p>
       )}
 
