@@ -1,6 +1,6 @@
 import type { RetakePolicy, Attachment } from "@/lib/lms";
 
-export const COLORS = ["indigo", "emerald", "sky", "amber", "rose", "violet"];
+export const COLORS = ["indigo", "emerald", "sky", "pink", "rose", "violet"];
 
 export const DAYS: Array<{ code: string; label: string }> = [
   { code: "mon", label: "Mon" },

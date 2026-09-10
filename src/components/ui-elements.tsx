@@ -24,9 +24,9 @@ export const COURSE_STYLE: Record<string, { chip: string; soft: string; bar: str
     bar: "bg-sky-500",
   },
   amber: {
-    chip: "bg-amber-500",
-    soft: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
-    bar: "bg-amber-500",
+    chip: "bg-pink-500",
+    soft: "bg-pink-50 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300",
+    bar: "bg-pink-500",
   },
   rose: {
     chip: "bg-rose-600",
@@ -116,7 +116,7 @@ const TONES: Record<string, string> = {
   slate: "bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300",
   indigo: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
   green: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-  amber: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
+  amber: "bg-pink-100 text-pink-800 dark:bg-pink-500/15 dark:text-pink-300",
   red: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
   sky: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300",
   violet: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
