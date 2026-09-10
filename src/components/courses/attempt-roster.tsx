@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Eraser, RotateCcw } from "lucide-react";
+import { Eraser, EyeOff, RotateCcw } from "lucide-react";
 import { listQuizAttempts, grantQuizRetake, resetQuizAttempts } from "@/lib/lms";
 import { Badge, EmptyState } from "@/components/lms";
+import { switchSeverity } from "@/lib/anti-cheat";
+import { cn } from "@/lib/utils";
 
 export function AttemptRoster({ quizId }: { quizId: string }) {
   const qc = useQueryClient();
@@ -74,14 +76,25 @@ export function AttemptRoster({ quizId }: { quizId: string }) {
             </div>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {s.attempts.map((a) => (
-              <span
-                key={a.attempt_number}
-                className="rounded-lg bg-muted px-2 py-1 text-[11px] font-semibold"
-              >
-                #{a.attempt_number}: {a.score}/{a.total}
-              </span>
-            ))}
+            {s.attempts.map((a) => {
+              const switchCount = Array.isArray(a.tab_switches) ? a.tab_switches.length : 0;
+              const severity = switchSeverity(switchCount);
+              return (
+                <span
+                  key={a.attempt_number}
+                  className="flex items-center gap-1 rounded-lg bg-muted px-2 py-1 text-[11px] font-semibold"
+                >
+                  #{a.attempt_number}: {a.score}/{a.total}
+                  {switchCount > 0 && (
+                    <span
+                      className={cn("rounded px-1 py-0.5 text-[10px]", severity.bg, severity.text)}
+                    >
+                      <EyeOff className="inline h-2.5 w-2.5" /> {switchCount}
+                    </span>
+                  )}
+                </span>
+              );
+            })}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button

@@ -5,6 +5,8 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Eye,
+  EyeOff,
   Paperclip,
   RotateCcw,
   ShieldCheck,
@@ -13,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { setAssessmentMode } from "@/lib/assessment-mode";
+import { useAntiCheat } from "@/lib/anti-cheat";
 import {
   getQuiz,
   listCourses,
@@ -108,6 +111,9 @@ function QuizzesPage() {
     return () => setAssessmentMode(false);
   }, [taking]);
 
+  // Anti-cheat: detect tab switches during active assessment
+  const { tabSwitches, switchCount, showFlash } = useAntiCheat(taking);
+
   // Resume or start attempt: restore saved timer/answers if the student
   // closed and reopened the same worksheet within this session.
   const beginAttempt = async (id: string) => {
@@ -174,6 +180,7 @@ function QuizzesPage() {
         activeId,
         answers,
         questions.map((q) => q.id),
+        tabSwitches,
       );
       await queryClient.invalidateQueries({ queryKey: ["quiz-summaries"] });
       if (!res.ok) {
@@ -459,6 +466,23 @@ function QuizzesPage() {
               <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
               Assessment integrity: the ClassMate Assistant is disabled until you submit.
             </p>
+
+            {/* Anti-cheat: tab-switch warning */}
+            {switchCount > 0 && (
+              <p
+                className={cn(
+                  "mb-4 flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors",
+                  showFlash
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                    : "border-amber-500/20 bg-amber-500/5 text-amber-600 dark:text-amber-400",
+                )}
+              >
+                <EyeOff className="h-3.5 w-3.5 shrink-0" />
+                {showFlash
+                  ? `Tab switch recorded (${switchCount} total)`
+                  : `Tab switches are being logged (${switchCount})`}
+              </p>
+            )}
 
             {/* Stepper dots */}
             <div className="mb-5 flex flex-wrap items-center gap-1.5">
