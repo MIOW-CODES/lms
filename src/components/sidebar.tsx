@@ -259,11 +259,7 @@ export function AppShell({
               title="Settings"
               className="flex items-center gap-2 rounded-full border border-border/70 bg-card/70 py-1 pl-1 pr-3 text-sm font-semibold transition-colors hover:bg-muted"
             >
-              <img
-                src={profile.avatar_url || undefined}
-                alt={profile.full_name}
-                className="h-7 w-7 rounded-full object-cover ring-1 ring-primary/30"
-              />
+              <UserAvatar src={profile.avatar_url} name={profile.full_name} className="h-7 w-7 ring-1 ring-primary/30" />
               <span className="max-w-[10rem] truncate">{profile.full_name}</span>
               <Settings className="h-3.5 w-3.5 text-muted-foreground" />
             </Link>
