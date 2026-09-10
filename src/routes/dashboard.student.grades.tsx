@@ -55,12 +55,18 @@ function GradesPage() {
   });
   const { data: grades } = useQuery({
     queryKey: ["grades", profile?.id],
-    queryFn: () => listGradesForStudent(profile!.id),
+    queryFn: () => {
+      if (!profile?.id) return [];
+      return listGradesForStudent(profile.id);
+    },
     enabled: !!profile,
   });
   const { data: logs } = useQuery({
     queryKey: ["attendance", profile?.id],
-    queryFn: () => listAttendance(profile!.id),
+    queryFn: () => {
+      if (!profile?.id) return [];
+      return listAttendance(profile.id);
+    },
     enabled: !!profile,
   });
 
