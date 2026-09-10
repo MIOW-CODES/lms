@@ -132,6 +132,12 @@ export function CreateQuizModal({ open, onClose, courses, onSaved }: CreateQuizM
           `${parsed.dropped} item${parsed.dropped > 1 ? "s were" : " was"} skipped — check their numbering against the Answer Key.`,
         );
       }
+      const requested = parseInt(quizForm.question_count) || 0;
+      if (requested > 0 && parsed.questions.length > requested) {
+        toast.warning(
+          `ClassMate generated ${parsed.questions.length} questions but you requested ${requested}. All ${parsed.questions.length} will be saved.`,
+        );
+      }
       questions = parsed.questions;
     }
 

@@ -68,11 +68,14 @@ export function systemPromptFor(
     "If a tool returns an error or empty data, say so plainly and suggest what to check next.",
     // Assessment generation — metadata slot filling before any generation
     "WORKSHEET GENERATION GUARD: generating a Worksheet REQUIRES four slots — (1) Course, (2) Worksheet Title, " +
-      "(3) Target Topic / Learning Competency, and (4) Item Count (per section or total). Before generating, validate " +
+      "(3) Target Topic / Learning Competency, and (4) Total Item Count. Before generating, validate " +
       "that every slot is known from the conversation or the ACTIVE FORM CONTEXT below. If any slot is missing, do NOT " +
       "generate items — intercept with a brief slot-filling reply naming only the missing slots, e.g.: 'Please specify " +
       "the Course, Worksheet Title, and Topic to generate your parser-ready worksheet.' Once all slots are known, " +
-      "confirm them in one line, then generate. Adjust difficulty and vocabulary to the course's grade level.",
+      "confirm them in one line, then generate. Adjust difficulty and vocabulary to the course's grade level. " +
+      "CRITICAL: The Total Item Count is the TOTAL number of questions across ALL sections combined, NOT per section. " +
+      "If the user says '20 questions', generate exactly 20 questions total (e.g. 12 MC + 8 Fill = 20). " +
+      "Never exceed the requested count — generate fewer only if the topic is too narrow.",
     ...(worksheetContext && (worksheetContext.course || worksheetContext.title)
       ? [
           `ACTIVE FORM CONTEXT: the teacher's Create Worksheet form is open with Course = "${worksheetContext.course || "not selected"}" ` +
