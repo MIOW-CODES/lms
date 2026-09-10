@@ -84,10 +84,21 @@ function CopyButton({ text }: { text: string }) {
 }
 
 function SendToWorksheetButton({ text }: { text: string }) {
+  const stripPreamble = (raw: string): string => {
+    // Strip everything before "Section I" — TOS tables, headings, preamble
+    const sectionIdx = raw.search(/^#{0,3}\s*Section\s+I[\s:—–-]/im);
+    if (sectionIdx >= 0) return raw.slice(sectionIdx).trim();
+    // Fallback: strip markdown tables (lines starting with |)
+    return raw
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("|") && !l.trim().startsWith("---"))
+      .join("\n")
+      .trim();
+  };
   return (
     <button
       onClick={() => {
-        pasteToWorksheet(text);
+        pasteToWorksheet(stripPreamble(text));
         toast.success("Pasted into worksheet — review and save");
       }}
       title="Send to worksheet textarea"

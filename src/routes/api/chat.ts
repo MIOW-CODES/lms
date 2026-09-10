@@ -101,7 +101,7 @@ export const Route = createFileRoute("/api/chat")({
             model: "mimo-v2.5",
             messages: oaMessages,
             stream: true,
-            max_tokens: 4096,
+            max_tokens: 16384,
           }),
         });
 
