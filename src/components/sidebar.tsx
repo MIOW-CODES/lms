@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { motion } from "framer-motion";
+import { UserAvatar } from "@/components/ui-elements";
 import {
   BarChart3,
   BookOpen,
@@ -212,10 +213,10 @@ export function AppShell({
         </button>
         <div className="rounded-xl bg-sidebar-accent/80 p-3">
           <div className={cn("flex items-center gap-2.5", collapsed && "flex-col")}>
-            <img
-              src={profile.avatar_url ?? ""}
-              alt={profile.full_name}
-              className="h-9 w-9 rounded-full ring-2 ring-sidebar-primary/40"
+            <UserAvatar
+              src={profile.avatar_url}
+              name={profile.full_name}
+              className="h-9 w-9 ring-2 ring-sidebar-primary/40"
             />
             {!collapsed && (
               <div className="min-w-0 flex-1">

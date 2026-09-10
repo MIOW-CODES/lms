@@ -205,8 +205,16 @@ export function FadeIn({
 }
 
 export function ProgressBar({ value, barClass }: { value: number; barClass?: string }) {
+  const clamped = Math.min(100, Math.max(0, value));
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+    <div
+      className="h-2 w-full overflow-hidden rounded-full bg-muted"
+      role="progressbar"
+      aria-valuenow={clamped}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={`${clamped}% complete`}
+    >
       <motion.div
         initial={{ width: 0 }}
         animate={{ width: `${Math.min(100, Math.max(0, value))}%` }}
