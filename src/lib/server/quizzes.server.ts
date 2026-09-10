@@ -207,7 +207,12 @@ function attemptCeiling(quiz: QuizConfig, extra: number): number | null {
   return base + extra;
 }
 
-type AttemptRow = { attempt_number: number; score: number; total: number };
+type AttemptRow = {
+  attempt_number: number;
+  score: number;
+  total: number;
+  tab_switches?: Array<{ at: number; type: string }>;
+};
 
 function effectiveScore(
   attempts: AttemptRow[],
@@ -233,6 +238,7 @@ export async function submitQuizAttempt(
   answers: Record<string, string>,
   token: string,
   questionIds?: string[],
+  tabSwitches?: Array<{ at: number; type: "blur" | "visibilitychange" }>,
 ) {
   const caller = await requireSession(token);
   const quiz = await getQuizConfig(quiz_id);
@@ -263,6 +269,7 @@ export async function submitQuizAttempt(
       total,
       results,
       question_ids: questionIds ?? [],
+      tab_switches: tabSwitches ?? [],
     }),
   );
 
@@ -394,7 +401,7 @@ export async function listQuizAttemptsForQuiz(quiz_id: string, token: string) {
     unwrap<any[]>(
       db
         .from("quiz_attempts")
-        .select("student_id, attempt_number, score, total, created_at")
+        .select("student_id, attempt_number, score, total, created_at, tab_switches")
         .eq("quiz_id", quiz_id)
         .order("attempt_number"),
     ),
@@ -415,7 +422,12 @@ export async function listQuizAttemptsForQuiz(quiz_id: string, token: string) {
   const byStudent = new Map<string, AttemptRow[]>();
   for (const a of attempts ?? []) {
     const arr = byStudent.get(a.student_id) ?? [];
-    arr.push({ attempt_number: a.attempt_number, score: a.score, total: a.total });
+    arr.push({
+      attempt_number: a.attempt_number,
+      score: a.score,
+      total: a.total,
+      tab_switches: Array.isArray(a.tab_switches) ? a.tab_switches : [],
+    });
     byStudent.set(a.student_id, arr);
   }
   const students = studentIds.map((sid) => {

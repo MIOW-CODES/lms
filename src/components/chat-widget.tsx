@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { AnimatePresence, motion } from "framer-motion";
-import { GraduationCap, RotateCcw, X } from "lucide-react";
+import { GraduationCap, RotateCcw, X, Copy, Check, FileText } from "lucide-react";
 import { toast } from "sonner";
 import {
   Conversation,
@@ -34,6 +34,7 @@ import {
 import { useAssessmentMode } from "@/lib/assessment-mode";
 import type { Profile } from "@/lib/lms";
 import { WORKSHEET_CHAT_EVENT, type WorksheetAssistContext } from "@/lib/worksheet-context";
+import { pasteToWorksheet } from "@/lib/worksheet-context";
 
 const TOOL_LABELS: Record<string, string> = {
   list_announcements: "Reading announcements",
@@ -62,6 +63,76 @@ const STAFF_PROMPTS = [
 ];
 
 type AnyPart = UIMessage["parts"][number];
+
+function stripWorksheetPreamble(raw: string): string {
+  const lines = raw.split("\n");
+  let startIdx = 0;
+
+  // Pass 1: Find "Section I:" as standalone heading (not in table row)
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i]!.trim();
+    if (/^Section\s+I[\s:—–-]+/i.test(trimmed) && !trimmed.startsWith("|")) {
+      startIdx = i;
+      break;
+    }
+  }
+
+  // Pass 2: If no Section I found, find first numbered item or first option
+  if (startIdx === 0) {
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i]!.trim();
+      if (/^\d{1,3}[.)]\s+/.test(trimmed) || /^[A-Z][.)]\s+/.test(trimmed)) {
+        startIdx = i;
+        break;
+      }
+    }
+  }
+
+  let result = lines.slice(startIdx).join("\n").trim();
+  result = result
+    .replace(/\*\*/g, "")
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/^[-*_]{3,}\s*$/gm, "")
+    .replace(/^\|.*\|$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return result;
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    const clean = stripWorksheetPreamble(text);
+    await navigator.clipboard.writeText(clean);
+    setCopied(true);
+    toast.success("Copied to clipboard");
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      title="Copy worksheet"
+      className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+    >
+      {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
+function SendToWorksheetButton({ text }: { text: string }) {
+  return (
+    <button
+      onClick={() => {
+        pasteToWorksheet(stripWorksheetPreamble(text));
+        toast.success("Pasted into worksheet — review and save");
+      }}
+      title="Send to worksheet textarea"
+      className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+    >
+      <FileText className="h-3.5 w-3.5" />
+    </button>
+  );
+}
 
 function isToolPart(part: AnyPart): part is ToolPart {
   return part.type === "dynamic-tool" || part.type.startsWith("tool-");
@@ -268,6 +339,22 @@ function ChatPanel({
                   return null;
                 })}
               </MessageContent>
+              {m.role === "assistant" && (
+                <div className="flex justify-end">
+                  <CopyButton
+                    text={m.parts
+                      .filter((p) => p.type === "text")
+                      .map((p) => ("text" in p ? p.text : ""))
+                      .join("\n")}
+                  />
+                  <SendToWorksheetButton
+                    text={m.parts
+                      .filter((p) => p.type === "text")
+                      .map((p) => ("text" in p ? p.text : ""))
+                      .join("\n")}
+                  />
+                </div>
+              )}
             </Message>
           ))}
 

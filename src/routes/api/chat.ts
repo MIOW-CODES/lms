@@ -89,17 +89,19 @@ export const Route = createFileRoute("/api/chat")({
         const oaMessages = toOpenAIMessages(messages, systemPromptFor(profile, ctx));
 
         const { AI_BASE_URL } = await import("@/lib/ai-gateway.server");
+        const sessionId = `miow-${profile.id}-${Date.now()}`;
         const apiRes = await fetch(`${AI_BASE_URL}/chat/completions`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
+            "x-opencode-session": sessionId,
           },
           body: JSON.stringify({
             model: "mimo-v2.5",
             messages: oaMessages,
             stream: true,
-            max_tokens: 4096,
+            max_tokens: 65536,
           }),
         });
 
