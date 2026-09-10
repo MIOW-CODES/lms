@@ -41,15 +41,9 @@ export function useAntiCheat(active: boolean): AntiCheatState {
   const [switchCount, setSwitchCount] = useState(0);
   const [showFlash, setShowFlash] = useState(false);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSwitchRef = useRef(0);
 
   const recordSwitch = useCallback((type: TabSwitch["type"]) => {
-    // Deduplicate: blur and visibilitychange fire together for the same switch
-    const now = Date.now();
-    if (now - lastSwitchRef.current < 500) return;
-    lastSwitchRef.current = now;
-
-    const entry: TabSwitch = { at: now, type };
+    const entry: TabSwitch = { at: Date.now(), type };
     switchesRef.current.push(entry);
     setSwitchCount(switchesRef.current.length);
 

@@ -119,9 +119,6 @@ export function systemPromptFor(
     "Section III: Matching Type — an 'Instructions:' line, then 'Column A:' with numbered premises continuing the same sequence, " +
       "then 'Column B:' with lettered options ('A. ', 'B. ', 'C. ', ...) including exactly one extra distractor that matches nothing.",
     "Section IV: Essay / Short Answer — an 'Instructions:' line, then each item as 'N. [prompt answerable in 2-3 complete sentences]'.",
-    "CRITICAL — QUESTION COUNT: The Total Item Count is the TOTAL number of questions across ALL sections combined, NOT per section. " +
-      "If the user says '20 questions', generate exactly 20 questions total (e.g. 12 MC + 8 Fill = 20). " +
-      "Never exceed the requested count — generate fewer only if the topic is too narrow.",
     "End the entire assessment with 'Answer Key:' listing EVERY numbered item — THIS IS CRITICAL: " +
       "each answer key line MUST start with the item number followed by a period and space (e.g. '1. B - explanation'). " +
       "Do NOT omit item numbers — the parser will skip any unnumbered answer. " +
