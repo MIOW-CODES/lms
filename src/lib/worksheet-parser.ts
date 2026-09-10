@@ -49,8 +49,10 @@ function clean(line: string): string {
     .replace(/\*\*/g, "")
     // Strip metadata labels like [WS-SCI10-001] or [QUIZ-001]
     .replace(/^\[[\w\-]+\]\s*/i, "")
-    // Strip "Question N:" prefix that ClassMate sometimes adds
-    .replace(/^Question\s+\d+\s*:\s*/i, "")
+    // Strip "Question N:" or "Question N." prefix that ClassMate sometimes adds
+    .replace(/^Question\s+\d+\s*[.:]\s*/i, "")
+    // Strip horizontal rules (---, ***, ___)
+    .replace(/^[-*_]{3,}\s*$/, "")
     .trim();
 }
 
@@ -104,11 +106,14 @@ function parseKeyEntry(body: string): KeyEntry {
         .map((s) => s.trim())
         .filter(Boolean)
     : [];
-  // Strip explanation after " - " or " – " for fill-in-the-blank answers
-  const primary = body
-    .replace(/\(acceptable:\s*[^)]*\)/i, "")
-    .replace(/\s*[-–—]\s+.+$/, "")
-    .trim();
+  // Strip (Acceptable: ...) first, then strip explanation after " - " or " – "
+  // Use last " - " occurrence to avoid stripping dashes inside the answer itself
+  const stripped = body.replace(/\(acceptable:\s*[^)]*\)/i, "").trim();
+  const dashIdx = stripped.lastIndexOf(" - ");
+  const dashIdx2 = stripped.lastIndexOf(" – ");
+  const dashIdx3 = stripped.lastIndexOf(" — ");
+  const cutAt = Math.max(dashIdx, dashIdx2, dashIdx3);
+  const primary = cutAt > 0 ? stripped.slice(0, cutAt).trim() : stripped;
   return { primary, acceptable };
 }
 

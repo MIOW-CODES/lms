@@ -87,13 +87,16 @@ function SendToWorksheetButton({ text }: { text: string }) {
   const stripPreamble = (raw: string): string => {
     // Strip everything before "Section I" — TOS tables, headings, preamble
     const sectionIdx = raw.search(/^#{0,3}\s*Section\s+I[\s:—–-]/im);
-    if (sectionIdx >= 0) return raw.slice(sectionIdx).trim();
-    // Fallback: strip markdown tables (lines starting with |)
-    return raw
-      .split("\n")
-      .filter((l) => !l.trim().startsWith("|") && !l.trim().startsWith("---"))
-      .join("\n")
+    let result = sectionIdx >= 0 ? raw.slice(sectionIdx).trim() : raw;
+    // Clean up markdown artifacts
+    result = result
+      .replace(/\*\*/g, "")            // bold markers
+      .replace(/^#{1,6}\s*/gm, "")     // heading markers
+      .replace(/^[-*_]{3,}\s*$/gm, "") // horizontal rules
+      .replace(/^\|.*\|$/gm, "")       // table rows
+      .replace(/\n{3,}/g, "\n\n")      // collapse blank lines
       .trim();
+    return result;
   };
   return (
     <button
