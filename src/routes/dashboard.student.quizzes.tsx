@@ -162,7 +162,7 @@ function QuizzesPage() {
   const finishRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
-    if (secondsLeft === 0) finishRef.current?.();
+    if (secondsLeft === 0 && finishRef.current) finishRef.current();
   }, [secondsLeft]);
 
   if (!profile) return null;

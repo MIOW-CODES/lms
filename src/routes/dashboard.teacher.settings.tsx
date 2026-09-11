@@ -245,7 +245,7 @@ function TeacherSettingsPage() {
     }
     setPinBusy(true);
     try {
-      const login = profile.email ?? profile.student_id ?? "";
+      const login = profile.employee_id ?? profile.email ?? profile.student_id ?? "";
       const verified = await findProfileByCredential(login, oldPin);
       if (!verified) {
         toast.error("Current PIN is incorrect");
