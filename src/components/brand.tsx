@@ -21,18 +21,18 @@ export function MiowMark({
         <path d="M33 9 L54 55 H44 L32 28 L20 55 H10 Z" fill="#800000" />
         <path d="M33 9 L54 55 H49.5 L31.5 18 Z" fill="#9A1B1B" />
       </g>
-      <circle cx="32" cy="24" r="4" fill="#FFD700" />
+      <circle cx="32" cy="24" r="4" fill="#FF69B4" />
       <path
         d="M23 33 a11 11 0 0 1 18 0"
         fill="none"
-        stroke="#FFD700"
+        stroke="#FF69B4"
         strokeWidth="2.4"
         strokeLinecap="round"
       />
       <path
         d="M17.5 39 a17 17 0 0 1 29 0"
         fill="none"
-        stroke="#FFD700"
+        stroke="#FF69B4"
         strokeWidth="2"
         strokeLinecap="round"
         opacity="0.45"
@@ -78,7 +78,7 @@ export function MiowWordmark({
           <span
             className={cn(
               "font-bold",
-              tone === "sidebar" ? "text-[#FFD700]" : "text-[#800000] dark:text-[#e8b4b4]",
+              tone === "sidebar" ? "text-[#FF69B4]" : "text-[#800000] dark:text-[#FF69B4]",
             )}
           >
             DEVELOPMENTAL

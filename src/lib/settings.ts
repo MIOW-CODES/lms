@@ -13,7 +13,7 @@ const FONT_KEY = "northview-fontsize";
 const CONTRAST_KEY = "northview-contrast";
 const ADMIN_CFG_KEY = "northview-admin-config";
 const AUDIT_KEY = "northview-audit-log";
-const SESSION_KEY = "northview-lms-session";
+export const SESSION_KEY = "northview-lms-session";
 
 function readJson<T>(key: string): T | null {
   try {

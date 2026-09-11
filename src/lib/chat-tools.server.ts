@@ -68,11 +68,14 @@ export function systemPromptFor(
     "If a tool returns an error or empty data, say so plainly and suggest what to check next.",
     // Assessment generation — metadata slot filling before any generation
     "WORKSHEET GENERATION GUARD: generating a Worksheet REQUIRES four slots — (1) Course, (2) Worksheet Title, " +
-      "(3) Target Topic / Learning Competency, and (4) Item Count (per section or total). Before generating, validate " +
+      "(3) Target Topic / Learning Competency, and (4) Total Item Count. Before generating, validate " +
       "that every slot is known from the conversation or the ACTIVE FORM CONTEXT below. If any slot is missing, do NOT " +
       "generate items — intercept with a brief slot-filling reply naming only the missing slots, e.g.: 'Please specify " +
       "the Course, Worksheet Title, and Topic to generate your parser-ready worksheet.' Once all slots are known, " +
-      "confirm them in one line, then generate. Adjust difficulty and vocabulary to the course's grade level.",
+      "confirm them in one line, then generate. Adjust difficulty and vocabulary to the course's grade level. " +
+      "CRITICAL: The Total Item Count is the TOTAL number of questions across ALL sections combined, NOT per section. " +
+      "If the user says '20 questions', generate exactly 20 questions total (e.g. 12 MC + 8 Fill = 20). " +
+      "Never exceed the requested count — generate fewer only if the topic is too narrow.",
     ...(worksheetContext && (worksheetContext.course || worksheetContext.title)
       ? [
           `ACTIVE FORM CONTEXT: the teacher's Create Worksheet form is open with Course = "${worksheetContext.course || "not selected"}" ` +
@@ -87,7 +90,7 @@ export function systemPromptFor(
             "Do not invent questions from outside this content. Extract key concepts, terms, facts, and procedures from the material " +
             "and create questions that test comprehension of the uploaded content.",
           "--- START OF UPLOADED FILE ---",
-          worksheetContext.sourceMaterial.slice(0, 12000),
+          worksheetContext.sourceMaterial.slice(0, 15000),
           "--- END OF UPLOADED FILE ---",
         ]
       : [
@@ -105,7 +108,9 @@ export function systemPromptFor(
       "(Bloom's: Remembering, Understanding, Applying, Analyzing, Evaluating, Creating). Keep the TOS outside the assessment body.",
     "PARSER-COMPATIBLE OUTPUT (strict): the assessment body must contain NO metadata brackets, internal IDs, or labels such as " +
       "'[WS-SCI10-001]' or 'Question 1: Multiple Choice'. Every item starts directly with its sequential number, a period, and " +
-      "a space ('1. ', '2. '), numbered continuously across all four sections.",
+      "a space ('1. ', '2. '), numbered continuously across all four sections. " +
+      "CRITICAL: Always include the section headings (Section I, Section II, etc.) AND always include item numbers in the Answer Key. " +
+      "The parser will skip unnumbered answer key entries and questions without section context.",
     "Use these exact section headings and syntax:",
     "Section I: Multiple Choice — an 'Instructions:' line, then each item as 'N. [stem]' followed by options 'A. ', 'B. ', 'C. ', " +
       "'D. ' (exactly 4 options, exactly one correct answer, plausible distractors).",
@@ -114,7 +119,10 @@ export function systemPromptFor(
     "Section III: Matching Type — an 'Instructions:' line, then 'Column A:' with numbered premises continuing the same sequence, " +
       "then 'Column B:' with lettered options ('A. ', 'B. ', 'C. ', ...) including exactly one extra distractor that matches nothing.",
     "Section IV: Essay / Short Answer — an 'Instructions:' line, then each item as 'N. [prompt answerable in 2-3 complete sentences]'.",
-    "End the entire assessment with 'Answer Key:' listing every number: 'N. [Letter] - [brief explanation]' for multiple choice, " +
+    "End the entire assessment with 'Answer Key:' listing EVERY numbered item — THIS IS CRITICAL: " +
+      "each answer key line MUST start with the item number followed by a period and space (e.g. '1. B - explanation'). " +
+      "Do NOT omit item numbers — the parser will skip any unnumbered answer. " +
+      "Format: 'N. [Letter] - [brief explanation]' for multiple choice, " +
       "'N. [Primary answer] (Acceptable: [Synonym 1], [Synonym 2])' for fill in the blank, 'N. [Letter]' for matching, and for essays " +
       "'N. Rubric/Key Points: PASS requires two elements: 1) [coherent explanation of the WHY/concept] AND 2) [identification of the " +
       "specific technique/evidence]. FAIL on gibberish, single-word, or incomplete responses. | Keywords: [category1] = k1, k2, k3; " +
@@ -140,9 +148,13 @@ export function systemPromptFor(
   ].join("\n");
 }
 
+let _courseMapCache: Map<string, any> | null = null;
+
 async function courseMap(): Promise<Map<string, any>> {
+  if (_courseMapCache) return _courseMapCache;
   const courses = await lms.listCourses();
-  return new Map(courses.map((c: any) => [c.id, c]));
+  _courseMapCache = new Map(courses.map((c: any) => [c.id, c]));
+  return _courseMapCache;
 }
 
 function gradeRow(g: any, cmap: Map<string, any>) {
@@ -159,6 +171,7 @@ function gradeRow(g: any, cmap: Map<string, any>) {
 }
 
 export function buildChatTools(profile: ChatCaller): ToolSet {
+  _courseMapCache = null;
   const isStudent = profile.role === "student";
 
   const tools: ToolSet = {

@@ -352,3 +352,219 @@ Answer Key:
     expect(result.questions).toHaveLength(1);
   });
 });
+
+// ── parseWorksheet — Real ClassMate output ──────────────────────────
+
+describe("parseWorksheet — real ClassMate output", () => {
+  it("parses output without section headings", () => {
+    const text = `
+1. What is 2 + 2?
+A. 3
+B. 4
+C. 5
+D. 6
+
+2. Capital of France?
+A. London
+B. Berlin
+C. Paris
+D. Madrid
+
+Answer Key:
+1. B
+2. C
+`;
+    const result = parseWorksheet(text);
+    expect(result.questions).toHaveLength(2);
+    expect(result.dropped).toBe(0);
+    expect(result.questions[0]!.correct_answer).toBe("4");
+    expect(result.questions[1]!.correct_answer).toBe("Paris");
+  });
+
+  it("parses output with TOS preamble stripped", () => {
+    const text = `
+Table of Specifications (TOS)
+| Topic | Items | Cognitive Domain |
+|-------|-------|------------------|
+| Robotics basics | 5 | Remembering |
+
+Assessment: Introduction to Robotics (IT10)
+
+Section I: Multiple Choice
+1. What is a robot?
+A. A machine
+B. A tool
+C. A program
+D. A device
+
+Answer Key:
+1. A
+`;
+    const result = parseWorksheet(text);
+    expect(result.questions).toHaveLength(1);
+    expect(result.questions[0]!.correct_answer).toBe("A machine");
+  });
+
+  it("handles unnumbered answer key entries", () => {
+    const text = `
+1. What is 2 + 2?
+A. 3
+B. 4
+C. 5
+D. 6
+
+2. Capital of France?
+A. London
+B. Berlin
+C. Paris
+D. Madrid
+
+Answer Key:
+B
+C
+`;
+    const result = parseWorksheet(text);
+    expect(result.questions).toHaveLength(2);
+    expect(result.questions[0]!.correct_answer).toBe("4");
+    expect(result.questions[1]!.correct_answer).toBe("Paris");
+  });
+
+  it("handles mixed unnumbered keys (letters + fill answers)", () => {
+    const text = `
+1. What is 2 + 2?
+A. 3
+B. 4
+C. 5
+D. 6
+
+2. The capital of France is ______.
+
+Answer Key:
+B
+Paris
+`;
+    const result = parseWorksheet(text);
+    expect(result.questions).toHaveLength(2);
+    expect(result.questions[0]!.kind).toBe("mc");
+    expect(result.questions[0]!.correct_answer).toBe("4");
+    expect(result.questions[1]!.kind).toBe("fill");
+    expect(result.questions[1]!.correct_answer).toBe("Paris");
+  });
+
+  it("handles fill items mixed into MC section", () => {
+    const text = `
+1. What is 2 + 2?
+A. 3
+B. 4
+C. 5
+D. 6
+
+2. The capital of France is ______.
+
+Answer Key:
+B
+Paris
+`;
+    const result = parseWorksheet(text);
+    expect(result.questions).toHaveLength(2);
+    expect(result.questions[0]!.kind).toBe("mc");
+    expect(result.questions[1]!.kind).toBe("fill");
+  });
+
+  it("handles orphaned options followed by numbered stem", () => {
+    const text = `
+A. Option one
+B. Option two
+C. Option three
+D. Option four
+
+1. What is this?
+A. Alpha
+B. Beta
+C. Gamma
+D. Delta
+
+Answer Key:
+1. B
+`;
+    const result = parseWorksheet(text);
+    // Orphaned options without a stem are ignored; only numbered item 1 is parsed
+    expect(result.questions).toHaveLength(1);
+    expect(result.questions[0]!.question).toBe("What is this?");
+    expect(result.questions[0]!.correct_answer).toBe("Beta");
+  });
+
+  it("handles answer key with Acceptable synonyms", () => {
+    const text = `
+1. The process of plants making food is ______.
+
+Answer Key:
+1. Photosynthesis (Acceptable: photosynthetic process, carbon fixation)
+`;
+    const result = parseWorksheet(text);
+    expect(result.questions).toHaveLength(1);
+    expect(result.questions[0]!.correct_answer).toBe(
+      "Photosynthesis||photosynthetic process||carbon fixation",
+    );
+  });
+
+  it("handles ClassMate output with bold section headings", () => {
+    const text = `
+**Section I: Multiple Choice**
+
+1. What is a robot?
+A. A machine
+B. A tool
+
+Answer Key:
+1. A
+`;
+    const result = parseWorksheet(text);
+    expect(result.questions).toHaveLength(1);
+    expect(result.questions[0]!.correct_answer).toBe("A machine");
+  });
+
+  it("handles ClassMate output with TOS and no section headings", () => {
+    const text = `
+Table of Specifications (TOS)
+Assessment: Introduction to Robotics (IT10)
+
+1. What is a robot?
+A. A machine
+B. A tool
+C. A program
+D. A device
+
+2. Water boils at ______ degrees Celsius.
+
+Answer Key:
+A
+100
+`;
+    const result = parseWorksheet(text);
+    expect(result.questions).toHaveLength(2);
+    expect(result.questions[0]!.kind).toBe("mc");
+    expect(result.questions[1]!.kind).toBe("fill");
+  });
+
+  it("handles fill items with underscores in MC auto-detect", () => {
+    const text = `
+1. What is 2 + 2?
+A. 3
+B. 4
+C. 5
+D. 6
+
+2. The capital of France is ______.
+
+Answer Key:
+B
+Paris
+`;
+    const result = parseWorksheet(text);
+    expect(result.questions).toHaveLength(2);
+    expect(result.questions[0]!.kind).toBe("mc");
+    expect(result.questions[1]!.kind).toBe("fill");
+    expect(result.questions[1]!.correct_answer).toBe("Paris");
+  });
+});

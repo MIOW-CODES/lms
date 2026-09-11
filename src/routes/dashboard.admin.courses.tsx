@@ -95,12 +95,6 @@ export function CoursesPage() {
   };
 
   const removeCourse = async (c: Course) => {
-    if (
-      !confirm(
-        `Delete ${c.code} — ${c.title}? Its assignments and worksheets will also be removed.`,
-      )
-    )
-      return;
     try {
       await deleteCourse(c.id);
       toast.success("Course deleted.");

@@ -50,6 +50,9 @@ function toOpenAIMessages(messages: ChatMessage[], systemPrompt: string) {
   return out;
 }
 
+const chatRateLimits = new Map<string, number>();
+const CHAT_RATE_LIMIT_MS = 10_000; // 10 seconds between requests
+
 export const Route = createFileRoute("/api/chat")({
   server: {
     handlers: {
@@ -85,21 +88,30 @@ export const Route = createFileRoute("/api/chat")({
           return new Response("Session expired — please sign in again", { status: 401 });
         }
 
+        const now = Date.now();
+        const lastRequest = chatRateLimits.get(profile.id);
+        if (lastRequest && now - lastRequest < CHAT_RATE_LIMIT_MS) {
+          return new Response("Too many requests — please wait a moment", { status: 429 });
+        }
+        chatRateLimits.set(profile.id, now);
+
         const ctx = parseWorksheetContext(body.worksheetContext);
         const oaMessages = toOpenAIMessages(messages, systemPromptFor(profile, ctx));
 
         const { AI_BASE_URL } = await import("@/lib/ai-gateway.server");
+        const sessionId = `miow-${profile.id}-${Date.now()}`;
         const apiRes = await fetch(`${AI_BASE_URL}/chat/completions`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
+            "x-opencode-session": sessionId,
           },
           body: JSON.stringify({
             model: "mimo-v2.5",
             messages: oaMessages,
             stream: true,
-            max_tokens: 4096,
+            max_tokens: 65536,
           }),
         });
 
@@ -113,7 +125,7 @@ export const Route = createFileRoute("/api/chat")({
         const encoder = new TextEncoder();
         const decoder = new TextDecoder();
         let textStarted = false;
-        const textId = 0;
+        const textId = `txt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         let buffer = "";
 
         const transform = new TransformStream({
@@ -128,9 +140,7 @@ export const Route = createFileRoute("/api/chat")({
               if (data === "[DONE]") {
                 if (textStarted) {
                   controller.enqueue(
-                    encoder.encode(
-                      `data: ${JSON.stringify({ type: "text-end", id: `txt-${textId}` })}\n\n`,
-                    ),
+                    encoder.encode(`data: ${JSON.stringify({ type: "text-end", id: textId })}\n\n`),
                   );
                 }
                 controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -146,14 +156,14 @@ export const Route = createFileRoute("/api/chat")({
                 if (!textStarted) {
                   controller.enqueue(
                     encoder.encode(
-                      `data: ${JSON.stringify({ type: "text-start", id: `txt-${textId}` })}\n\n`,
+                      `data: ${JSON.stringify({ type: "text-start", id: textId })}\n\n`,
                     ),
                   );
                   textStarted = true;
                 }
                 controller.enqueue(
                   encoder.encode(
-                    `data: ${JSON.stringify({ type: "text-delta", id: `txt-${textId}`, delta: delta.content })}\n\n`,
+                    `data: ${JSON.stringify({ type: "text-delta", id: textId, delta: delta.content })}\n\n`,
                   ),
                 );
               } catch (e) {

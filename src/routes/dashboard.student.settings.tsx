@@ -50,6 +50,7 @@ import {
   type UserSettings,
 } from "@/lib/settings";
 import { cn } from "@/lib/utils";
+import { LoadingSkeleton } from "@/components/ui-elements";
 
 export const Route = createFileRoute("/dashboard/student/settings")({
   head: () => ({
@@ -157,6 +158,13 @@ function StudentSettings() {
   );
 
   if (!profile || !settings) return null;
+
+  if (!loaded)
+    return (
+      <AppShell nav={STUDENT_NAV} profile={profile} subtitle="Student Portal">
+        <LoadingSkeleton />
+      </AppShell>
+    );
 
   const persist = (next: UserSettings, message = "Changes saved successfully") => {
     setSettings(next);
@@ -380,7 +388,7 @@ function StudentSettings() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     maxLength={320}
-                    placeholder="you@student.northview.edu"
+                    placeholder="you@student.miow.edu"
                   />
                   <Field
                     label="Contact phone"

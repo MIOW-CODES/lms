@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CloudUpload, FileText, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { type Course, createQuizWithQuestions } from "@/lib/lms";
 import { extractTextFromFile, isWorksheetAcceptedFile } from "@/lib/extract-text";
 import { parseWorksheet } from "@/lib/worksheet-parser";
-import { openWorksheetChat } from "@/lib/worksheet-context";
+import { openWorksheetChat, onPasteToWorksheet } from "@/lib/worksheet-context";
 import { Modal } from "@/components/lms";
 import { PolicyFields } from "@/components/courses/policy-fields";
 import {
@@ -41,6 +41,15 @@ export function CreateQuizModal({ open, onClose, courses, onSaved }: CreateQuizM
   const [quizFileDrag, setQuizFileDrag] = useState(false);
   const [quizFileName, setQuizFileName] = useState<string | null>(null);
 
+  // Listen for "Send to worksheet" from ClassMate chat
+  useEffect(() => {
+    return onPasteToWorksheet((text) => {
+      setQuizForm((f) => ({ ...f, questions: text }));
+      setQuizFileName(null);
+      toast.success("Worksheet content received from ClassMate");
+    });
+  }, []);
+
   const handleClose = () => {
     onClose();
     setQuizMode("classmate");
@@ -73,7 +82,7 @@ export function CreateQuizModal({ open, onClose, courses, onSaved }: CreateQuizM
               course: `${course.code} — ${course.title}`,
               title: quizForm.title.trim(),
               sourceMaterial: text,
-              autoMessage: `Generate ${quizForm.duration_minutes || 15} parser-ready multiple-choice and fill-in-the-blank questions based on the uploaded material for "${quizForm.title.trim()}". Follow the strict 4-section format with Answer Key.`,
+              autoMessage: `Generate ${quizForm.question_count && parseInt(quizForm.question_count) > 0 ? parseInt(quizForm.question_count) : 20} parser-ready multiple-choice and fill-in-the-blank questions based on the uploaded material for "${quizForm.title.trim()}". Follow the strict 4-section format with Answer Key.`,
             });
             toast.success("File loaded — ClassMate is generating questions now.");
           } else {
@@ -83,8 +92,7 @@ export function CreateQuizModal({ open, onClose, courses, onSaved }: CreateQuizM
           }
         }
       })
-      .catch((err) => {
-        console.error(err);
+      .catch(() => {
         toast.error(
           "Could not extract text from this file. Try a different file or paste the content directly.",
         );
@@ -121,6 +129,12 @@ export function CreateQuizModal({ open, onClose, courses, onSaved }: CreateQuizM
       if (parsed.dropped > 0) {
         toast.warning(
           `${parsed.dropped} item${parsed.dropped > 1 ? "s were" : " was"} skipped — check their numbering against the Answer Key.`,
+        );
+      }
+      const requested = parseInt(quizForm.question_count) || 0;
+      if (requested > 0 && parsed.questions.length > requested) {
+        toast.warning(
+          `ClassMate generated ${parsed.questions.length} questions but you requested ${requested}. All ${parsed.questions.length} will be saved.`,
         );
       }
       questions = parsed.questions;

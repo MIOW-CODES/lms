@@ -1,6 +1,6 @@
 import type { RetakePolicy, Attachment } from "@/lib/lms";
 
-export const COLORS = ["indigo", "emerald", "sky", "amber", "rose", "violet"];
+export const COLORS = ["indigo", "emerald", "sky", "pink", "rose", "violet"];
 
 export const DAYS: Array<{ code: string; label: string }> = [
   { code: "mon", label: "Mon" },
@@ -84,6 +84,7 @@ export const ATTENDANCE_LIMIT_DASHBOARD = 50;
 export const ATTENDANCE_LIMIT_KIOSK = 60;
 export const ATTENDANCE_LIMIT_GRADES = 500;
 export const ATTENDANCE_LIMIT_PURGE = 100;
+export const GRADE_LEVELS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 export const SCAN_BANNER_DISMISS_MS = 4000;
 export const ACCEPTED_MIME = [
   "application/pdf",

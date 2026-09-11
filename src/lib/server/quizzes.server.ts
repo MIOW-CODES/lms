@@ -207,7 +207,12 @@ function attemptCeiling(quiz: QuizConfig, extra: number): number | null {
   return base + extra;
 }
 
-type AttemptRow = { attempt_number: number; score: number; total: number };
+type AttemptRow = {
+  attempt_number: number;
+  score: number;
+  total: number;
+  tab_switches?: Array<{ at: number; type: string }>;
+};
 
 function effectiveScore(
   attempts: AttemptRow[],
@@ -233,6 +238,7 @@ export async function submitQuizAttempt(
   answers: Record<string, string>,
   token: string,
   questionIds?: string[],
+  tabSwitches?: Array<{ at: number; type: "blur" | "visibilitychange" }>,
 ) {
   const caller = await requireSession(token);
   const quiz = await getQuizConfig(quiz_id);
@@ -263,6 +269,7 @@ export async function submitQuizAttempt(
       total,
       results,
       question_ids: questionIds ?? [],
+      tab_switches: tabSwitches ?? [],
     }),
   );
 
@@ -394,7 +401,7 @@ export async function listQuizAttemptsForQuiz(quiz_id: string, token: string) {
     unwrap<any[]>(
       db
         .from("quiz_attempts")
-        .select("student_id, attempt_number, score, total, created_at")
+        .select("student_id, attempt_number, score, total, created_at, tab_switches")
         .eq("quiz_id", quiz_id)
         .order("attempt_number"),
     ),
@@ -415,7 +422,12 @@ export async function listQuizAttemptsForQuiz(quiz_id: string, token: string) {
   const byStudent = new Map<string, AttemptRow[]>();
   for (const a of attempts ?? []) {
     const arr = byStudent.get(a.student_id) ?? [];
-    arr.push({ attempt_number: a.attempt_number, score: a.score, total: a.total });
+    arr.push({
+      attempt_number: a.attempt_number,
+      score: a.score,
+      total: a.total,
+      tab_switches: Array.isArray(a.tab_switches) ? a.tab_switches : [],
+    });
     byStudent.set(a.student_id, arr);
   }
   const students = studentIds.map((sid) => {
@@ -535,6 +547,22 @@ export async function listQuizScoresForCourse(course_id: string, token: string) 
   }));
 }
 
+const ALLOWED_QUIZ_COLUMNS = new Set([
+  "title",
+  "description",
+  "course_id",
+  "time_limit",
+  "shuffle_options",
+  "allow_retake",
+  "max_attempts",
+  "retake_score_policy",
+  "score_released",
+  "answer_key_released",
+  "question_count",
+  "attachments",
+  "deleted_at",
+]);
+
 export async function updateQuiz(
   tokenStr: string,
   id: string,
@@ -542,7 +570,11 @@ export async function updateQuiz(
   questions?: Array<{ question: string; options: string[]; correct_answer: string }>,
 ) {
   await requireQuizOwnerOrAdmin(tokenStr, id);
-  if (Object.keys(patch).length) await unwrap(db.from("quizzes").update(patch).eq("id", id));
+  const safePatch = Object.fromEntries(
+    Object.entries(patch).filter(([key]) => ALLOWED_QUIZ_COLUMNS.has(key)),
+  );
+  if (Object.keys(safePatch).length)
+    await unwrap(db.from("quizzes").update(safePatch).eq("id", id));
   if (questions && questions.length) {
     await unwrap(db.from("quiz_attempts").delete().eq("quiz_id", id));
     await unwrap(db.from("quiz_questions").delete().eq("quiz_id", id));
