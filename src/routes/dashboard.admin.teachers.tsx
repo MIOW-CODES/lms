@@ -27,6 +27,7 @@ import {
   useProfile,
   useRfidScanner,
 } from "@/components/lms";
+import { LoadingSkeleton } from "@/components/ui-elements";
 
 export const Route = createFileRoute("/dashboard/admin/teachers")({
   head: () => ({
@@ -111,7 +112,16 @@ function TeachersPage() {
     });
   }, [teachers, search, dept]);
 
+  const isLoading = !teachers;
+
   if (!profile) return null;
+
+  if (isLoading)
+    return (
+      <AppShell nav={ADMIN_NAV} profile={profile} subtitle="Admin Console">
+        <LoadingSkeleton />
+      </AppShell>
+    );
 
   const set =
     (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -131,8 +141,8 @@ function TeachersPage() {
       toast.error("Enter a valid email address.");
       return;
     }
-    if (!/^\d{4,6}$/.test(form.pin)) {
-      toast.error("Temporary PIN must be 4–6 digits.");
+    if (!/^\d{4,8}$/.test(form.pin)) {
+      toast.error("Temporary PIN must be 4–8 digits.");
       return;
     }
     if (form.rfid_uid && !/^\d{6,20}$/.test(form.rfid_uid)) {
@@ -341,12 +351,14 @@ function TeachersPage() {
           <input
             value={form.full_name}
             onChange={set("full_name")}
+            aria-label="Full name"
             placeholder="Full name *"
             className={INPUT}
           />
           <input
             value={form.email}
             onChange={set("email")}
+            aria-label="Faculty email"
             placeholder="Faculty email *"
             type="email"
             className={INPUT}
@@ -354,21 +366,24 @@ function TeachersPage() {
           <input
             value={form.employee_id}
             onChange={set("employee_id")}
+            aria-label="Employee ID"
             placeholder="Employee ID * (e.g. FAC-2026-014)"
             className={INPUT}
           />
           <input
             value={form.department}
             onChange={set("department")}
+            aria-label="Department"
             placeholder="Department / specialization *"
             className={`${INPUT} sm:col-span-2`}
           />
           <input
             value={form.pin}
             onChange={(e) =>
-              setForm((f) => ({ ...f, pin: e.target.value.replace(/\D/g, "").slice(0, 6) }))
+              setForm((f) => ({ ...f, pin: e.target.value.replace(/\D/g, "").slice(0, 8) }))
             }
-            placeholder="Temporary PIN * (4–6 digits)"
+            aria-label="Temporary PIN"
+            placeholder="Temporary PIN * (4–8 digits)"
             inputMode="numeric"
             className={INPUT}
           />
@@ -378,6 +393,7 @@ function TeachersPage() {
               onChange={(e) =>
                 setForm((f) => ({ ...f, rfid_uid: e.target.value.replace(/\D/g, "") }))
               }
+              aria-label="RFID UID"
               placeholder="RFID UID (optional)"
               inputMode="numeric"
               className={`${INPUT} flex-1`}

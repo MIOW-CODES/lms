@@ -88,9 +88,6 @@ export const Route = createFileRoute("/api/chat")({
           return new Response("Session expired — please sign in again", { status: 401 });
         }
 
-        // Rate-limit per user: 10 s cooldown between requests.
-        // Keyed on profile.id which is stable across sessions, so a user
-        // getting a new session token cannot bypass the limit.
         const now = Date.now();
         const lastRequest = chatRateLimits.get(profile.id);
         if (lastRequest && now - lastRequest < CHAT_RATE_LIMIT_MS) {

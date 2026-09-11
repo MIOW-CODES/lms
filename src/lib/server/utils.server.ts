@@ -18,9 +18,13 @@ export async function unwrap<T>(
   p: PromiseLike<{ data: unknown; error: DbError | null }>,
 ): Promise<T> {
   let error: DbError | null = null;
+  // NOTE: supabase-js query builders are one-shot — re-awaiting the same
+  // builder after an error is a no-op (it resolves with the cached error).
+  // Retries here only help when the builder is rebuilt externally or for
+  // transient gateway errors (e.g. PGRST303 clock-skew) where the first
+  // await actually dispatched the HTTP call and the error is in the response.
+  // Do NOT rely on this loop to fix application-level builder reuse bugs.
   for (let attempt = 0; attempt < 3; attempt++) {
-    // supabase-js builders build and dispatch the fetch inside then(), so
-    // re-awaiting the same builder is a genuine retry, not a cached replay.
     const res = await p;
     if (!res.error) return res.data as T;
     error = res.error;

@@ -60,13 +60,10 @@ function TeacherStudentsPage() {
     enabled: !!profile,
   });
 
-  // Batch-fetch all attendance (single query instead of N per student).
-  // Limit 50 000 rows — generous upper bound that covers multiple school
-  // years of daily attendance logs for a reasonable student population.
-  const ATTENDANCE_FETCH_LIMIT = 50_000;
+  // Batch-fetch all attendance (single query instead of N)
   const { data: allAttendance } = useQuery({
     queryKey: ["attendance-all"],
-    queryFn: () => listAllAttendance(ATTENDANCE_FETCH_LIMIT),
+    queryFn: () => listAllAttendance(10000),
     enabled: !!profile,
   });
 
@@ -227,15 +224,6 @@ function TeacherStudentsPage() {
                 <tr
                   key={s.id}
                   onClick={() => setSelected(s)}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`View details for ${s.full_name}`}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setSelected(s);
-                    }
-                  }}
                   className="cursor-pointer transition-colors hover:bg-muted/50"
                 >
                   <td className="p-4">

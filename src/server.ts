@@ -54,6 +54,8 @@ function applySecurityHeaders(res: Response) {
   res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   if (res.headers.get("content-type")?.includes("text/html")) {
     const isProd = process.env["NODE_ENV"] === "production";
+    // 'unsafe-inline' is required for TanStack Start hydration scripts.
+    // 'unsafe-eval' is only in dev for Vite HMR.
     const scriptSrc = isProd ? "'self' 'unsafe-inline'" : "'self' 'unsafe-inline' 'unsafe-eval'";
     res.headers.set(
       "Content-Security-Policy",
