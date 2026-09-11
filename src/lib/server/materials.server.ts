@@ -192,13 +192,26 @@ export async function requireAssignmentOwnerOrAdmin(token: string, assignmentId:
   return { caller, row };
 }
 
+const ALLOWED_ASSIGNMENT_COLUMNS = new Set([
+  "title",
+  "description",
+  "course_id",
+  "due_date",
+  "attachments",
+  "deleted_at",
+]);
+
 export async function updateAssignment(
   tokenStr: string,
   id: string,
   patch: Record<string, unknown>,
 ) {
   await requireAssignmentOwnerOrAdmin(tokenStr, id);
-  if (Object.keys(patch).length) await unwrap(db.from("assignments").update(patch).eq("id", id));
+  const safePatch = Object.fromEntries(
+    Object.entries(patch).filter(([key]) => ALLOWED_ASSIGNMENT_COLUMNS.has(key)),
+  );
+  if (Object.keys(safePatch).length)
+    await unwrap(db.from("assignments").update(safePatch).eq("id", id));
 }
 
 export async function deleteAssignment(tokenStr: string, id: string, mode: "soft" | "hard") {

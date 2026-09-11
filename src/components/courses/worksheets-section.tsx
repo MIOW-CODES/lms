@@ -1,3 +1,4 @@
+import React from "react";
 import { Settings2, Users, Pencil, Trash2 } from "lucide-react";
 import { type Course, type Quiz } from "@/lib/lms";
 import { MotionCard, courseStyle } from "@/components/lms";
@@ -14,7 +15,7 @@ interface WorksheetsSectionProps {
   onRoster: (quiz: Quiz) => void;
 }
 
-export function WorksheetsSection({
+export const WorksheetsSection = React.memo(function WorksheetsSection({
   quizzes,
   courses,
   onPolicy,
@@ -89,4 +90,4 @@ export function WorksheetsSection({
       </div>
     </section>
   );
-}
+});

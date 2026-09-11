@@ -235,8 +235,8 @@ function TeacherSettingsPage() {
   };
 
   const changePin = async () => {
-    if (!/^\d{4,6}$/.test(newPin)) {
-      toast.error("New PIN must be 4–6 digits");
+    if (!/^\d{4,8}$/.test(newPin)) {
+      toast.error("New PIN must be 4–8 digits");
       return;
     }
     if (newPin !== confirmPin) {
@@ -245,7 +245,7 @@ function TeacherSettingsPage() {
     }
     setPinBusy(true);
     try {
-      const login = profile.email ?? profile.student_id ?? "";
+      const login = profile.employee_id ?? profile.email ?? profile.student_id ?? "";
       const verified = await findProfileByCredential(login, oldPin);
       if (!verified) {
         toast.error("Current PIN is incorrect");
@@ -394,7 +394,7 @@ function TeacherSettingsPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     maxLength={320}
-                    placeholder="you@faculty.northview.edu"
+                    placeholder="you@faculty.miow.edu"
                   />
                   <Field
                     label="Department / Specialization"
@@ -450,7 +450,7 @@ function TeacherSettingsPage() {
               <Card className="p-6">
                 <h2 className="font-display text-lg font-bold">Change PIN</h2>
                 <p className="mb-4 text-xs text-muted-foreground">
-                  Your current PIN is verified first; the new 4–6 digit PIN is stored as a bcrypt
+                  Your current PIN is verified first; the new 4–8 digit PIN is stored as a bcrypt
                   hash and your session token is rotated.
                 </p>
                 <form
@@ -467,7 +467,7 @@ function TeacherSettingsPage() {
                       autoComplete="current-password"
                       value={oldPin}
                       onChange={(e) => setOldPin(e.target.value)}
-                      maxLength={6}
+                      maxLength={8}
                     />
                     <Field
                       label="New PIN"
@@ -476,7 +476,7 @@ function TeacherSettingsPage() {
                       autoComplete="new-password"
                       value={newPin}
                       onChange={(e) => setNewPin(e.target.value)}
-                      maxLength={6}
+                      maxLength={8}
                     />
                     <Field
                       label="Confirm new PIN"
@@ -485,7 +485,7 @@ function TeacherSettingsPage() {
                       autoComplete="new-password"
                       value={confirmPin}
                       onChange={(e) => setConfirmPin(e.target.value)}
-                      maxLength={6}
+                      maxLength={8}
                     />
                   </div>
                   <div className="mt-4 flex justify-end">

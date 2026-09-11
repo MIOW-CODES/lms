@@ -19,6 +19,7 @@ import {
   useProfile,
 } from "@/components/lms";
 import { cn } from "@/lib/utils";
+import { LoadingSkeleton } from "@/components/ui-elements";
 
 export const Route = createFileRoute("/dashboard/student/attendance")({
   head: () => ({
@@ -50,12 +51,24 @@ function AttendancePage() {
   const profile = useProfile(["student"]);
   const { data: logs } = useQuery({
     queryKey: ["attendance", profile?.id],
-    queryFn: () => listAttendance(profile!.id),
+    queryFn: () => {
+      if (!profile?.id) return [];
+      return listAttendance(profile.id);
+    },
     enabled: !!profile,
   });
   const [monthOffset, setMonthOffset] = useState(0);
 
+  const isLoading = !logs;
+
   if (!profile) return null;
+
+  if (isLoading)
+    return (
+      <AppShell nav={STUDENT_NAV} profile={profile} subtitle="Student Portal">
+        <LoadingSkeleton />
+      </AppShell>
+    );
 
   const all = logs ?? [];
   const streak = attendanceStreak(all);

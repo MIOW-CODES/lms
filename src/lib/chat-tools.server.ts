@@ -148,9 +148,13 @@ export function systemPromptFor(
   ].join("\n");
 }
 
+let _courseMapCache: Map<string, any> | null = null;
+
 async function courseMap(): Promise<Map<string, any>> {
+  if (_courseMapCache) return _courseMapCache;
   const courses = await lms.listCourses();
-  return new Map(courses.map((c: any) => [c.id, c]));
+  _courseMapCache = new Map(courses.map((c: any) => [c.id, c]));
+  return _courseMapCache;
 }
 
 function gradeRow(g: any, cmap: Map<string, any>) {
@@ -167,6 +171,7 @@ function gradeRow(g: any, cmap: Map<string, any>) {
 }
 
 export function buildChatTools(profile: ChatCaller): ToolSet {
+  _courseMapCache = null;
   const isStudent = profile.role === "student";
 
   const tools: ToolSet = {
