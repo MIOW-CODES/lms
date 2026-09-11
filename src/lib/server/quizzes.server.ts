@@ -573,7 +573,8 @@ export async function updateQuiz(
   const safePatch = Object.fromEntries(
     Object.entries(patch).filter(([key]) => ALLOWED_QUIZ_COLUMNS.has(key)),
   );
-  if (Object.keys(safePatch).length) await unwrap(db.from("quizzes").update(safePatch).eq("id", id));
+  if (Object.keys(safePatch).length)
+    await unwrap(db.from("quizzes").update(safePatch).eq("id", id));
   if (questions && questions.length) {
     await unwrap(db.from("quiz_attempts").delete().eq("quiz_id", id));
     await unwrap(db.from("quiz_questions").delete().eq("quiz_id", id));

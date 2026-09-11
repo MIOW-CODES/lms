@@ -96,7 +96,9 @@ function AuthPage() {
       });
       if (res.ok) {
         saveSession(res.profile);
-        toast.success(`Welcome, ${res.profile.full_name?.split(" ")[0] || res.profile.full_name || "User"}!`);
+        toast.success(
+          `Welcome, ${res.profile.full_name?.split(" ")[0] || res.profile.full_name || "User"}!`,
+        );
         navigate({ to: dashboardPathFor(res.profile.role) });
       } else if (res.reason === "locked") {
         toast.error(

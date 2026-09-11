@@ -163,8 +163,8 @@ function StudentDashboard() {
         <div className="mb-6">
           <h1 className="font-display text-2xl font-bold sm:text-3xl">Student Dashboard</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Kumusta, {(profile.full_name?.split(" ")[0] || profile.full_name || "Student")}! · Grade {profile.grade_level} ·{" "}
-            {profile.section} · {profile.student_id}
+            Kumusta, {profile.full_name?.split(" ")[0] || profile.full_name || "Student"}! · Grade{" "}
+            {profile.grade_level} · {profile.section} · {profile.student_id}
           </p>
         </div>
       </FadeIn>

@@ -210,7 +210,8 @@ export async function updateAssignment(
   const safePatch = Object.fromEntries(
     Object.entries(patch).filter(([key]) => ALLOWED_ASSIGNMENT_COLUMNS.has(key)),
   );
-  if (Object.keys(safePatch).length) await unwrap(db.from("assignments").update(safePatch).eq("id", id));
+  if (Object.keys(safePatch).length)
+    await unwrap(db.from("assignments").update(safePatch).eq("id", id));
 }
 
 export async function deleteAssignment(tokenStr: string, id: string, mode: "soft" | "hard") {

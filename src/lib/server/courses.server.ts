@@ -71,7 +71,8 @@ export async function updateCourse(id: string, patch: Record<string, unknown>) {
     Object.entries(patch).filter(([key]) => ALLOWED_COURSE_COLUMNS.has(key)),
   );
   if ("teacher_id" in safePatch) await assertTeacherAssignable(safePatch["teacher_id"]);
-  if (Object.keys(safePatch).length) await unwrap(db.from("courses").update(safePatch).eq("id", id));
+  if (Object.keys(safePatch).length)
+    await unwrap(db.from("courses").update(safePatch).eq("id", id));
 }
 
 export async function deleteCourse(id: string) {
