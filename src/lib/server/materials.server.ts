@@ -197,9 +197,6 @@ const ALLOWED_ASSIGNMENT_COLUMNS = new Set([
   "description",
   "course_id",
   "due_date",
-  "total_points",
-  "component_type",
-  "score_released",
   "attachments",
   "deleted_at",
 ]);
@@ -255,8 +252,6 @@ export async function hardwareRoster() {
   return { synced_at: new Date().toISOString(), count: users.length, users };
 }
 
-// NOTE: The compat layer doesn't support .count(), so we fetch all rows.
-// For large tables this is O(n) — accept the limitation for now.
 export async function countRows(table: string): Promise<number> {
   const rows = await unwrap<unknown[]>(db.from(table).select("*"));
   return rows.length;

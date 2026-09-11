@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Search, Send } from "lucide-react";
 import { toast } from "sonner";
+import { LoadingSkeleton, UserAvatar } from "@/components/ui-elements";
 import { ATTENDANCE_LIMIT_GRADES } from "@/components/courses/constants";
 import {
   attendancePercent,
@@ -115,8 +116,12 @@ export function GradebookPage() {
   });
 
   useEffect(() => {
+    if (quizScoresError) toast.error("Could not load worksheet scores.");
+  }, [quizScoresError]);
+
+  useEffect(() => {
     if (!courses?.length && courseId) return;
-    if (!courseId && courses?.length) setCourseId(courses[0]!.id);
+    if (!courseId && courses?.length) setCourseId(courses[0]?.id ?? "");
   }, [courses, courseId]);
 
   useEffect(() => {
@@ -136,7 +141,16 @@ export function GradebookPage() {
     setSection("all");
   }, [courseId]);
 
+  const isLoading = !courses || !students || !allLogs;
+
   if (!profile) return null;
+
+  if (isLoading)
+    return (
+      <AppShell nav={TEACHER_NAV} profile={profile} subtitle="Teacher Portal">
+        <LoadingSkeleton />
+      </AppShell>
+    );
 
   const roster = (students ?? []).filter((s) =>
     enrolledIds && enrolledIds.length > 0
@@ -172,21 +186,26 @@ export function GradebookPage() {
     setSaving(true);
     try {
       let n = 0;
-      for (const s of roster) {
+      const valid = roster.filter((s) => {
         const c = cells[s.id];
-        if (!c || (c.ww === "" && c.pt === "" && c.ex === "")) continue;
-        const initial = weightedInitial(num(c.ww), num(c.pt), num(c.ex), attOf(s.id));
-        await upsertGrade({
-          student_id: s.id,
-          course_id: courseId,
-          quarter,
-          written_work_score: num(c.ww),
-          performance_task_score: num(c.pt),
-          exam_score: num(c.ex),
-          transmuted_final_grade: initial != null ? transmute(initial) : null,
-        });
-        n++;
-      }
+        return c && (c.ww !== "" || c.pt !== "" || c.ex !== "");
+      });
+      await Promise.all(
+        valid.map((s) => {
+          const c = cells[s.id]!;
+          const initial = weightedInitial(num(c.ww), num(c.pt), num(c.ex), attOf(s.id));
+          return upsertGrade({
+            student_id: s.id,
+            course_id: courseId,
+            quarter,
+            written_work_score: num(c.ww),
+            performance_task_score: num(c.pt),
+            exam_score: num(c.ex),
+            transmuted_final_grade: initial != null ? transmute(initial) : null,
+          });
+        }),
+      );
+      n = valid.length;
       toast.success(`Saved and published grades for ${n} student${n === 1 ? "" : "s"}.`);
       setPublished(true);
       qc.invalidateQueries({ queryKey: ["course-grades", courseId, quarter] });
@@ -256,6 +275,7 @@ export function GradebookPage() {
         <select
           value={courseId}
           onChange={(e) => setCourseId(e.target.value)}
+          aria-label="Select course"
           className="h-11 min-w-56 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
         >
           {(courses ?? []).map((c) => (
@@ -282,6 +302,7 @@ export function GradebookPage() {
           <select
             value={section}
             onChange={(e) => setSection(e.target.value)}
+            aria-label="Filter by section"
             className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="all">All sections</option>
@@ -297,6 +318,7 @@ export function GradebookPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search students"
             placeholder="Search name, student no., email or section..."
             className="h-11 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
@@ -392,11 +414,7 @@ export function GradebookPage() {
                       <tr key={s.id}>
                         <td className="p-4">
                           <div className="flex items-center gap-2.5">
-                            <img
-                              src={s.avatar_url ?? ""}
-                              alt={s.full_name}
-                              className="h-8 w-8 rounded-full"
-                            />
+                            <UserAvatar src={s.avatar_url} name={s.full_name} />
                             <div>
                               <p className="font-semibold">{s.full_name}</p>
                               <p className="text-xs text-muted-foreground">
@@ -415,6 +433,7 @@ export function GradebookPage() {
                               onChange={setCell(k)}
                               inputMode="decimal"
                               placeholder="—"
+                              aria-label={`${k === "ww" ? "Written work" : k === "pt" ? "Performance task" : "Exam"} score for ${s.full_name}`}
                               className="h-9 w-20 rounded-lg border border-input bg-background text-center text-sm outline-none focus:ring-2 focus:ring-ring"
                             />
                           </td>

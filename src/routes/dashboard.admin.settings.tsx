@@ -59,6 +59,7 @@ import {
   type AuditEntry,
 } from "@/lib/settings";
 import { cn } from "@/lib/utils";
+import { LoadingSkeleton } from "@/components/ui-elements";
 import { BRAND_COLORS, BRAND_LOGO_SRC } from "@/lib/brand";
 import { MiowLockup, MiowMark } from "@/components/brand";
 
@@ -91,6 +92,8 @@ const TABS: Array<{ value: Tab; label: string; icon: React.ReactNode }> = [
   { value: "logs", label: "Logs & Backups", icon: <ScrollText className="h-4 w-4" /> },
 ];
 
+// NOTE: This schema dump is a snapshot and may not reflect the current database schema.
+// It is intended as a quick reference, not a source of truth.
 const SCHEMA_DUMP = `-- MIOW — PostgreSQL schema dump (demo export)
 CREATE TABLE profiles (id uuid PRIMARY KEY, full_name text NOT NULL, student_id text, email text, role text NOT NULL, grade_level int, section text, pin_hash text, rfid_uid text, avatar_url text, created_at timestamptz DEFAULT now());
 CREATE TABLE announcements (id uuid PRIMARY KEY, title text NOT NULL, content text NOT NULL, category text NOT NULL, target_audience text DEFAULT 'all', pinned boolean DEFAULT false, author_id uuid REFERENCES profiles(id), created_at timestamptz DEFAULT now());
@@ -168,7 +171,16 @@ function AdminSettings() {
     }
   }, [profile, cfg]);
 
+  const isLoading = !teachers || !courses || !students || !directory;
+
   if (!profile || !cfg) return null;
+
+  if (isLoading)
+    return (
+      <AppShell nav={ADMIN_NAV} profile={profile} subtitle="Admin Console">
+        <LoadingSkeleton />
+      </AppShell>
+    );
 
   const persistCfg = (next: AdminConfig, message = "Changes saved successfully") => {
     setCfg(next);
@@ -230,7 +242,7 @@ function AdminSettings() {
         ["Student ID", "Full Name", "Email", "Grade Level", "Section"],
         ...rows.map((s) => [s.student_id, s.full_name, s.email, s.grade_level, s.section]),
       ]);
-      downloadFile("northview-students.csv", csv, "text/csv");
+      downloadFile("miow-students.csv", csv, "text/csv");
       logAudit("Data export", `Student database CSV exported (${rows.length} rows)`);
       setAudit(listAudit());
       toast.success("Student database exported");
@@ -249,7 +261,7 @@ function AdminSettings() {
         out.push({ course: c.code, title: c.title, quarter: cfg.activeQuarter, grades });
       }
       downloadFile(
-        `northview-gradebook-q${cfg.activeQuarter}.json`,
+        `miow-gradebook-q${cfg.activeQuarter}.json`,
         JSON.stringify(out, null, 2),
         "application/json",
       );
@@ -264,7 +276,7 @@ function AdminSettings() {
   };
 
   const exportSchema = () => {
-    downloadFile("northview-schema.sql", SCHEMA_DUMP, "application/sql");
+    downloadFile("miow-schema.sql", SCHEMA_DUMP, "application/sql");
     logAudit("Data export", "PostgreSQL schema dump downloaded");
     setAudit(listAudit());
     toast.success("Schema dump downloaded");
@@ -286,6 +298,7 @@ function AdminSettings() {
       } else if (confirmAction === "purge") {
         const logs = await listAllAttendance(ATTENDANCE_LIMIT_PURGE);
         for (const l of logs) await deleteAttendanceLog(l.id);
+        await queryClient.invalidateQueries({ queryKey: ["attendance-all"] });
         logAudit("Data purge", `${logs.length} demo attendance logs purged`);
         setAudit(listAudit());
         toast.success(`Purged ${logs.length} attendance logs`);
@@ -507,7 +520,7 @@ function AdminSettings() {
                       </div>
                       <div
                         className="absolute bottom-5 right-5 h-9 w-12 rounded-md"
-                        style={{ background: BRAND_COLORS.gold, opacity: 0.85 }}
+                        style={{ background: BRAND_COLORS.pink, opacity: 0.85 }}
                       />
                     </div>
                     <p className="mt-2 text-xs text-muted-foreground">
@@ -529,7 +542,11 @@ function AdminSettings() {
                       onChange={(e) => setCfg({ ...cfg, academicYear: e.target.value })}
                       className="w-full rounded-xl border border-input bg-background/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
                     >
-                      {["2023–2024", "2024–2025", "2025–2026", "2026–2027"].map((y) => (
+                      {Array.from(
+                        { length: 5 },
+                        (_, i) =>
+                          `${new Date().getFullYear() - 2 + i}–${new Date().getFullYear() - 1 + i}`,
+                      ).map((y) => (
                         <option key={y} value={y}>
                           {y}
                         </option>

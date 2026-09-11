@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
+import { GRADE_LEVELS } from "@/components/courses/constants";
 import {
   Select,
   SelectContent,
@@ -11,13 +12,17 @@ import {
 } from "@/components/ui/select";
 import {
   attendancePercent,
+  listAllAttendance,
   listAttendance,
   listCourses,
   listGradesForStudent,
   listStudents,
   transmutedOf,
+  type AttendanceLog,
+  type Grade,
   type Profile,
 } from "@/lib/lms";
+import { LoadingSkeleton, UserAvatar } from "@/components/ui-elements";
 import {
   AppShell,
   Badge,
@@ -55,6 +60,44 @@ function TeacherStudentsPage() {
     enabled: !!profile,
   });
 
+  // Batch-fetch all attendance (single query instead of N)
+  const { data: allAttendance } = useQuery({
+    queryKey: ["attendance-all"],
+    queryFn: () => listAllAttendance(10000),
+    enabled: !!profile,
+  });
+
+  // Build attendance map: studentId → logs[]
+  const attendanceByStudent = useMemo(() => {
+    const map = new Map<string, AttendanceLog[]>();
+    for (const log of allAttendance ?? []) {
+      const arr = map.get(log.student_id) ?? [];
+      arr.push(log);
+      map.set(log.student_id, arr);
+    }
+    return map;
+  }, [allAttendance]);
+
+  // Batch-fetch grades for all visible students (parallel, single render)
+  const studentIds = useMemo(() => (students ?? []).map((s) => s.id), [students]);
+  const [gradesMap, setGradesMap] = useState<Map<string, Grade[]>>(new Map());
+
+  useEffect(() => {
+    if (!studentIds.length) return;
+    let cancelled = false;
+    Promise.all(studentIds.map((id) => listGradesForStudent(id).catch(() => []))).then(
+      (results) => {
+        if (cancelled) return;
+        const map = new Map<string, Grade[]>();
+        studentIds.forEach((id, i) => map.set(id, results[i]!));
+        setGradesMap(map);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [studentIds]);
+
   const [search, setSearch] = useState("");
   const [gradeFilter, setGradeFilter] = useState("all");
   const [sectionFilter, setSectionFilter] = useState("all");
@@ -90,7 +133,16 @@ function TeacherStudentsPage() {
     });
   }, [students, search, gradeFilter, sectionFilter]);
 
+  const isLoading = !students || !courses || !allAttendance;
+
   if (!profile) return null;
+
+  if (isLoading)
+    return (
+      <AppShell nav={TEACHER_NAV} profile={profile} subtitle="Teacher Portal">
+        <LoadingSkeleton />
+      </AppShell>
+    );
 
   return (
     <AppShell nav={TEACHER_NAV} profile={profile} subtitle="Teacher Portal">
@@ -121,7 +173,7 @@ function TeacherStudentsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All grades</SelectItem>
-            {[7, 8, 9, 10, 11, 12, 13, 14, 15, 16].map((g) => (
+            {GRADE_LEVELS.map((g) => (
               <SelectItem key={g} value={String(g)}>
                 {g <= 12 ? `Grade ${g}` : `College Yr${g - 12}`}
               </SelectItem>
@@ -176,11 +228,7 @@ function TeacherStudentsPage() {
                 >
                   <td className="p-4">
                     <div className="flex items-center gap-2.5">
-                      <img
-                        src={s.avatar_url ?? ""}
-                        alt={s.full_name}
-                        className="h-8 w-8 rounded-full"
-                      />
+                      <UserAvatar src={s.avatar_url} name={s.full_name} />
                       <div>
                         <p className="font-semibold">{s.full_name}</p>
                         <p className="text-xs text-muted-foreground">{s.email}</p>
@@ -195,10 +243,32 @@ function TeacherStudentsPage() {
                   </td>
                   <td className="p-4 font-mono text-xs">{s.has_rfid ? "••••••••" : "—"}</td>
                   <td className="p-4">
-                    <AttendanceCell studentId={s.id} />
+                    {(() => {
+                      const logs = attendanceByStudent.get(s.id);
+                      if (!logs) return <span className="text-xs text-muted-foreground">—</span>;
+                      const pct = attendancePercent(logs);
+                      return (
+                        <span className="text-xs font-semibold">
+                          {pct != null ? `${pct}%` : "—"}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="p-4">
-                    <GwaCell studentId={s.id} />
+                    {(() => {
+                      const grades = gradesMap.get(s.id);
+                      if (!grades) return <span className="text-xs text-muted-foreground">—</span>;
+                      const att = attendancePercent(attendanceByStudent.get(s.id) ?? []);
+                      const transmuted = grades
+                        .map((g) => transmutedOf(g, att))
+                        .filter((t): t is number => t != null);
+                      const gwa = transmuted.length
+                        ? Math.round(
+                            (transmuted.reduce((a, b) => a + b, 0) / transmuted.length) * 10,
+                          ) / 10
+                        : null;
+                      return <span className="text-xs font-semibold">{gwa ?? "—"}</span>;
+                    })()}
                   </td>
                 </tr>
               ))}
@@ -210,34 +280,6 @@ function TeacherStudentsPage() {
       <StudentInfoModal student={selected} onClose={() => setSelected(null)} />
     </AppShell>
   );
-}
-
-function AttendanceCell({ studentId }: { studentId: string }) {
-  const { data: logs } = useQuery({
-    queryKey: ["attendance", studentId],
-    queryFn: () => listAttendance(studentId),
-  });
-  if (!logs) return <span className="text-xs text-muted-foreground">—</span>;
-  const pct = attendancePercent(logs);
-  return <span className="text-xs font-semibold">{pct != null ? `${pct}%` : "—"}</span>;
-}
-
-function GwaCell({ studentId }: { studentId: string }) {
-  const { data: grades } = useQuery({
-    queryKey: ["student-grades", studentId],
-    queryFn: () => listGradesForStudent(studentId),
-  });
-  const { data: logs } = useQuery({
-    queryKey: ["attendance", studentId],
-    queryFn: () => listAttendance(studentId),
-  });
-  if (!grades) return <span className="text-xs text-muted-foreground">—</span>;
-  const att = attendancePercent(logs ?? []);
-  const transmuted = grades.map((g) => transmutedOf(g, att)).filter((t): t is number => t != null);
-  const gwa = transmuted.length
-    ? Math.round((transmuted.reduce((a, b) => a + b, 0) / transmuted.length) * 10) / 10
-    : null;
-  return <span className="text-xs font-semibold">{gwa ?? "—"}</span>;
 }
 
 function StudentInfoModal({ student, onClose }: { student: Profile | null; onClose: () => void }) {
@@ -262,10 +304,10 @@ function StudentInfoModal({ student, onClose }: { student: Profile | null; onClo
   return (
     <Modal open={!!student} onClose={onClose} title={student.full_name}>
       <div className="mb-4 flex items-center gap-3">
-        <img
-          src={student.avatar_url ?? ""}
-          alt={student.full_name}
-          className="h-14 w-14 rounded-full ring-2 ring-primary/30"
+        <UserAvatar
+          src={student.avatar_url}
+          name={student.full_name}
+          className="h-14 w-14 ring-2 ring-primary/30"
         />
         <div>
           <p className="text-sm font-semibold">{student.student_id}</p>

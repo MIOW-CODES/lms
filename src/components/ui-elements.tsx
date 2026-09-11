@@ -205,8 +205,16 @@ export function FadeIn({
 }
 
 export function ProgressBar({ value, barClass }: { value: number; barClass?: string }) {
+  const clamped = Math.min(100, Math.max(0, value));
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+    <div
+      className="h-2 w-full overflow-hidden rounded-full bg-muted"
+      role="progressbar"
+      aria-valuenow={clamped}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={`${clamped}% complete`}
+    >
       <motion.div
         initial={{ width: 0 }}
         animate={{ width: `${Math.min(100, Math.max(0, value))}%` }}
@@ -394,5 +402,58 @@ export function Modal({
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+/* ---------- User Avatar ---------- */
+
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("");
+}
+
+export function UserAvatar({
+  src,
+  name,
+  className = "h-8 w-8",
+}: {
+  src?: string | null;
+  name: string;
+  className?: string;
+}) {
+  if (src) {
+    return <img src={src} alt={name} className={cn("rounded-full object-cover", className)} />;
+  }
+  return (
+    <span
+      className={cn(
+        "grid place-items-center rounded-full bg-primary/10 text-primary text-xs font-bold",
+        className,
+      )}
+    >
+      {getInitials(name)}
+    </span>
+  );
+}
+
+/* ---------- Loading Skeleton ---------- */
+
+export function LoadingSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <div className="space-y-3 py-8">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center gap-4">
+          <div className="h-10 w-10 animate-pulse rounded-full bg-muted" />
+          <div className="flex-1 space-y-2">
+            <div className="h-4 w-1/3 animate-pulse rounded bg-muted" />
+            <div className="h-3 w-1/5 animate-pulse rounded bg-muted/60" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

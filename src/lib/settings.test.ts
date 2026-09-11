@@ -125,12 +125,12 @@ describe("getFontSize", () => {
   });
 
   it("returns stored valid value", () => {
-    mockLocalStorage.setItem("northview-fontsize", "large");
+    mockLocalStorage.setItem("miow-fontsize", "large");
     expect(getFontSize()).toBe("large");
   });
 
   it("returns 'medium' for invalid value", () => {
-    mockLocalStorage.setItem("northview-fontsize", "huge");
+    mockLocalStorage.setItem("miow-fontsize", "huge");
     expect(getFontSize()).toBe("medium");
   });
 });
@@ -157,7 +157,7 @@ describe("applyFontSize", () => {
 
   it("persists to localStorage", () => {
     applyFontSize("small");
-    expect(mockLocalStorage.getItem("northview-fontsize")).toBe("small");
+    expect(mockLocalStorage.getItem("miow-fontsize")).toBe("small");
   });
 });
 
@@ -169,12 +169,12 @@ describe("getHighContrast", () => {
   });
 
   it("returns true when stored as '1'", () => {
-    mockLocalStorage.setItem("northview-contrast", "1");
+    mockLocalStorage.setItem("miow-contrast", "1");
     expect(getHighContrast()).toBe(true);
   });
 
   it("returns false when stored as '0'", () => {
-    mockLocalStorage.setItem("northview-contrast", "0");
+    mockLocalStorage.setItem("miow-contrast", "0");
     expect(getHighContrast()).toBe(false);
   });
 });
@@ -193,12 +193,12 @@ describe("applyHighContrast", () => {
 
   it("persists '1' when on", () => {
     applyHighContrast(true);
-    expect(mockLocalStorage.getItem("northview-contrast")).toBe("1");
+    expect(mockLocalStorage.getItem("miow-contrast")).toBe("1");
   });
 
   it("persists '0' when off", () => {
     applyHighContrast(false);
-    expect(mockLocalStorage.getItem("northview-contrast")).toBe("0");
+    expect(mockLocalStorage.getItem("miow-contrast")).toBe("0");
   });
 });
 
@@ -212,7 +212,7 @@ describe("getUserSettings", () => {
 
   it("merges partial saved settings with defaults", () => {
     const partial: Partial<UserSettings> = { phone: "09171234567" };
-    mockLocalStorage.setItem("northview-settings-user-1", JSON.stringify(partial));
+    mockLocalStorage.setItem("miow-settings-user-1", JSON.stringify(partial));
     const s = getUserSettings("user-1");
     expect(s.phone).toBe("09171234567");
     expect(s.address).toBe(DEFAULT_USER_SETTINGS.address);
@@ -222,15 +222,15 @@ describe("getUserSettings", () => {
     const partial: Partial<UserSettings> = {
       notif: { deadline24h: false } as any,
     };
-    mockLocalStorage.setItem("northview-settings-user-1", JSON.stringify(partial));
+    mockLocalStorage.setItem("miow-settings-user-1", JSON.stringify(partial));
     const s = getUserSettings("user-1");
     expect(s.notif.deadline24h).toBe(false);
     expect(s.notif.gradeReleased).toBe(DEFAULT_USER_SETTINGS.notif.gradeReleased);
   });
 
   it("returns different settings per profile ID", () => {
-    mockLocalStorage.setItem("northview-settings-user-a", JSON.stringify({ phone: "111" }));
-    mockLocalStorage.setItem("northview-settings-user-b", JSON.stringify({ phone: "222" }));
+    mockLocalStorage.setItem("miow-settings-user-a", JSON.stringify({ phone: "111" }));
+    mockLocalStorage.setItem("miow-settings-user-b", JSON.stringify({ phone: "222" }));
     expect(getUserSettings("user-a").phone).toBe("111");
     expect(getUserSettings("user-b").phone).toBe("222");
   });
@@ -243,7 +243,7 @@ describe("saveUserSettings", () => {
       phone: "0999",
     };
     saveUserSettings("user-1", settings);
-    const raw = mockLocalStorage.getItem("northview-settings-user-1");
+    const raw = mockLocalStorage.getItem("miow-settings-user-1");
     expect(raw).toBeTruthy();
     expect(JSON.parse(raw!).phone).toBe("0999");
   });
@@ -259,7 +259,7 @@ describe("getTeacherSettings", () => {
 
   it("merges partial saved settings with defaults", () => {
     const partial: Partial<TeacherSettings> = { prefix: "Prof." };
-    mockLocalStorage.setItem("northview-teacher-settings-t-1", JSON.stringify(partial));
+    mockLocalStorage.setItem("miow-teacher-settings-t-1", JSON.stringify(partial));
     const s = getTeacherSettings("t-1");
     expect(s.prefix).toBe("Prof.");
     expect(s.lateThreshold).toBe(DEFAULT_TEACHER_SETTINGS.lateThreshold);
@@ -269,7 +269,7 @@ describe("getTeacherSettings", () => {
     const partial: Partial<TeacherSettings> = {
       notif: { submissionEmail: false } as any,
     };
-    mockLocalStorage.setItem("northview-teacher-settings-t-1", JSON.stringify(partial));
+    mockLocalStorage.setItem("miow-teacher-settings-t-1", JSON.stringify(partial));
     const s = getTeacherSettings("t-1");
     expect(s.notif.submissionEmail).toBe(false);
     expect(s.notif.lateAttendanceInApp).toBe(DEFAULT_TEACHER_SETTINGS.notif.lateAttendanceInApp);
@@ -283,7 +283,7 @@ describe("saveTeacherSettings", () => {
       prefix: "Dr.",
     };
     saveTeacherSettings("t-1", settings);
-    const raw = mockLocalStorage.getItem("northview-teacher-settings-t-1");
+    const raw = mockLocalStorage.getItem("miow-teacher-settings-t-1");
     expect(raw).toBeTruthy();
     expect(JSON.parse(raw!).prefix).toBe("Dr.");
   });
@@ -299,7 +299,7 @@ describe("getAdminConfig", () => {
 
   it("merges partial saved config with defaults", () => {
     const partial: Partial<AdminConfig> = { passingThreshold: 80 };
-    mockLocalStorage.setItem("northview-admin-config", JSON.stringify(partial));
+    mockLocalStorage.setItem("miow-admin-config", JSON.stringify(partial));
     const c = getAdminConfig();
     expect(c.passingThreshold).toBe(80);
     expect(c.weights).toEqual(DEFAULT_ADMIN_CONFIG.weights);
@@ -309,7 +309,7 @@ describe("getAdminConfig", () => {
     const partial: Partial<AdminConfig> = {
       weights: { attendance: 5 } as any,
     };
-    mockLocalStorage.setItem("northview-admin-config", JSON.stringify(partial));
+    mockLocalStorage.setItem("miow-admin-config", JSON.stringify(partial));
     const c = getAdminConfig();
     expect(c.weights.attendance).toBe(5);
     expect(c.weights.ww).toBe(DEFAULT_ADMIN_CONFIG.weights.ww);
@@ -319,7 +319,7 @@ describe("getAdminConfig", () => {
     const partial: Partial<AdminConfig> = {
       privileges: { guardianAccess: true } as any,
     };
-    mockLocalStorage.setItem("northview-admin-config", JSON.stringify(partial));
+    mockLocalStorage.setItem("miow-admin-config", JSON.stringify(partial));
     const c = getAdminConfig();
     expect(c.privileges.guardianAccess).toBe(true);
     expect(c.privileges.teacherEditPublished).toBe(
@@ -332,7 +332,7 @@ describe("saveAdminConfig", () => {
   it("persists config to localStorage", () => {
     const cfg: AdminConfig = { ...DEFAULT_ADMIN_CONFIG, passingThreshold: 70 };
     saveAdminConfig(cfg);
-    const raw = mockLocalStorage.getItem("northview-admin-config");
+    const raw = mockLocalStorage.getItem("miow-admin-config");
     expect(raw).toBeTruthy();
     expect(JSON.parse(raw!).passingThreshold).toBe(70);
   });
@@ -356,7 +356,7 @@ describe("listAudit", () => {
         at: "2025-01-01T00:00:00Z",
       },
     ];
-    mockLocalStorage.setItem("northview-audit-log", JSON.stringify(entries));
+    mockLocalStorage.setItem("miow-audit-log", JSON.stringify(entries));
     expect(listAudit()).toEqual(entries);
   });
 });
@@ -364,7 +364,7 @@ describe("listAudit", () => {
 describe("logAudit", () => {
   it("appends an entry with actor from session", () => {
     mockLocalStorage.setItem(
-      "northview-lms-session",
+      "miow-lms-session",
       JSON.stringify({ full_name: "Juan Dela Cruz", role: "teacher" }),
     );
     logAudit("update", "Updated grade");
@@ -395,7 +395,7 @@ describe("logAudit", () => {
       detail: "d",
       at: "2025-01-01T00:00:00Z",
     }));
-    mockLocalStorage.setItem("northview-audit-log", JSON.stringify(entries));
+    mockLocalStorage.setItem("miow-audit-log", JSON.stringify(entries));
     logAudit("new", "one more");
     expect(listAudit()).toHaveLength(200);
   });
@@ -435,17 +435,17 @@ describe("toCsv", () => {
 // ── resetLocalPreferences ───────────────────────────────────────────
 
 describe("resetLocalPreferences", () => {
-  it("removes all northview-* keys except session", () => {
-    mockLocalStorage.setItem("northview-theme", "dark");
-    mockLocalStorage.setItem("northview-fontsize", "large");
-    mockLocalStorage.setItem("northview-lms-session", '{"user":"test"}');
+  it("removes all miow-* keys except session", () => {
+    mockLocalStorage.setItem("miow-theme", "dark");
+    mockLocalStorage.setItem("miow-fontsize", "large");
+    mockLocalStorage.setItem("miow-lms-session", '{"user":"test"}');
     mockLocalStorage.setItem("other-key", "keep");
 
     resetLocalPreferences();
 
-    expect(mockLocalStorage.getItem("northview-theme")).toBeNull();
-    expect(mockLocalStorage.getItem("northview-fontsize")).toBeNull();
-    expect(mockLocalStorage.getItem("northview-lms-session")).toBe('{"user":"test"}');
+    expect(mockLocalStorage.getItem("miow-theme")).toBeNull();
+    expect(mockLocalStorage.getItem("miow-fontsize")).toBeNull();
+    expect(mockLocalStorage.getItem("miow-lms-session")).toBe('{"user":"test"}');
     expect(mockLocalStorage.getItem("other-key")).toBe("keep");
   });
 
