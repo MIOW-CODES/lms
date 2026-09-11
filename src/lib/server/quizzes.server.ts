@@ -547,6 +547,21 @@ export async function listQuizScoresForCourse(course_id: string, token: string) 
   }));
 }
 
+const ALLOWED_QUIZ_COLUMNS = new Set([
+  "title",
+  "description",
+  "course_id",
+  "duration_minutes",
+  "allow_retake",
+  "max_attempts",
+  "retake_score_policy",
+  "score_released",
+  "answer_key_released",
+  "question_count",
+  "attachments",
+  "deleted_at",
+]);
+
 export async function updateQuiz(
   tokenStr: string,
   id: string,
@@ -554,7 +569,11 @@ export async function updateQuiz(
   questions?: Array<{ question: string; options: string[]; correct_answer: string }>,
 ) {
   await requireQuizOwnerOrAdmin(tokenStr, id);
-  if (Object.keys(patch).length) await unwrap(db.from("quizzes").update(patch).eq("id", id));
+  const safePatch = Object.fromEntries(
+    Object.entries(patch).filter(([key]) => ALLOWED_QUIZ_COLUMNS.has(key)),
+  );
+  if (Object.keys(safePatch).length)
+    await unwrap(db.from("quizzes").update(safePatch).eq("id", id));
   if (questions && questions.length) {
     await unwrap(db.from("quiz_attempts").delete().eq("quiz_id", id));
     await unwrap(db.from("quiz_questions").delete().eq("quiz_id", id));

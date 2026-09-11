@@ -192,13 +192,29 @@ export async function requireAssignmentOwnerOrAdmin(token: string, assignmentId:
   return { caller, row };
 }
 
+const ALLOWED_ASSIGNMENT_COLUMNS = new Set([
+  "title",
+  "description",
+  "course_id",
+  "due_date",
+  "total_points",
+  "component_type",
+  "score_released",
+  "attachments",
+  "deleted_at",
+]);
+
 export async function updateAssignment(
   tokenStr: string,
   id: string,
   patch: Record<string, unknown>,
 ) {
   await requireAssignmentOwnerOrAdmin(tokenStr, id);
-  if (Object.keys(patch).length) await unwrap(db.from("assignments").update(patch).eq("id", id));
+  const safePatch = Object.fromEntries(
+    Object.entries(patch).filter(([key]) => ALLOWED_ASSIGNMENT_COLUMNS.has(key)),
+  );
+  if (Object.keys(safePatch).length)
+    await unwrap(db.from("assignments").update(safePatch).eq("id", id));
 }
 
 export async function deleteAssignment(tokenStr: string, id: string, mode: "soft" | "hard") {
@@ -239,6 +255,8 @@ export async function hardwareRoster() {
   return { synced_at: new Date().toISOString(), count: users.length, users };
 }
 
+// NOTE: The compat layer doesn't support .count(), so we fetch all rows.
+// For large tables this is O(n) — accept the limitation for now.
 export async function countRows(table: string): Promise<number> {
   const rows = await unwrap<unknown[]>(db.from(table).select("*"));
   return rows.length;
