@@ -109,11 +109,15 @@ function stripWorksheetPreamble(raw: string): string {
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = async () => {
-    const clean = stripWorksheetPreamble(text);
-    await navigator.clipboard.writeText(clean);
-    setCopied(true);
-    toast.success("Copied to clipboard");
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      const clean = stripWorksheetPreamble(text);
+      await navigator.clipboard.writeText(clean);
+      setCopied(true);
+      toast.success("Copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Could not copy — try selecting manually");
+    }
   };
   return (
     <button

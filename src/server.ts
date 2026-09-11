@@ -54,12 +54,7 @@ function applySecurityHeaders(res: Response) {
   res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   if (res.headers.get("content-type")?.includes("text/html")) {
     const isProd = process.env["NODE_ENV"] === "production";
-    // IMPORTANT: 'unsafe-inline' is REQUIRED for TanStack Start hydration.
-    // TanStack Start injects inline <script> tags during SSR hydration that
-    // cannot be migrated to external scripts without switching to nonce-based
-    // CSP. Removing 'unsafe-inline' WILL break hydration (blank page). If you
-    // need stricter CSP, migrate to nonce-based CSP first — do NOT simply
-    // remove this directive.
+    // 'unsafe-inline' is required for TanStack Start hydration scripts.
     // 'unsafe-eval' is only in dev for Vite HMR.
     const scriptSrc = isProd ? "'self' 'unsafe-inline'" : "'self' 'unsafe-inline' 'unsafe-eval'";
     res.headers.set(

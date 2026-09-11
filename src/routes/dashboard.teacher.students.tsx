@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/select";
 import {
   attendancePercent,
-  gradeRemarks,
   listAllAttendance,
   listAttendance,
   listCourses,
@@ -327,8 +326,16 @@ function StudentInfoModal({ student, onClose }: { student: Profile | null; onClo
         ) : (
           <div className="mt-1 flex items-center gap-3">
             <p className="font-display text-2xl font-bold">{gwa}</p>
-            <Badge tone={gwa >= 90 ? "green" : gwa >= 85 ? "indigo" : gwa >= 75 ? "amber" : "red"}>
-              {gradeRemarks(gwa)}
+            <Badge tone={gwa >= 90 ? "green" : gwa >= 80 ? "indigo" : gwa >= 75 ? "amber" : "red"}>
+              {gwa >= 90
+                ? "Outstanding"
+                : gwa >= 85
+                  ? "Very Satisfactory"
+                  : gwa >= 80
+                    ? "Satisfactory"
+                    : gwa >= 75
+                      ? "Fairly Satisfactory"
+                      : "Did Not Meet Expectations"}
             </Badge>
           </div>
         )}

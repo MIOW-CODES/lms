@@ -161,13 +161,9 @@ function QuizzesPage() {
   }, [result, activeId]);
 
   const finishRef = useRef<(() => Promise<void>) | null>(null);
-  const submittedRef = useRef(false);
 
   useEffect(() => {
-    if (secondsLeft === 0 && finishRef.current && !submittedRef.current) {
-      submittedRef.current = true;
-      finishRef.current();
-    }
+    if (secondsLeft === 0 && finishRef.current) finishRef.current();
   }, [secondsLeft]);
 
   const isLoading = !courses || !quizzes || !summaries;
@@ -213,7 +209,6 @@ function QuizzesPage() {
   };
 
   finishRef.current = finish;
-  submittedRef.current = false;
 
   const mm = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
   const ss = String(secondsLeft % 60).padStart(2, "0");

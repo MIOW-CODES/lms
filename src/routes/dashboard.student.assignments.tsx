@@ -31,6 +31,7 @@ import {
   useProfile,
 } from "@/components/lms";
 import { cn } from "@/lib/utils";
+import { LoadingSkeleton } from "@/components/ui-elements";
 
 export const Route = createFileRoute("/dashboard/student/assignments")({
   head: () => ({
@@ -60,6 +61,15 @@ function AssignmentsPage() {
   const [progress, setProgress] = useState(0);
   const [saving, setSaving] = useState(false);
   const fileInput = useRef<HTMLInputElement | null>(null);
+  const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const maxMB = Math.round(ASSIGNMENT_MAX_BYTES / (1024 * 1024));
+
+  // Clean up any in-flight progress timer on unmount
+  useEffect(() => {
+    return () => {
+      if (progressTimer.current) clearInterval(progressTimer.current);
+    };
+  }, []);
 
   // Assessment integrity: hide the ClassMate Assistant while the submission
   // workspace is open (restored when it closes or the page unmounts).
@@ -80,11 +90,23 @@ function AssignmentsPage() {
   });
   const { data: submissions } = useQuery({
     queryKey: ["submissions", profile?.id],
-    queryFn: () => listSubmissionsForStudent(profile!.id),
+    queryFn: () => {
+      if (!profile?.id) return [];
+      return listSubmissionsForStudent(profile.id);
+    },
     enabled: !!profile,
   });
 
+  const isLoading = !courses || !assignments || !submissions;
+
   if (!profile) return null;
+
+  if (isLoading)
+    return (
+      <AppShell nav={STUDENT_NAV} profile={profile} subtitle="Student Portal">
+        <LoadingSkeleton />
+      </AppShell>
+    );
 
   const myCourses = (courses ?? []).filter((c) => c.grade_level === profile.grade_level);
   const courseIds = new Set(myCourses.map((c) => c.id));
@@ -115,7 +137,7 @@ function AssignmentsPage() {
   const pickFile = (f: File | undefined | null) => {
     if (!f) return;
     if (f.size > ASSIGNMENT_MAX_BYTES) {
-      toast.error("File is too large (max 15 MB).");
+      toast.error(`File is too large (max ${maxMB} MB).`);
       return;
     }
     setFile(f);
@@ -131,7 +153,7 @@ function AssignmentsPage() {
     setSaving(true);
     setProgress(0);
     // Simulated upload progress while the RPC is in flight
-    const timer = setInterval(() => setProgress((p) => Math.min(90, p + 15)), 140);
+    progressTimer.current = setInterval(() => setProgress((p) => Math.min(90, p + 15)), 140);
     try {
       await submitAssignment({
         assignment_id: target.id,
@@ -150,7 +172,10 @@ function AssignmentsPage() {
     } catch {
       toast.error("Submission failed — please try again.");
     } finally {
-      clearInterval(timer);
+      if (progressTimer.current) {
+        clearInterval(progressTimer.current);
+        progressTimer.current = null;
+      }
       setSaving(false);
     }
   };
@@ -307,7 +332,7 @@ function AssignmentsPage() {
               <CloudUpload className="h-7 w-7 text-muted-foreground" />
               <p className="text-sm font-semibold">Drop a file here, or click to browse</p>
               <p className="text-xs text-muted-foreground">
-                PDF, DOCX, images — up to 15 MB · multiple files allowed
+                PDF, DOCX, images — up to {maxMB} MB · multiple files allowed
               </p>
             </>
           )}

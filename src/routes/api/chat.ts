@@ -89,11 +89,6 @@ export const Route = createFileRoute("/api/chat")({
         }
 
         const now = Date.now();
-        // Evict stale entries (> 60 s) to prevent unbounded memory growth
-        const CHAT_RATE_LIMIT_TTL = 60_000;
-        for (const [uid, ts] of chatRateLimits) {
-          if (now - ts > CHAT_RATE_LIMIT_TTL) chatRateLimits.delete(uid);
-        }
         const lastRequest = chatRateLimits.get(profile.id);
         if (lastRequest && now - lastRequest < CHAT_RATE_LIMIT_MS) {
           return new Response("Too many requests — please wait a moment", { status: 429 });

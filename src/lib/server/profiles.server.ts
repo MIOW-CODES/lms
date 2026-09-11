@@ -210,7 +210,7 @@ export async function createProfile(input: z.infer<typeof schemas.profileInput>)
   return safeProfile(p);
 }
 
-const SELF_PATCH_KEYS = ["full_name", "email", "avatar_url"];
+const SELF_PATCH_KEYS = ["full_name", "email", "avatar_url", "pin"];
 
 export function selfServicePatch(patch: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { motion } from "framer-motion";
+import { UserAvatar } from "@/components/ui-elements";
 import {
   BarChart3,
   BookOpen,
@@ -212,10 +213,10 @@ export function AppShell({
         </button>
         <div className="rounded-xl bg-sidebar-accent/80 p-3">
           <div className={cn("flex items-center gap-2.5", collapsed && "flex-col")}>
-            <img
-              src={profile.avatar_url ?? ""}
-              alt={profile.full_name}
-              className="h-9 w-9 rounded-full ring-2 ring-sidebar-primary/40"
+            <UserAvatar
+              src={profile.avatar_url}
+              name={profile.full_name}
+              className="h-9 w-9 ring-2 ring-sidebar-primary/40"
             />
             {!collapsed && (
               <div className="min-w-0 flex-1">
@@ -258,10 +259,10 @@ export function AppShell({
               title="Settings"
               className="flex items-center gap-2 rounded-full border border-border/70 bg-card/70 py-1 pl-1 pr-3 text-sm font-semibold transition-colors hover:bg-muted"
             >
-              <img
-                src={profile.avatar_url || undefined}
-                alt={profile.full_name}
-                className="h-7 w-7 rounded-full object-cover ring-1 ring-primary/30"
+              <UserAvatar
+                src={profile.avatar_url}
+                name={profile.full_name}
+                className="h-7 w-7 ring-1 ring-primary/30"
               />
               <span className="max-w-[10rem] truncate">{profile.full_name}</span>
               <Settings className="h-3.5 w-3.5 text-muted-foreground" />
