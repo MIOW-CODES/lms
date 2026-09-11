@@ -57,12 +57,18 @@ export async function authorizeCourseUpdate(
 
 const ALLOWED_COURSE_COLUMNS = new Set([
   "title",
-  "description",
   "code",
   "teacher_id",
-  "schedule",
-  "room",
-  "attachments",
+  "grade_level",
+  "color",
+  "education_level",
+  "college_year",
+  "strand",
+  "program",
+  "days_of_week",
+  "start_time",
+  "end_time",
+  "late_threshold_minutes",
   "deleted_at",
 ]);
 

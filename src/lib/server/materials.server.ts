@@ -197,6 +197,9 @@ const ALLOWED_ASSIGNMENT_COLUMNS = new Set([
   "description",
   "course_id",
   "due_date",
+  "total_points",
+  "component_type",
+  "score_released",
   "attachments",
   "deleted_at",
 ]);
