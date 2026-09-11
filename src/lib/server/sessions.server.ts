@@ -22,7 +22,9 @@ export function createSessionToken(profileId: string, jti: string = randomUUID()
     if (pending && typeof pending.then === "function")
       void pending.then(
         () => {},
-        () => {},
+        (err: unknown) => {
+          console.warn("[sessions] JTI insert failed (token works but cannot be revoked):", err);
+        },
       );
     else void pending;
   } catch (e) {

@@ -93,7 +93,7 @@ export function settingsPathFor(role: Role): string {
   return "/dashboard/student/settings";
 }
 
-const SIDEBAR_KEY = "northview-sidebar-collapsed";
+const SIDEBAR_KEY = "miow-sidebar-collapsed";
 
 function Breadcrumbs({ nav, subtitle }: { nav: NavItem[]; subtitle: string }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
