@@ -435,7 +435,7 @@ describe("toCsv", () => {
 // ── resetLocalPreferences ───────────────────────────────────────────
 
 describe("resetLocalPreferences", () => {
-  it("removes all northview-* keys except session", () => {
+  it("removes all miow-* keys except session", () => {
     mockLocalStorage.setItem("northview-theme", "dark");
     mockLocalStorage.setItem("northview-fontsize", "large");
     mockLocalStorage.setItem("northview-lms-session", '{"user":"test"}');

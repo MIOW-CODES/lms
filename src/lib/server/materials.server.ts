@@ -240,6 +240,6 @@ export async function hardwareRoster() {
 }
 
 export async function countRows(table: string): Promise<number> {
-  const rows = await unwrap<unknown[]>(db.from(table).select("*"));
+  const rows = await unwrap<unknown[]>(db.from(table).select("id"));
   return rows.length;
 }

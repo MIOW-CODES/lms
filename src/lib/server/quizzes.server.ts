@@ -511,40 +511,47 @@ export async function createQuizWithQuestions(
 export async function listQuizScoresForCourse(course_id: string, token: string) {
   await requireStaff(token);
   const quizzes = await unwrap<any[]>(
-    db.from("quizzes").select("id, title").eq("course_id", course_id).is("deleted_at", null),
+    db
+      .from("quizzes")
+      .select("id, title, retake_score_policy")
+      .eq("course_id", course_id)
+      .is("deleted_at", null),
   );
   if (!quizzes.length) return [];
 
   const quizIds = quizzes.map((q) => q.id);
   const attempts = await unwrap<any[]>(
-    db.from("quiz_attempts").select("quiz_id, student_id, score, total").in("quiz_id", quizIds),
+    db
+      .from("quiz_attempts")
+      .select("quiz_id, student_id, attempt_number, score, total")
+      .in("quiz_id", quizIds),
   );
 
-  // Group by quiz, then by student — take the effective (best) score per student per quiz
-  const quizMap = new Map<
-    string,
-    { title: string; students: Map<string, { score: number; total: number }> }
-  >();
+  const byQuizStudent = new Map<string, Map<string, AttemptRow[]>>();
   for (const q of quizzes) {
-    quizMap.set(q.id, { title: q.title, students: new Map() });
+    byQuizStudent.set(q.id, new Map());
   }
   for (const a of attempts) {
-    const quiz = quizMap.get(a.quiz_id);
-    if (!quiz) continue;
-    const existing = quiz.students.get(a.student_id);
-    // Keep the best score
-    if (!existing || a.score > existing.score) {
-      quiz.students.set(a.student_id, { score: a.score, total: a.total });
-    }
+    const studentMap = byQuizStudent.get(a.quiz_id);
+    if (!studentMap) continue;
+    const arr = studentMap.get(a.student_id) ?? [];
+    arr.push({ attempt_number: a.attempt_number, score: a.score, total: a.total });
+    studentMap.set(a.student_id, arr);
   }
 
-  return quizzes.map((q) => ({
-    quiz_id: q.id,
-    title: q.title,
-    scores: Object.fromEntries(
-      [...(quizMap.get(q.id)?.students.entries() ?? [])].map(([sid, s]) => [sid, s]),
-    ),
-  }));
+  return quizzes.map((q) => {
+    const studentMap = byQuizStudent.get(q.id)!;
+    const scores: Record<string, { score: number; total: number }> = {};
+    for (const [sid, attemptList] of studentMap) {
+      const eff = effectiveScore(attemptList, q.retake_score_policy);
+      if (eff) scores[sid] = eff;
+    }
+    return {
+      quiz_id: q.id,
+      title: q.title,
+      scores,
+    };
+  });
 }
 
 export async function updateQuiz(

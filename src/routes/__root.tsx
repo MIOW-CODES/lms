@@ -3,7 +3,6 @@ import {
   Outlet,
   Link,
   createRootRouteWithContext,
-  useRouter,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -36,8 +35,6 @@ function NotFoundComponent() {
 }
 
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
-  console.error(error);
-  const router = useRouter();
   useEffect(() => {
     reportError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
@@ -54,7 +51,6 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
-              router.invalidate();
               reset();
             }}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
@@ -117,7 +113,7 @@ function RootShell({ children }: { children: ReactNode }) {
         <script
           dangerouslySetInnerHTML={{
             __html:
-              'try{var t=localStorage.getItem("northview-theme");var d=t==="dark"||((t==="system"||!t)&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)document.documentElement.classList.add("dark");var f=localStorage.getItem("northview-fontsize");if(f==="small")document.documentElement.classList.add("font-small");else if(f==="large")document.documentElement.classList.add("font-large");if(localStorage.getItem("northview-contrast")==="1")document.documentElement.classList.add("high-contrast")}catch(e){}',
+              'try{var t=localStorage.getItem("miow-theme");var d=t==="dark"||((t==="system"||!t)&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)document.documentElement.classList.add("dark");var f=localStorage.getItem("miow-fontsize");if(f==="small")document.documentElement.classList.add("font-small");else if(f==="large")document.documentElement.classList.add("font-large");if(localStorage.getItem("miow-contrast")==="1")document.documentElement.classList.add("high-contrast")}catch(e){}',
           }}
         />
         <HeadContent />

@@ -28,10 +28,14 @@ export const Route = createFileRoute("/api/public/material")({
         if (!PATH_RE.test(p)) return new Response("Not found", { status: 404 });
         if (!t) return new Response("Unauthorized", { status: 401 });
         const server = await import("@/lib/server");
+        let caller;
         try {
-          await server.requireSession(t);
+          caller = await server.requireSession(t);
         } catch {
           return new Response("Unauthorized", { status: 401 });
+        }
+        if (caller.role !== "admin" && caller.role !== "teacher") {
+          return new Response("Forbidden", { status: 403 });
         }
         const { supabaseAdmin } = await import("@/integrations/db/client.server");
         const { data, error } = await supabaseAdmin.storage.from("course-materials").download(p);

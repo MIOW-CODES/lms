@@ -64,6 +64,7 @@ export const Route = createFileRoute("/api/chat")({
         if (!Array.isArray(messages)) {
           return new Response("Messages are required", { status: 400 });
         }
+        if (messages.length > 50) return new Response("Too many messages", { status: 400 });
         if (typeof token !== "string" || token.length === 0) {
           return new Response("Sign in to chat", { status: 401 });
         }
