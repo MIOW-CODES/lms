@@ -6,7 +6,6 @@ import { listQuizAttempts, grantQuizRetake, resetQuizAttempts } from "@/lib/lms"
 import { Badge, EmptyState } from "@/components/lms";
 import { switchSeverity } from "@/lib/anti-cheat";
 import { cn } from "@/lib/utils";
-import { GRADE_LEVELS } from "@/components/courses/constants";
 import {
   Select,
   SelectContent,
@@ -23,7 +22,6 @@ export function AttemptRoster({ quizId }: { quizId: string }) {
   });
   const [busy, setBusy] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [gradeFilter, setGradeFilter] = useState("all");
   const [sectionFilter, setSectionFilter] = useState("all");
   const refresh = () => qc.invalidateQueries({ queryKey: ["quiz-attempts", quizId] });
 
@@ -37,10 +35,6 @@ export function AttemptRoster({ quizId }: { quizId: string }) {
     if (!data) return [];
     const q = search.trim().toLowerCase();
     return data.students.filter((s) => {
-      if (gradeFilter !== "all") {
-        // Grade level isn't in roster data, so we skip if not available
-        // (roster doesn't include grade_level field)
-      }
       if (sectionFilter !== "all" && s.section !== sectionFilter) return false;
       if (!q) return true;
       return (
@@ -49,7 +43,7 @@ export function AttemptRoster({ quizId }: { quizId: string }) {
         (s.section ?? "").toLowerCase().includes(q)
       );
     });
-  }, [data, search, gradeFilter, sectionFilter]);
+  }, [data, search, sectionFilter]);
 
   const grant = async (studentId: string) => {
     setBusy(studentId);
@@ -103,19 +97,6 @@ export function AttemptRoster({ quizId }: { quizId: string }) {
             className="h-10 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
-        <Select value={gradeFilter} onValueChange={setGradeFilter}>
-          <SelectTrigger className="h-10 w-[140px] rounded-xl" aria-label="Filter by grade level">
-            <SelectValue placeholder="All grades" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All grades</SelectItem>
-            {GRADE_LEVELS.map((g) => (
-              <SelectItem key={g} value={String(g)}>
-                {g <= 12 ? `Grade ${g}` : `College Yr${g - 12}`}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         <Select value={sectionFilter} onValueChange={setSectionFilter}>
           <SelectTrigger className="h-10 w-[140px] rounded-xl" aria-label="Filter by section">
             <SelectValue placeholder="All sections" />
