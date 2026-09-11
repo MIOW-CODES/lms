@@ -134,7 +134,10 @@ function QuizzesPage() {
   };
 
   useEffect(() => {
-    if (activeId) void beginAttempt(activeId);
+    if (activeId) {
+      submittedRef.current = false;
+      void beginAttempt(activeId);
+    }
   }, [activeId]);
 
   useEffect(() => {
@@ -161,6 +164,7 @@ function QuizzesPage() {
   }, [result, activeId]);
 
   const finishRef = useRef<(() => Promise<void>) | null>(null);
+  const submittedRef = useRef(false);
 
   useEffect(() => {
     if (secondsLeft === 0 && finishRef.current) finishRef.current();
@@ -182,7 +186,8 @@ function QuizzesPage() {
   const myQuizzes = (quizzes ?? []).filter((q) => courseIds.has(q.course_id));
 
   const finish = async () => {
-    if (!activeId || result || !questions.length) return;
+    if (!activeId || result || !questions.length || submittedRef.current) return;
+    submittedRef.current = true;
     try {
       // Answers are scored server-side; the server enforces the retake policy
       // before recording the attempt. Pass question_ids for question bank scoring.

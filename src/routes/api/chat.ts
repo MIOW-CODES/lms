@@ -94,6 +94,10 @@ export const Route = createFileRoute("/api/chat")({
           return new Response("Too many requests — please wait a moment", { status: 429 });
         }
         chatRateLimits.set(profile.id, now);
+        // Evict stale entries every request to prevent unbounded memory growth
+        for (const [key, ts] of chatRateLimits) {
+          if (now - ts > 60_000) chatRateLimits.delete(key);
+        }
 
         const ctx = parseWorksheetContext(body.worksheetContext);
         const oaMessages = toOpenAIMessages(messages, systemPromptFor(profile, ctx));
