@@ -55,9 +55,24 @@ export async function authorizeCourseUpdate(
   return rest;
 }
 
+const ALLOWED_COURSE_COLUMNS = new Set([
+  "title",
+  "description",
+  "code",
+  "teacher_id",
+  "schedule",
+  "room",
+  "attachments",
+  "deleted_at",
+]);
+
 export async function updateCourse(id: string, patch: Record<string, unknown>) {
-  if ("teacher_id" in patch) await assertTeacherAssignable(patch["teacher_id"]);
-  await unwrap(db.from("courses").update(patch).eq("id", id));
+  const safePatch = Object.fromEntries(
+    Object.entries(patch).filter(([key]) => ALLOWED_COURSE_COLUMNS.has(key)),
+  );
+  if ("teacher_id" in safePatch) await assertTeacherAssignable(safePatch["teacher_id"]);
+  if (Object.keys(safePatch).length)
+    await unwrap(db.from("courses").update(safePatch).eq("id", id));
 }
 
 export async function deleteCourse(id: string) {
