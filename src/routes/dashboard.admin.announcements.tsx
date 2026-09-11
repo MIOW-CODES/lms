@@ -38,6 +38,7 @@ import {
   useProfile,
 } from "@/components/lms";
 import { cn } from "@/lib/utils";
+import { LoadingSkeleton } from "@/components/ui-elements";
 
 export const Route = createFileRoute("/dashboard/admin/announcements")({
   head: () => ({
@@ -125,7 +126,20 @@ export function AnnouncementsPage() {
     if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
   };
 
+  const isLoading = !announcements;
+
   if (!profile) return null;
+
+  if (isLoading)
+    return (
+      <AppShell
+        nav={staffNav(profile.role)}
+        profile={profile}
+        subtitle={profile.role === "admin" ? "MIOW Admin Console" : "MIOW Teacher Portal"}
+      >
+        <LoadingSkeleton />
+      </AppShell>
+    );
 
   const sorted = [...(announcements ?? [])].sort((a, b) => Number(b.pinned) - Number(a.pinned));
   const visible = sorted.filter((a) => {
@@ -173,7 +187,7 @@ export function AnnouncementsPage() {
           title: form.title,
           content: form.content,
           target_audience: form.target_audience,
-        }).catch((e) => console.error("[announcements-page]", e));
+        }).catch(() => {});
         if (pendingFiles.length) {
           let uploaded = 0;
           for (const file of pendingFiles) {
@@ -196,7 +210,7 @@ export function AnnouncementsPage() {
           title: form.title,
           content: form.content,
           target_audience: form.target_audience,
-        }).catch((e) => console.error("[announcements-page]", e));
+        }).catch(() => {});
         if (pendingFiles.length) {
           let uploaded = 0;
           for (const file of pendingFiles) {
@@ -371,12 +385,14 @@ export function AnnouncementsPage() {
           <input
             value={form.title}
             onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            aria-label="Announcement title"
             placeholder="Title *"
             className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
           <textarea
             value={form.content}
             onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
+            aria-label="Announcement body"
             placeholder="Announcement body *"
             rows={4}
             className="rounded-xl border border-input bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring"
@@ -387,6 +403,7 @@ export function AnnouncementsPage() {
               onChange={(e) =>
                 setForm((f) => ({ ...f, category: e.target.value as FormState["category"] }))
               }
+              aria-label="Announcement category"
               className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="academic">Academic</option>
@@ -396,6 +413,7 @@ export function AnnouncementsPage() {
             <select
               value={form.target_audience}
               onChange={(e) => setForm((f) => ({ ...f, target_audience: e.target.value }))}
+              aria-label="Target audience"
               className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="all">Everyone</option>

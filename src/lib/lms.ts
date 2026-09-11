@@ -477,12 +477,10 @@ export function transmutedOf(
   return transmute(initial);
 }
 
-import { logAudit } from "@/lib/settings";
+import { logAudit, SESSION_KEY } from "@/lib/settings";
 import { dbg, dbgError } from "@/lib/debug";
 
 /* ---------- Session (hardware-auth demo with signed server tokens) ---------- */
-
-const SESSION_KEY = "northview-lms-session";
 // Same-tab change signal — the browser "storage" event only fires across
 // tabs, so same-tab saves dispatch this custom event to wake subscribers.
 const PROFILE_EVENT = "ids-lms-profile-changed";

@@ -9,11 +9,9 @@ export function hitRateLimit(ip: string): boolean {
   const hits = (_rate.get(ip) ?? []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
   hits.push(now);
   _rate.set(ip, hits);
-  if (_rate.size > 1000) {
-    for (const [k, v] of _rate) {
-      const last = v[v.length - 1];
-      if (!v.length || (last != null && now - last > RATE_LIMIT_WINDOW_MS)) _rate.delete(k);
-    }
+  for (const [k, v] of _rate) {
+    const last = v[v.length - 1];
+    if (!v.length || (last != null && now - last > RATE_LIMIT_WINDOW_MS)) _rate.delete(k);
   }
   return hits.length > RATE_LIMIT_MAX;
 }

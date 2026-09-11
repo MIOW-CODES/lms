@@ -37,6 +37,7 @@ import {
   useProfile,
 } from "@/components/lms";
 import { cn } from "@/lib/utils";
+import { LoadingSkeleton } from "@/components/ui-elements";
 
 export const Route = createFileRoute("/dashboard/student/quizzes")({
   head: () => ({
@@ -133,7 +134,10 @@ function QuizzesPage() {
   };
 
   useEffect(() => {
-    if (activeId) void beginAttempt(activeId);
+    if (activeId) {
+      submittedRef.current = false;
+      void beginAttempt(activeId);
+    }
   }, [activeId]);
 
   useEffect(() => {
@@ -160,19 +164,30 @@ function QuizzesPage() {
   }, [result, activeId]);
 
   const finishRef = useRef<(() => Promise<void>) | null>(null);
+  const submittedRef = useRef(false);
 
   useEffect(() => {
-    if (secondsLeft === 0) finishRef.current?.();
+    if (secondsLeft === 0 && finishRef.current) finishRef.current();
   }, [secondsLeft]);
 
+  const isLoading = !courses || !quizzes || !summaries;
+
   if (!profile) return null;
+
+  if (isLoading)
+    return (
+      <AppShell nav={STUDENT_NAV} profile={profile} subtitle="Student Portal">
+        <LoadingSkeleton />
+      </AppShell>
+    );
 
   const myCourses = (courses ?? []).filter((c) => c.grade_level === profile.grade_level);
   const courseIds = new Set(myCourses.map((c) => c.id));
   const myQuizzes = (quizzes ?? []).filter((q) => courseIds.has(q.course_id));
 
   const finish = async () => {
-    if (!activeId || result || !questions.length) return;
+    if (!activeId || result || !questions.length || submittedRef.current) return;
+    submittedRef.current = true;
     try {
       // Answers are scored server-side; the server enforces the retake policy
       // before recording the attempt. Pass question_ids for question bank scoring.
@@ -374,12 +389,12 @@ function QuizzesPage() {
                           Your answer: {r.chosen?.trim() ? r.chosen : "Not answered"}
                         </p>
                         <p className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-3 py-1.5 font-semibold text-emerald-700 dark:text-emerald-300">
-                          {r.correct_answer.startsWith("Rubric:")
+                          {r.correct_answer?.startsWith("Rubric:")
                             ? // Strip the auto-grader's "| Keywords: ..." block from the review display.
                               `Rubric: ${r.correct_answer.slice("Rubric:".length).split("| Keywords:")[0]!.trim()}`
-                            : `Answer: ${r.correct_answer.split("||")[0]}`}
+                            : `Answer: ${r.correct_answer?.split("||")[0]}`}
                         </p>
-                        {r.correct_answer.startsWith("Rubric:") && !r.correct && (
+                        {r.correct_answer?.startsWith("Rubric:") && !r.correct && (
                           <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-rose-700 dark:text-rose-300">
                             Auto-graded: answers need at least 5 real words and must cover the
                             rubric's key concepts — gibberish or one-word replies fail

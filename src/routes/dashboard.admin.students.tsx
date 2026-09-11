@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Nfc, Plus, Search, Trash2 } from "lucide-react";
+import { GRADE_LEVELS } from "@/components/courses/constants";
 import {
   Select,
   SelectContent,
@@ -10,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { LoadingSkeleton, UserAvatar } from "@/components/ui-elements";
 import {
   attendancePercent,
   createProfile,
@@ -98,7 +100,20 @@ function StudentsPage() {
     });
   }, [students, search, gradeFilter, sectionFilter]);
 
+  const isLoading = !students;
+
   if (!profile) return null;
+
+  if (isLoading)
+    return (
+      <AppShell
+        nav={staffNav(profile.role)}
+        profile={profile}
+        subtitle={profile.role === "admin" ? "Admin Console" : "Teacher Portal"}
+      >
+        <LoadingSkeleton />
+      </AppShell>
+    );
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -133,7 +148,6 @@ function StudentsPage() {
   };
 
   const remove = async (id: string, name: string) => {
-    if (!confirm(`Remove ${name}? This deletes their records.`)) return;
     try {
       await deleteProfile(id);
       toast.success("Student removed.");
@@ -172,30 +186,26 @@ function StudentsPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search students"
             placeholder="Search name, student no., email or section…"
             className="h-11 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
         <Select value={gradeFilter} onValueChange={setGradeFilter}>
-          <SelectTrigger className="h-11 w-[160px] rounded-xl">
+          <SelectTrigger className="h-11 w-[160px] rounded-xl" aria-label="Filter by grade level">
             <SelectValue placeholder="All grades" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All grades</SelectItem>
-            {[7, 8, 9, 10, 11, 12].map((g) => (
+            {GRADE_LEVELS.map((g) => (
               <SelectItem key={g} value={String(g)}>
-                Grade {g}
-              </SelectItem>
-            ))}
-            {[13, 14, 15, 16].map((g) => (
-              <SelectItem key={g} value={String(g)}>
-                College Yr{g - 12}
+                {g <= 12 ? `Grade ${g}` : `College Yr${g - 12}`}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Select value={sectionFilter} onValueChange={setSectionFilter}>
-          <SelectTrigger className="h-11 w-[160px] rounded-xl">
+          <SelectTrigger className="h-11 w-[160px] rounded-xl" aria-label="Filter by section">
             <SelectValue placeholder="All sections" />
           </SelectTrigger>
           <SelectContent>
@@ -236,15 +246,20 @@ function StudentsPage() {
                 <tr
                   key={s.id}
                   onClick={() => setSelected(s)}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View details for ${s.full_name}`}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelected(s);
+                    }
+                  }}
                   className="cursor-pointer transition-colors hover:bg-muted/50"
                 >
                   <td className="p-4">
                     <div className="flex items-center gap-2.5">
-                      <img
-                        src={s.avatar_url ?? ""}
-                        alt={s.full_name}
-                        className="h-8 w-8 rounded-full"
-                      />
+                      <UserAvatar src={s.avatar_url} name={s.full_name} />
                       <div>
                         <p className="font-semibold">{s.full_name}</p>
                         <p className="text-xs text-muted-foreground">{s.email}</p>
@@ -265,6 +280,7 @@ function StudentsPage() {
                         e.stopPropagation();
                         remove(s.id, s.full_name);
                       }}
+                      aria-label={`Remove ${s.full_name}`}
                       className="rounded-lg p-2 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
                       title="Remove student"
                     >
@@ -284,18 +300,21 @@ function StudentsPage() {
           <input
             value={form.full_name}
             onChange={set("full_name")}
+            aria-label="Full name"
             placeholder="Full name *"
             className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring sm:col-span-2"
           />
           <input
             value={form.student_id}
             onChange={set("student_id")}
+            aria-label="Student number"
             placeholder="Student number * (e.g. 2026-0042)"
             className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
           <input
             value={form.email}
             onChange={set("email")}
+            aria-label="Email"
             placeholder="Email"
             className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
@@ -303,7 +322,7 @@ function StudentsPage() {
             value={form.grade_level}
             onValueChange={(v) => setForm((f) => ({ ...f, grade_level: v }))}
           >
-            <SelectTrigger className="h-11 rounded-xl">
+            <SelectTrigger className="h-11 rounded-xl" aria-label="Grade level">
               <SelectValue placeholder="Grade level" />
             </SelectTrigger>
             <SelectContent>
@@ -317,18 +336,21 @@ function StudentsPage() {
           <input
             value={form.section}
             onChange={set("section")}
+            aria-label="Section"
             placeholder="Section (e.g. Rizal)"
             className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
           <input
             value={form.pin}
             onChange={set("pin")}
+            aria-label="Student PIN"
             placeholder="PIN (4–8 digits)"
             className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
           <input
             value={form.rfid_uid}
             onChange={set("rfid_uid")}
+            aria-label="RFID UID"
             placeholder="RFID UID (6–20 digits)"
             className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
@@ -413,10 +435,10 @@ function StudentProfileModal({
   return (
     <Modal open={!!student} onClose={onClose} title={student.full_name}>
       <div className="mb-4 flex items-center gap-3">
-        <img
-          src={student.avatar_url ?? ""}
-          alt={student.full_name}
-          className="h-14 w-14 rounded-full ring-2 ring-primary/30"
+        <UserAvatar
+          src={student.avatar_url}
+          name={student.full_name}
+          className="h-14 w-14 ring-2 ring-primary/30"
         />
         <div>
           <p className="text-sm font-semibold">{student.student_id}</p>
@@ -458,6 +480,7 @@ function StudentProfileModal({
             <input
               value={newRfid}
               onChange={(e) => setNewRfid(e.target.value.replace(/\D/g, ""))}
+              aria-label="New RFID UID"
               placeholder={student.has_rfid ? "New RFID UID (card bound)" : "New RFID UID"}
               inputMode="numeric"
               className="h-10 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
@@ -477,6 +500,7 @@ function StudentProfileModal({
             <input
               value={newPin}
               onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
+              aria-label="New PIN"
               placeholder={student.has_pin ? "New PIN (already set)" : "New PIN"}
               inputMode="numeric"
               className="h-10 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"

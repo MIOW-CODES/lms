@@ -109,11 +109,15 @@ function stripWorksheetPreamble(raw: string): string {
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = async () => {
-    const clean = stripWorksheetPreamble(text);
-    await navigator.clipboard.writeText(clean);
-    setCopied(true);
-    toast.success("Copied to clipboard");
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      const clean = stripWorksheetPreamble(text);
+      await navigator.clipboard.writeText(clean);
+      setCopied(true);
+      toast.success("Copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Could not copy — try selecting manually");
+    }
   };
   return (
     <button
@@ -183,7 +187,7 @@ function ChatPanel({
   assistCtx?: WorksheetAssistContext | null;
   onClose: () => void;
 }) {
-  const storageKey = `northview-chat-${profile.id}`;
+  const storageKey = `miow-chat-${profile.id}`;
   const initialMessages = useMemo(() => loadHistory(storageKey), [storageKey]);
   // Form-to-Chat sync: the active Create Worksheet form's course/title ride
   // along with every request so generation stays scoped to the form.

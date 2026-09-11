@@ -9,10 +9,10 @@ export type ThemeMode = "light" | "dark" | "system";
 export type FontSize = "small" | "medium" | "large";
 
 export const THEME_KEY = "northview-theme";
-export const FONT_KEY = "northview-fontsize";
+const FONT_KEY = "northview-fontsize";
 const CONTRAST_KEY = "northview-contrast";
 const ADMIN_CFG_KEY = "northview-admin-config";
-export const AUDIT_KEY = "northview-audit-log";
+const AUDIT_KEY = "northview-audit-log";
 export const SESSION_KEY = "northview-lms-session";
 
 function readJson<T>(key: string): T | null {
@@ -215,7 +215,7 @@ export interface AdminConfig {
 }
 
 export const DEFAULT_ADMIN_CONFIG: AdminConfig = {
-  academicYear: "2026–2027",
+  academicYear: "2025–2026",
   activeQuarter: 2,
   weights: { attendance: 10, ww: 20, exam: 30, pt: 40 },
   passingThreshold: 75,
