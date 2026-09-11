@@ -101,7 +101,6 @@ function TeacherStudentsPage() {
   const [search, setSearch] = useState("");
   const [gradeFilter, setGradeFilter] = useState("all");
   const [sectionFilter, setSectionFilter] = useState("all");
-  const [quarter, setQuarter] = useState(4);
   const [selected, setSelected] = useState<Profile | null>(null);
 
   const sections = useMemo(() => {
@@ -194,18 +193,6 @@ function TeacherStudentsPage() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={String(quarter)} onValueChange={(v) => setQuarter(Number(v))}>
-          <SelectTrigger className="h-11 w-[120px] rounded-xl">
-            <SelectValue placeholder="Quarter" />
-          </SelectTrigger>
-          <SelectContent>
-            {[1, 2, 3, 4].map((q) => (
-              <SelectItem key={q} value={String(q)}>
-                Q{q}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
       {filtered.length === 0 ? (
@@ -272,8 +259,7 @@ function TeacherStudentsPage() {
                       const grades = gradesMap.get(s.id);
                       if (!grades) return <span className="text-xs text-muted-foreground">—</span>;
                       const att = attendancePercent(attendanceByStudent.get(s.id) ?? []);
-                      const quarterGrades = grades.filter((g) => g.quarter === quarter);
-                      const transmuted = quarterGrades
+                      const transmuted = grades
                         .map((g) => transmutedOf(g, att))
                         .filter((t): t is number => t != null);
                       const gwa = transmuted.length
@@ -297,7 +283,6 @@ function TeacherStudentsPage() {
 }
 
 function StudentInfoModal({ student, onClose }: { student: Profile | null; onClose: () => void }) {
-  const [quarter, setQuarter] = useState(4);
   const { data: grades } = useQuery({
     queryKey: ["student-grades", student?.id],
     queryFn: () => listGradesForStudent(student!.id),
@@ -310,8 +295,7 @@ function StudentInfoModal({ student, onClose }: { student: Profile | null; onClo
   });
   if (!student) return null;
   const att = attendancePercent(logs ?? []);
-  const quarterGrades = (grades ?? []).filter((g) => g.quarter === quarter);
-  const transmuted = quarterGrades
+  const transmuted = (grades ?? [])
     .map((g) => transmutedOf(g, att))
     .filter((t): t is number => t != null);
   const gwa = transmuted.length
@@ -332,20 +316,6 @@ function StudentInfoModal({ student, onClose }: { student: Profile | null; onClo
             Grade {student.grade_level} · {student.section ?? "—"}
           </Badge>
         </div>
-      </div>
-      <div className="mb-3">
-        <Select value={String(quarter)} onValueChange={(v) => setQuarter(Number(v))}>
-          <SelectTrigger className="h-9 w-[120px] rounded-lg">
-            <SelectValue placeholder="Quarter" />
-          </SelectTrigger>
-          <SelectContent>
-            {[1, 2, 3, 4].map((q) => (
-              <SelectItem key={q} value={String(q)}>
-                Q{q}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
       <div className="rounded-xl bg-muted/70 p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

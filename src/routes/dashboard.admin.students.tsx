@@ -148,7 +148,6 @@ function StudentsPage() {
   };
 
   const remove = async (id: string, name: string) => {
-    if (!confirm(`Delete ${name}? This action cannot be undone.`)) return;
     try {
       await deleteProfile(id);
       toast.success("Student removed.");
