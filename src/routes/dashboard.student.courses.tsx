@@ -27,6 +27,7 @@ import {
 } from "@/components/lms";
 import { levelLabel } from "@/lib/course-levels";
 import { cn } from "@/lib/utils";
+import { LoadingSkeleton } from "@/components/ui-elements";
 
 export const Route = createFileRoute("/dashboard/student/courses")({
   head: () => ({
@@ -66,7 +67,10 @@ function StudentCoursesPage() {
   });
   const { data: submissions } = useQuery({
     queryKey: ["submissions", profile?.id],
-    queryFn: () => listSubmissionsForStudent(profile!.id),
+    queryFn: () => {
+      if (!profile?.id) return [];
+      return listSubmissionsForStudent(profile.id);
+    },
     enabled: !!profile,
   });
   const { data: quizSummaries } = useQuery({
@@ -75,7 +79,16 @@ function StudentCoursesPage() {
     enabled: !!profile,
   });
 
+  const isLoading = !courses || !assignments || !quizzes || !submissions || !quizSummaries;
+
   if (!profile) return null;
+
+  if (isLoading)
+    return (
+      <AppShell nav={STUDENT_NAV} profile={profile} subtitle="Student Portal">
+        <LoadingSkeleton />
+      </AppShell>
+    );
 
   const myCourses = (courses ?? []).filter((c) => c.grade_level === profile.grade_level);
   const courseIds = new Set(myCourses.map((c) => c.id));

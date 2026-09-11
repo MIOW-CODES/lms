@@ -65,7 +65,10 @@ function StudentDashboard() {
   });
   const { data: grades, isLoading: gradesLoading } = useQuery({
     queryKey: ["grades", profile?.id],
-    queryFn: () => listGradesForStudent(profile!.id),
+    queryFn: () => {
+      if (!profile?.id) return [];
+      return listGradesForStudent(profile.id);
+    },
     enabled: !!profile,
   });
   const { data: assignments, isLoading: assignmentsLoading } = useQuery({
@@ -75,7 +78,10 @@ function StudentDashboard() {
   });
   const { data: submissions, isLoading: submissionsLoading } = useQuery({
     queryKey: ["submissions", profile?.id],
-    queryFn: () => listSubmissionsForStudent(profile!.id),
+    queryFn: () => {
+      if (!profile?.id) return [];
+      return listSubmissionsForStudent(profile.id);
+    },
     enabled: !!profile,
   });
   const { data: announcements, isLoading: announcementsLoading } = useQuery({
@@ -85,7 +91,10 @@ function StudentDashboard() {
   });
   const { data: logs, isLoading: logsLoading } = useQuery({
     queryKey: ["attendance", profile?.id],
-    queryFn: () => listAttendance(profile!.id),
+    queryFn: () => {
+      if (!profile?.id) return [];
+      return listAttendance(profile.id);
+    },
     enabled: !!profile,
   });
 
@@ -154,8 +163,8 @@ function StudentDashboard() {
         <div className="mb-6">
           <h1 className="font-display text-2xl font-bold sm:text-3xl">Student Dashboard</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Kumusta, {profile.full_name.split(" ")[0]}! · Grade {profile.grade_level} ·{" "}
-            {profile.section} · {profile.student_id}
+            Kumusta, {profile.full_name?.split(" ")[0] || profile.full_name || "Student"}! · Grade{" "}
+            {profile.grade_level} · {profile.section} · {profile.student_id}
           </p>
         </div>
       </FadeIn>

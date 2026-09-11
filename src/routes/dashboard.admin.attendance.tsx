@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { LogIn, LogOut, Nfc, Trash2, Volume2, VolumeX, Zap } from "lucide-react";
 import { toast } from "sonner";
+import { LoadingSkeleton, UserAvatar } from "@/components/ui-elements";
 import { ATTENDANCE_LIMIT_KIOSK, SCAN_BANNER_DISMISS_MS } from "@/components/courses/constants";
 import {
   createMockTapPayload,
@@ -156,7 +157,16 @@ export function AttendanceKiosk() {
     !!profile,
   );
 
+  const isLoading = !logs || !students;
+
   if (!profile) return null;
+
+  if (isLoading)
+    return (
+      <AppShell nav={TEACHER_NAV} profile={profile} subtitle="Teacher Portal">
+        <LoadingSkeleton />
+      </AppShell>
+    );
 
   const today = new Date().toDateString();
   const todayLogs = (logs ?? []).filter((l) => new Date(l.timestamp).toDateString() === today);
@@ -186,7 +196,6 @@ export function AttendanceKiosk() {
   };
 
   const removeLog = async (id: string) => {
-    if (!confirm("Delete this attendance record?")) return;
     try {
       await deleteAttendanceLog(id);
       toast.success("Record deleted.");
@@ -222,10 +231,10 @@ export function AttendanceKiosk() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <img
-                src={lastScan.profile.avatar_url ?? ""}
-                alt={lastScan.profile.full_name}
-                className="h-12 w-12 rounded-full ring-2 ring-white/60"
+              <UserAvatar
+                src={lastScan.profile.avatar_url}
+                name={lastScan.profile.full_name}
+                className="h-12 w-12 ring-2 ring-white/60"
               />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold">{lastScan.profile.full_name}</p>
@@ -234,8 +243,8 @@ export function AttendanceKiosk() {
                 </p>
                 {lastScan.course && (
                   <p className="truncate text-[11px] font-medium text-muted-foreground">
-                    {lastScan.course.code} {lastScan.course.start_time.slice(0, 5)}–
-                    {lastScan.course.end_time.slice(0, 5)} · grace{" "}
+                    {lastScan.course.code} {lastScan.course.start_time?.slice(0, 5) ?? "??:??"}–
+                    {lastScan.course.end_time?.slice(0, 5) ?? "??:??"} · grace{" "}
                     {lastScan.course.late_threshold_minutes}m
                   </p>
                 )}
@@ -272,6 +281,7 @@ export function AttendanceKiosk() {
         </div>
         <button
           onClick={() => setMuted((m) => !m)}
+          aria-label={muted ? "Unmute scan sounds" : "Mute scan sounds"}
           title={muted ? "Unmute scan sounds" : "Mute scan sounds"}
           className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm font-semibold hover:bg-muted"
         >
@@ -316,6 +326,7 @@ export function AttendanceKiosk() {
             <button
               type="button"
               disabled={busy}
+              aria-label="Simulate RFID tap"
               title="Dispatch a simulated reader payload"
               onClick={() =>
                 void handleTapPayload(createMockTapPayload(uid.trim() || undefined), true)
@@ -375,6 +386,7 @@ export function AttendanceKiosk() {
                     <select
                       value={l.status}
                       onChange={(e) => markStatus(l.id, e.target.value as AttendanceStatus)}
+                      aria-label="Attendance status override"
                       title="Manual override"
                       className="h-8 rounded-lg border border-border bg-background px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-ring"
                     >
@@ -387,6 +399,7 @@ export function AttendanceKiosk() {
                   )}
                   <button
                     onClick={() => removeLog(l.id)}
+                    aria-label="Delete attendance record"
                     title="Delete record"
                     className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
                   >
