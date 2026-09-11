@@ -296,6 +296,7 @@ function AdminSettings() {
       } else if (confirmAction === "purge") {
         const logs = await listAllAttendance(ATTENDANCE_LIMIT_PURGE);
         for (const l of logs) await deleteAttendanceLog(l.id);
+        await queryClient.invalidateQueries({ queryKey: ["attendance-all"] });
         logAudit("Data purge", `${logs.length} demo attendance logs purged`);
         setAudit(listAudit());
         toast.success(`Purged ${logs.length} attendance logs`);

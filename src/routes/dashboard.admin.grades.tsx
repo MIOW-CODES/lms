@@ -116,6 +116,10 @@ export function GradebookPage() {
   });
 
   useEffect(() => {
+    if (quizScoresError) toast.error("Could not load worksheet scores.");
+  }, [quizScoresError]);
+
+  useEffect(() => {
     if (!courses?.length && courseId) return;
     if (!courseId && courses?.length) setCourseId(courses[0]?.id ?? "");
   }, [courses, courseId]);
@@ -182,21 +186,26 @@ export function GradebookPage() {
     setSaving(true);
     try {
       let n = 0;
-      for (const s of roster) {
+      const valid = roster.filter((s) => {
         const c = cells[s.id];
-        if (!c || (c.ww === "" && c.pt === "" && c.ex === "")) continue;
-        const initial = weightedInitial(num(c.ww), num(c.pt), num(c.ex), attOf(s.id));
-        await upsertGrade({
-          student_id: s.id,
-          course_id: courseId,
-          quarter,
-          written_work_score: num(c.ww),
-          performance_task_score: num(c.pt),
-          exam_score: num(c.ex),
-          transmuted_final_grade: initial != null ? transmute(initial) : null,
-        });
-        n++;
-      }
+        return c && (c.ww !== "" || c.pt !== "" || c.ex !== "");
+      });
+      await Promise.all(
+        valid.map((s) => {
+          const c = cells[s.id]!;
+          const initial = weightedInitial(num(c.ww), num(c.pt), num(c.ex), attOf(s.id));
+          return upsertGrade({
+            student_id: s.id,
+            course_id: courseId,
+            quarter,
+            written_work_score: num(c.ww),
+            performance_task_score: num(c.pt),
+            exam_score: num(c.ex),
+            transmuted_final_grade: initial != null ? transmute(initial) : null,
+          });
+        }),
+      );
+      n = valid.length;
       toast.success(`Saved and published grades for ${n} student${n === 1 ? "" : "s"}.`);
       setPublished(true);
       qc.invalidateQueries({ queryKey: ["course-grades", courseId, quarter] });
