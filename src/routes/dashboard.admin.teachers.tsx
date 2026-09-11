@@ -263,6 +263,15 @@ function TeachersPage() {
                 <tr
                   key={t.id}
                   onClick={() => setSelected(t)}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View details for ${t.full_name}`}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelected(t);
+                    }
+                  }}
                   className="cursor-pointer transition-colors hover:bg-muted/50"
                 >
                   <td className="p-4">
