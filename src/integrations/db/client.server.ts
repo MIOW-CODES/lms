@@ -137,7 +137,7 @@ function createPgCompatLayer(): DbLike {
     private op: "select" | "insert" | "update" | "delete" = "select";
     private selectCols: string = "*";
     private filters: Filter[] = [];
-    private orders: string[] = [];
+    private orders: Array<{ col: string; ascending: boolean }> = [];
     private limitOne: boolean = false;
     private expectSingle: boolean = false;
     private insertData: unknown = null;
@@ -203,8 +203,8 @@ function createPgCompatLayer(): DbLike {
       return this;
     }
 
-    order(col: string): this {
-      this.orders.push(col);
+    order(col: string, opts?: { ascending?: boolean }): this {
+      this.orders.push({ col, ascending: opts?.ascending ?? true });
       return this;
     }
 
@@ -286,7 +286,9 @@ function createPgCompatLayer(): DbLike {
       };
 
       const orderClause = (): string =>
-        this.orders.length ? `ORDER BY ${this.orders.map(qi).join(", ")}` : "";
+        this.orders.length
+          ? `ORDER BY ${this.orders.map((o) => `${qi(o.col)} ${o.ascending ? "ASC" : "DESC"}`).join(", ")}`
+          : "";
 
       const returningClause = (): string => {
         if (!this.returning) return "";

@@ -109,7 +109,7 @@ export const schemas = {
     id: uuid,
     patch: z
       .object({
-        full_name: z.string().min(1).max(200),
+        full_name: z.string().min(1).max(200).nullable(),
         student_id: z.string().max(50).nullable(),
         email: z.string().max(320).nullable(),
         grade_level: z.number().int().min(7).max(16).nullable(),
