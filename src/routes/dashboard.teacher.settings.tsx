@@ -77,7 +77,7 @@ const TABS: Array<{ value: Tab; label: string; icon: React.ReactNode }> = [
 ];
 
 function TeacherSettingsPage() {
-  const profile = useProfile(["teacher"]);
+  const profile = useProfile(["teacher", "admin"]);
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("profile");
   const [settings, setSettings] = useState<TeacherSettings | null>(null);
@@ -530,6 +530,8 @@ function TeacherSettingsPage() {
                   </button>
                   <button
                     onClick={() => {
+                      // NOTE: The mock UID could collide with real student UIDs.
+                      // In production, use a proper UUID or prefixed mock to avoid conflicts.
                       const uid = String(Math.floor(1e9 + Math.random() * 9e9));
                       toast.info(`Mock tap received — card ••••${uid.slice(-4)}`);
                       void rebindRfid(uid);

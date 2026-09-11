@@ -27,15 +27,16 @@ export const Route = createFileRoute("/api/public/avatar")({
         // Accept new 16-hex and legacy 8-hex during migration.
         const validPath = PATH_RE.test(p) || PATH_RE_LEGACY.test(p);
         if (!validPath) return new Response("Not found", { status: 404 });
-        // Optional auth: if token header is supplied, validate it; keeps public access but harder to guess
+        // Require Authorization header — prevents user enumeration via avatar
+        // URL probing. Without a valid session, return 404 (not 401) to avoid
+        // leaking whether the resource exists.
         const auth = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-        if (auth) {
-          try {
-            const { requireSession } = await import("@/lib/server");
-            await requireSession(auth);
-          } catch {
-            return new Response("Unauthorized", { status: 401 });
-          }
+        if (!auth) return new Response("Not found", { status: 404 });
+        try {
+          const { requireSession } = await import("@/lib/server");
+          await requireSession(auth);
+        } catch {
+          return new Response("Unauthorized", { status: 401 });
         }
         const { supabaseAdmin } = await import("@/integrations/db/client.server");
         const { data, error } = await supabaseAdmin.storage.from("avatars").download(p);

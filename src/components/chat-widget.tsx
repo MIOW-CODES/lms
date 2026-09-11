@@ -183,7 +183,7 @@ function ChatPanel({
   assistCtx?: WorksheetAssistContext | null;
   onClose: () => void;
 }) {
-  const storageKey = `northview-chat-${profile.id}`;
+  const storageKey = `miow-chat-${profile.id}`;
   const initialMessages = useMemo(() => loadHistory(storageKey), [storageKey]);
   // Form-to-Chat sync: the active Create Worksheet form's course/title ride
   // along with every request so generation stays scoped to the form.

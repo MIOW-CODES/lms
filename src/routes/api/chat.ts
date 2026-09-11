@@ -50,6 +50,9 @@ function toOpenAIMessages(messages: ChatMessage[], systemPrompt: string) {
   return out;
 }
 
+const chatRateLimits = new Map<string, number>();
+const CHAT_RATE_LIMIT_MS = 10_000; // 10 seconds between requests
+
 export const Route = createFileRoute("/api/chat")({
   server: {
     handlers: {
@@ -84,6 +87,18 @@ export const Route = createFileRoute("/api/chat")({
         } catch {
           return new Response("Session expired — please sign in again", { status: 401 });
         }
+
+        const now = Date.now();
+        // Evict stale entries (> 60 s) to prevent unbounded memory growth
+        const CHAT_RATE_LIMIT_TTL = 60_000;
+        for (const [uid, ts] of chatRateLimits) {
+          if (now - ts > CHAT_RATE_LIMIT_TTL) chatRateLimits.delete(uid);
+        }
+        const lastRequest = chatRateLimits.get(profile.id);
+        if (lastRequest && now - lastRequest < CHAT_RATE_LIMIT_MS) {
+          return new Response("Too many requests — please wait a moment", { status: 429 });
+        }
+        chatRateLimits.set(profile.id, now);
 
         const ctx = parseWorksheetContext(body.worksheetContext);
         const oaMessages = toOpenAIMessages(messages, systemPromptFor(profile, ctx));
@@ -130,9 +145,7 @@ export const Route = createFileRoute("/api/chat")({
               if (data === "[DONE]") {
                 if (textStarted) {
                   controller.enqueue(
-                    encoder.encode(
-                      `data: ${JSON.stringify({ type: "text-end", id: textId })}\n\n`,
-                    ),
+                    encoder.encode(`data: ${JSON.stringify({ type: "text-end", id: textId })}\n\n`),
                   );
                 }
                 controller.enqueue(encoder.encode("data: [DONE]\n\n"));

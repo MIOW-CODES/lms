@@ -91,6 +91,8 @@ const TABS: Array<{ value: Tab; label: string; icon: React.ReactNode }> = [
   { value: "logs", label: "Logs & Backups", icon: <ScrollText className="h-4 w-4" /> },
 ];
 
+// NOTE: This schema dump is a snapshot and may not reflect the current database schema.
+// It is intended as a quick reference, not a source of truth.
 const SCHEMA_DUMP = `-- MIOW — PostgreSQL schema dump (demo export)
 CREATE TABLE profiles (id uuid PRIMARY KEY, full_name text NOT NULL, student_id text, email text, role text NOT NULL, grade_level int, section text, pin_hash text, rfid_uid text, avatar_url text, created_at timestamptz DEFAULT now());
 CREATE TABLE announcements (id uuid PRIMARY KEY, title text NOT NULL, content text NOT NULL, category text NOT NULL, target_audience text DEFAULT 'all', pinned boolean DEFAULT false, author_id uuid REFERENCES profiles(id), created_at timestamptz DEFAULT now());
@@ -507,7 +509,7 @@ function AdminSettings() {
                       </div>
                       <div
                         className="absolute bottom-5 right-5 h-9 w-12 rounded-md"
-                        style={{ background: BRAND_COLORS.gold, opacity: 0.85 }}
+                        style={{ background: BRAND_COLORS.pink, opacity: 0.85 }}
                       />
                     </div>
                     <p className="mt-2 text-xs text-muted-foreground">

@@ -123,6 +123,11 @@ function AssignmentsPage() {
 
   const submit = async () => {
     if (!target || (!content.trim() && !file)) return;
+    if (file) {
+      toast.error("File upload is not yet supported — please submit without attachment");
+      setFile(null);
+      return;
+    }
     setSaving(true);
     setProgress(0);
     // Simulated upload progress while the RPC is in flight
@@ -132,7 +137,7 @@ function AssignmentsPage() {
         assignment_id: target.id,
         student_id: profile.id,
         content: content.trim() || null,
-        file_url: file ? `uploads/${profile.student_id ?? profile.id}/${file.name}` : null,
+        file_url: null,
         status: "submitted",
         submitted_at: new Date().toISOString(),
       });
