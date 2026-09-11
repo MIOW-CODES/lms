@@ -383,7 +383,7 @@ function TeacherSettingsPage() {
                   />
                   <Field
                     label="Faculty / Teacher ID"
-                    value={profile.student_id ?? "—"}
+                    value={profile.employee_id ?? "—"}
                     disabled
                     aria-readonly
                     title="Faculty IDs are issued by the admin office"
