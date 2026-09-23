@@ -20,6 +20,7 @@ interface CourseWizardModalProps {
   editing: Course | null;
   teachers: Array<{ id: string; full_name: string }>;
   isAdmin: boolean;
+  currentUserId?: string;
   onSaved: () => void;
 }
 
@@ -29,6 +30,7 @@ export function CourseWizardModal({
   editing,
   teachers,
   isAdmin,
+  currentUserId,
   onSaved,
 }: CourseWizardModalProps) {
   const qc = useQueryClient();
@@ -53,10 +55,14 @@ export function CourseWizardModal({
         program: editing.program ?? "",
       });
     } else {
-      setCourseForm(EMPTY_COURSE);
+      setCourseForm({
+        ...EMPTY_COURSE,
+        // Pre-select the creating teacher as the course lead when not an admin
+        teacher_id: !isAdmin && currentUserId ? currentUserId : EMPTY_COURSE.teacher_id,
+      });
     }
     setWizardStep("basic");
-  }, [open, editing]);
+  }, [open, editing, isAdmin, currentUserId]);
 
   const saveCourse = async () => {
     if (!courseForm.title || !courseForm.code) {
@@ -236,8 +242,7 @@ export function CourseWizardModal({
 
       {wizardStep === "assignment" && (
         <div className="grid gap-3">
-          {isAdmin ? (
-            <label className="block">
+          <label className="block">
               <span className="mb-1 block text-xs font-semibold text-muted-foreground">
                 Course lead (teacher)
               </span>
@@ -255,11 +260,6 @@ export function CourseWizardModal({
                 ))}
               </select>
             </label>
-          ) : (
-            <p className="rounded-xl border border-border bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
-              Course leads are assigned by administrators.
-            </p>
-          )}
           {(courseForm.grade_level === "11" || courseForm.grade_level === "12") && (
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-muted-foreground">

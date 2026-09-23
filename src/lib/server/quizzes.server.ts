@@ -397,7 +397,7 @@ export async function updateQuizRetakePolicy(
 export async function listQuizAttemptsForQuiz(quiz_id: string, token: string) {
   await requireQuizOwnerOrAdmin(token, quiz_id);
   const quiz = await getQuizConfig(quiz_id);
-  const [attempts, grants] = await Promise.all([
+  const [attempts, grants, overrides] = await Promise.all([
     unwrap<any[]>(
       db
         .from("quiz_attempts")
@@ -408,8 +408,18 @@ export async function listQuizAttemptsForQuiz(quiz_id: string, token: string) {
     unwrap<any[]>(
       db.from("quiz_retake_grants").select("student_id, extra_attempts").eq("quiz_id", quiz_id),
     ),
+    unwrap<any[]>(
+      db
+        .from("quiz_score_overrides")
+        .select("student_id, score, total, notes")
+        .eq("quiz_id", quiz_id),
+    ),
   ]);
   const studentIds = [...new Set<string>((attempts ?? []).map((a: any) => a.student_id as string))];
+  // Include students who have an override but no attempts (manual entry).
+  for (const o of overrides ?? []) {
+    if (!studentIds.includes(o.student_id as string)) studentIds.push(o.student_id as string);
+  }
   const profiles = studentIds.length
     ? await unwrap<any[]>(
         db.from("profiles").select("id, full_name, student_id, section").in("id", studentIds),
@@ -418,6 +428,9 @@ export async function listQuizAttemptsForQuiz(quiz_id: string, token: string) {
   const nameOf = new Map<string, any>((profiles ?? []).map((p: any) => [p.id as string, p]));
   const extraOf = new Map<string, number>(
     (grants ?? []).map((g: any) => [g.student_id as string, (g.extra_attempts as number) ?? 0]),
+  );
+  const overrideOf = new Map<string, any>(
+    (overrides ?? []).map((o: any) => [o.student_id as string, o]),
   );
   const byStudent = new Map<string, AttemptRow[]>();
   for (const a of attempts ?? []) {
@@ -433,7 +446,11 @@ export async function listQuizAttemptsForQuiz(quiz_id: string, token: string) {
   const students = studentIds.map((sid) => {
     const list = byStudent.get(sid) ?? [];
     const eff = effectiveScore(list, quiz.retake_score_policy);
+    const ov = overrideOf.get(sid);
     const p = nameOf.get(sid);
+    // A teacher override supersedes the computed effective score.
+    const overrideScore = ov?.score != null ? (ov.score as number) : null;
+    const overrideTotal = ov?.total != null ? (ov.total as number) : null;
     return {
       student_id: sid,
       full_name: p?.full_name ?? "Unknown student",
@@ -442,8 +459,11 @@ export async function listQuizAttemptsForQuiz(quiz_id: string, token: string) {
       attempts: list,
       attempts_used: list.length,
       extra_attempts: extraOf.get(sid) ?? 0,
-      effective_score: eff?.score ?? null,
-      effective_total: eff?.total ?? null,
+      effective_score: overrideScore ?? eff?.score ?? null,
+      effective_total: overrideTotal ?? eff?.total ?? null,
+      override_score: overrideScore,
+      override_total: overrideTotal,
+      override_notes: (ov?.notes as string | null) ?? null,
     };
   });
   return {
@@ -456,6 +476,96 @@ export async function listQuizAttemptsForQuiz(quiz_id: string, token: string) {
       retake_score_policy: quiz.retake_score_policy,
     },
     students,
+  };
+}
+
+/**
+ * Teacher manual override of a student's effective worksheet score. The raw
+ * AI attempt rows are preserved; the override is applied on top so it can be
+ * revised or cleared without losing history.
+ */
+export async function overrideQuizAttempt(
+  quiz_id: string,
+  student_id: string,
+  score: number | null,
+  total: number | null,
+  notes: string | null,
+  token: string,
+) {
+  const caller = await requireQuizOwnerOrAdmin(token, quiz_id);
+  const existing = await unwrap<any>(
+    db
+      .from("quiz_score_overrides")
+      .select("id")
+      .eq("quiz_id", quiz_id)
+      .eq("student_id", student_id)
+      .maybeSingle(),
+  );
+  const payload = {
+    quiz_id,
+    student_id,
+    score,
+    total,
+    notes,
+    overridden_by: caller.id,
+    updated_at: new Date().toISOString(),
+  };
+  if (existing) await unwrap(db.from("quiz_score_overrides").update(payload).eq("id", existing.id));
+  else await unwrap(db.from("quiz_score_overrides").insert(payload));
+}
+
+/** Full attempt detail incl. per-question results for one student. */
+export async function listStudentAttemptDetail(quiz_id: string, student_id: string, token: string) {
+  await requireQuizOwnerOrAdmin(token, quiz_id);
+  const [quiz, profile, attempts, override] = await Promise.all([
+    unwrap<any>(db.from("quizzes").select("id, title").eq("id", quiz_id).maybeSingle()),
+    unwrap<any>(
+      db
+        .from("profiles")
+        .select("id, full_name, student_id, section")
+        .eq("id", student_id)
+        .maybeSingle(),
+    ),
+    unwrap<any[]>(
+      db
+        .from("quiz_attempts")
+        .select("attempt_number, score, total, created_at, results, tab_switches")
+        .eq("quiz_id", quiz_id)
+        .eq("student_id", student_id)
+        .order("attempt_number"),
+    ),
+    unwrap<any>(
+      db
+        .from("quiz_score_overrides")
+        .select("score, total, notes")
+        .eq("quiz_id", quiz_id)
+        .eq("student_id", student_id)
+        .maybeSingle(),
+    ),
+  ]);
+  return {
+    quiz: { id: quiz?.id ?? quiz_id, title: quiz?.title ?? "Worksheet" },
+    student: {
+      id: student_id,
+      full_name: profile?.full_name ?? "Unknown student",
+      student_no: profile?.student_id ?? null,
+      section: profile?.section ?? null,
+    },
+    attempts: (attempts ?? []).map((a: any) => ({
+      attempt_number: a.attempt_number as number,
+      score: a.score as number,
+      total: a.total as number,
+      created_at: (a.created_at as string) ?? "",
+      results: Array.isArray(a.results) ? a.results : [],
+      tab_switches: Array.isArray(a.tab_switches) ? a.tab_switches : [],
+    })),
+    override: override
+      ? {
+          score: (override.score as number | null) ?? null,
+          total: (override.total as number | null) ?? null,
+          notes: (override.notes as string | null) ?? null,
+        }
+      : null,
   };
 }
 
@@ -520,12 +630,20 @@ export async function listQuizScoresForCourse(course_id: string, token: string) 
   if (!quizzes.length) return [];
 
   const quizIds = quizzes.map((q) => q.id);
-  const attempts = await unwrap<any[]>(
-    db
-      .from("quiz_attempts")
-      .select("quiz_id, student_id, attempt_number, score, total")
-      .in("quiz_id", quizIds),
-  );
+  const [attempts, overrides] = await Promise.all([
+    unwrap<any[]>(
+      db
+        .from("quiz_attempts")
+        .select("quiz_id, student_id, attempt_number, score, total")
+        .in("quiz_id", quizIds),
+    ),
+    unwrap<any[]>(
+      db
+        .from("quiz_score_overrides")
+        .select("quiz_id, student_id, score, total")
+        .in("quiz_id", quizIds),
+    ),
+  ]);
 
   const byQuizStudent = new Map<string, Map<string, AttemptRow[]>>();
   for (const q of quizzes) {
@@ -539,6 +657,15 @@ export async function listQuizScoresForCourse(course_id: string, token: string) 
     studentMap.set(a.student_id, arr);
   }
 
+  // Teacher overrides keyed by quiz → student.
+  const overrideMap = new Map<string, Map<string, { score: number; total: number }>>();
+  for (const o of overrides) {
+    if (o.score == null || o.total == null) continue;
+    const m = overrideMap.get(o.quiz_id) ?? new Map();
+    m.set(o.student_id, { score: o.score as number, total: o.total as number });
+    overrideMap.set(o.quiz_id, m);
+  }
+
   return quizzes.map((q) => {
     const studentMap = byQuizStudent.get(q.id)!;
     const scores: Record<string, { score: number; total: number }> = {};
@@ -546,6 +673,8 @@ export async function listQuizScoresForCourse(course_id: string, token: string) 
       const eff = effectiveScore(attemptList, q.retake_score_policy);
       if (eff) scores[sid] = eff;
     }
+    // Overrides always win over computed scores.
+    for (const [sid, ov] of overrideMap.get(q.id) ?? []) scores[sid] = ov;
     return {
       quiz_id: q.id,
       title: q.title,

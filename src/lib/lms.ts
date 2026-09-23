@@ -61,6 +61,11 @@ import {
   uploadAvatarFn,
   upsertGradeFn,
   pinLoginFn,
+  uploadSubmissionFileFn,
+  listSubmissionsForAssignmentFn,
+  gradeSubmissionFn,
+  overrideAttemptFn,
+  listStudentAttemptDetailFn,
 } from "@/lib/lms.functions";
 
 /* ---------- Types ---------- */
@@ -134,6 +139,7 @@ export interface Course {
   college_year?: number | null;
   strand?: string | null;
   program?: string | null;
+  grading_system?: "k12_quarterly" | "college_semestral" | null;
 }
 
 const DAY_LABELS: Record<string, string> = {
@@ -207,6 +213,7 @@ export interface Submission {
   assignment_id: string;
   student_id: string;
   file_url: string | null;
+  file_urls?: Attachment[];
   content: string | null;
   score: number | null;
   feedback: string | null;
@@ -221,6 +228,43 @@ export interface Attachment {
   size: number;
   type: string;
   path: string;
+}
+
+/** One student's submission on an assignment, as seen by staff. */
+export interface AssignmentSubmission {
+  id: string;
+  student_id: string;
+  full_name: string;
+  student_no: string | null;
+  section: string | null;
+  content: string | null;
+  file_urls: Attachment[] | null;
+  score: number | null;
+  feedback: string | null;
+  status: "pending" | "submitted" | "graded";
+  submitted_at: string | null;
+}
+
+/** Full per-question attempt detail for one student on one worksheet. */
+export interface AttemptDetail {
+  quiz: { id: string; title: string };
+  student: { id: string; full_name: string; student_no: string | null; section: string | null };
+  attempts: Array<{
+    attempt_number: number;
+    score: number;
+    total: number;
+    created_at: string;
+    results: Array<{
+      id: string;
+      question: string;
+      options: string[];
+      chosen: string | null;
+      correct_answer: string;
+      correct: boolean;
+    }>;
+    tab_switches: Array<{ at: number; type: string }>;
+  }>;
+  override: { score: number | null; total: number | null; notes: string | null } | null;
 }
 
 export type RetakePolicy = "highest_score" | "latest_attempt" | "average_score";
@@ -264,6 +308,10 @@ export interface Grade {
   performance_task_score: number | null;
   exam_score: number | null;
   transmuted_final_grade: number | null;
+  overridden_by_teacher?: boolean;
+  override_notes?: string | null;
+  overridden_at?: string | null;
+  overridden_by?: string | null;
 }
 
 export type AttendanceStatus = "on-time" | "late" | "excused";
@@ -351,6 +399,10 @@ export interface QuizAttemptRosterEntry {
   extra_attempts: number;
   effective_score: number | null;
   effective_total: number | null;
+  /** Teacher manual override (supersedes the computed effective score). */
+  override_score?: number | null;
+  override_total?: number | null;
+  override_notes?: string | null;
 }
 
 export interface QuizAttemptRoster {
@@ -788,10 +840,45 @@ export async function listSubmissionsForStudent(studentId: string): Promise<Subm
   return listSubmissionsForStudentFn({ data: { studentId, token: sessionToken() } });
 }
 
-export async function submitAssignment(input: Partial<Submission>): Promise<void> {
-  await submitAssignmentFn({
+export async function submitAssignment(input: Partial<Submission>): Promise<{ id: string }> {
+  return submitAssignmentFn({
     data: { ...(input as object), token: sessionToken() } as Record<string, unknown>,
-  });
+  }) as Promise<{ id: string }>;
+}
+
+/** Upload one file to a submission and get back its metadata record. */
+export async function uploadSubmissionFile(submissionId: string, file: File): Promise<Attachment> {
+  const data = await fileToBase64(file);
+  return uploadSubmissionFileFn({
+    data: {
+      submission_id: submissionId,
+      name: file.name,
+      data,
+      content_type: file.type || "application/octet-stream",
+      token: sessionToken(),
+    },
+  }) as Promise<Attachment>;
+}
+
+/** Staff: every submission on an assignment (scores, answers, files). */
+export async function listSubmissionsForAssignment(
+  assignmentId: string,
+): Promise<AssignmentSubmission[]> {
+  return listSubmissionsForAssignmentFn({
+    data: { assignmentId, token: sessionToken() },
+  }) as Promise<AssignmentSubmission[]>;
+}
+
+/** Teacher: manually grade an assignment submission. */
+export async function gradeSubmission(
+  id: string,
+  patch: {
+    score: number | null;
+    feedback: string | null;
+    status?: "pending" | "submitted" | "graded";
+  },
+): Promise<void> {
+  await gradeSubmissionFn({ data: { id, patch, token: sessionToken() } });
 }
 
 export async function listQuizzes(): Promise<Quiz[]> {
@@ -855,6 +942,36 @@ export async function resetQuizAttempts(quizId: string, studentId: string): Prom
   await resetQuizAttemptsFn({
     data: { quiz_id: quizId, student_id: studentId, token: sessionToken() },
   });
+}
+
+/** Teacher override of a student's effective worksheet score. */
+export async function overrideQuizAttempt(
+  quizId: string,
+  studentId: string,
+  score: number | null,
+  total: number | null,
+  notes: string | null,
+): Promise<void> {
+  await overrideAttemptFn({
+    data: {
+      quiz_id: quizId,
+      student_id: studentId,
+      score,
+      total,
+      notes,
+      token: sessionToken(),
+    },
+  });
+}
+
+/** Per-question attempt detail for one student on one worksheet. */
+export async function listStudentAttemptDetail(
+  quizId: string,
+  studentId: string,
+): Promise<AttemptDetail> {
+  return listStudentAttemptDetailFn({
+    data: { quiz_id: quizId, student_id: studentId, token: sessionToken() },
+  }) as Promise<AttemptDetail>;
 }
 
 export type QuizCourseScore = {

@@ -203,12 +203,12 @@ export const listCoursesFn = createServerFn({ method: "POST" })
     return server.listCourses();
   });
 
-// Course lifecycle (create / reassign lead / delete) is ADMIN-ONLY: teachers
-// may only edit metadata on courses they already lead.
+// Course lifecycle: teachers and admins may create courses. Only admins may
+// reassign course leads or delete courses. Teachers edit their own courses.
 export const createCourseFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.courseInput.parse(data))
   .handler(async ({ data }) => {
-    await server.requireAdmin(data.token);
+    await server.requireStaff(data.token);
     return server.createCourse(data);
   });
 
@@ -278,6 +278,29 @@ export const submitAssignmentFn = createServerFn({ method: "POST" })
     return server.submitAssignment(data);
   });
 
+// Student (or staff on their behalf) attaches a file to a submission.
+export const uploadSubmissionFileFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.submissionUpload.parse(data))
+  .handler(async ({ data }) =>
+    server.uploadSubmissionFile(
+      data.token,
+      data.submission_id,
+      data.name,
+      data.data,
+      data.content_type,
+    ),
+  );
+
+// Staff view of every submission on one assignment (scores, answers, files).
+export const listSubmissionsForAssignmentFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.assignmentScoped.parse(data))
+  .handler(async ({ data }) => server.listSubmissionsForAssignment(data.assignmentId, data.token));
+
+// Teacher manual grading of an assignment submission.
+export const gradeSubmissionFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.gradeSubmission.parse(data))
+  .handler(async ({ data }) => server.gradeSubmission(data.token, data.id, data.patch));
+
 /* ---------- Quizzes ---------- */
 
 export const listQuizzesFn = createServerFn({ method: "POST" })
@@ -345,6 +368,27 @@ export const grantQuizRetakeFn = createServerFn({ method: "POST" })
 export const resetQuizAttemptsFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.retakeGrant.parse(data))
   .handler(async ({ data }) => server.resetQuizAttempts(data.quiz_id, data.student_id, data.token));
+
+// Teacher override of a student's effective worksheet score (AI may mis-grade).
+export const overrideAttemptFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.attemptOverride.parse(data))
+  .handler(async ({ data }) =>
+    server.overrideQuizAttempt(
+      data.quiz_id,
+      data.student_id,
+      data.score,
+      data.total ?? null,
+      data.notes ?? null,
+      data.token,
+    ),
+  );
+
+// Per-question attempt detail for one student on one worksheet.
+export const listStudentAttemptDetailFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.attemptDetail.parse(data))
+  .handler(async ({ data }) =>
+    server.listStudentAttemptDetail(data.quiz_id, data.student_id, data.token),
+  );
 
 export const createQuizWithQuestionsFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.quizBundle.parse(data))
