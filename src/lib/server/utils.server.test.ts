@@ -5,7 +5,18 @@ process.env["SUPABASE_URL"] ??= "https://test.supabase.co";
 process.env["SUPABASE_SERVICE_ROLE_KEY"] ??= "test-service-role-key-1234567890abcdef";
 process.env["SUPABASE_PUBLISHABLE_KEY"] ??= "test-publishable-key";
 
-import { unwrap, withoutToken, sleep } from "./utils.server";
+import { unwrap, withoutToken, sleep, isUniqueViolation, DatabaseError } from "./utils.server";
+
+describe("isUniqueViolation", () => {
+  it("is true only for a 23505 DatabaseError", () => {
+    expect(isUniqueViolation(new DatabaseError("Database request failed", "23505"))).toBe(true);
+    expect(isUniqueViolation(new DatabaseError("Database request failed", "42P01"))).toBe(false);
+    expect(isUniqueViolation(new DatabaseError("Database request failed"))).toBe(false);
+    expect(isUniqueViolation(new Error("Database request failed"))).toBe(false);
+    expect(isUniqueViolation(null)).toBe(false);
+    expect(isUniqueViolation("23505")).toBe(false);
+  });
+});
 
 describe("sleep", () => {
   it("resolves after the specified delay", async () => {

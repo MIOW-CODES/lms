@@ -2,7 +2,7 @@
 // Quizzes — CRUD, attempts, retake policy engine, essay grading, scoring.
 import { z } from "zod";
 import { db } from "@/integrations/db/client.server";
-import { unwrap, withoutToken, DatabaseError } from "@/lib/server/utils.server";
+import { unwrap, withoutToken, isUniqueViolation } from "@/lib/server/utils.server";
 import { requireSession, requireStaff } from "@/lib/server/auth.server";
 import { schemas } from "@/lib/server/schemas.server";
 import type { IntegrityEventType } from "@/lib/integrity";
@@ -411,7 +411,7 @@ export async function submitQuizAttempt(
   } catch (e) {
     // A racing identical submit may collide on the submission_id unique index
     // instead (upsert only ignores the declared conflict target).
-    if (e instanceof DatabaseError && e.code === "23505" && submissionId) {
+    if (isUniqueViolation(e) && submissionId) {
       const existing = await attemptBySubmissionId(caller.id, submissionId);
       if (existing) {
         const fresh = await attemptsFor(quiz_id, caller.id);

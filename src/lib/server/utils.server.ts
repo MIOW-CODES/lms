@@ -29,6 +29,14 @@ export class DatabaseError extends Error {
   }
 }
 
+/**
+ * True when an error is a Postgres unique-constraint violation (SQLSTATE 23505).
+ * Used by idempotent inserts to detect a racing duplicate write.
+ */
+export function isUniqueViolation(e: unknown): boolean {
+  return e instanceof DatabaseError && e.code === "23505";
+}
+
 export async function unwrap<T>(
   p: PromiseLike<{ data: unknown; error: DbError | null }>,
 ): Promise<T> {

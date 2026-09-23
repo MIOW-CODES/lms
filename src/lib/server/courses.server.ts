@@ -2,7 +2,7 @@
 // Courses, assignments, enrollments, submissions.
 import { z } from "zod";
 import { db } from "@/integrations/db/client.server";
-import { unwrap, withoutToken, DatabaseError } from "@/lib/server/utils.server";
+import { unwrap, withoutToken, isUniqueViolation } from "@/lib/server/utils.server";
 import { requireStaff } from "@/lib/server/auth.server";
 import { schemas } from "@/lib/server/schemas.server";
 import { createProfile, getProfileById, updateProfile } from "@/lib/server/profiles.server";
@@ -317,7 +317,7 @@ export async function submitAssignment(input: z.infer<typeof schemas.submissionI
   ).catch(async (e: unknown) => {
     // A concurrent first submit can race the read above; the unique
     // (assignment_id, student_id) constraint fires 23505. Re-read and reuse it.
-    if (e instanceof DatabaseError && e.code === "23505") {
+    if (isUniqueViolation(e)) {
       const again = await unwrap<{ id: string } | null>(
         db
           .from("submissions")
