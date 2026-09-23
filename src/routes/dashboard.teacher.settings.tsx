@@ -39,6 +39,8 @@ import {
 } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { PREFIXES } from "@/lib/course-levels";
+import { CreatableSelect } from "@/components/ui/creatable-select";
+import { DEFAULT_DEPARTMENTS } from "@/lib/constants";
 
 export const Route = createFileRoute("/dashboard/teacher/settings")({
   head: () => ({
@@ -396,13 +398,20 @@ function TeacherSettingsPage() {
                     maxLength={320}
                     placeholder="you@faculty.miow.edu"
                   />
-                  <Field
-                    label="Department / Specialization"
-                    value={settings.department}
-                    onChange={(e) => setSettings({ ...settings, department: e.target.value })}
-                    maxLength={120}
-                    placeholder="Science — Physics & Research"
-                  />
+                  <div className="space-y-1">
+                    <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Department / Specialization
+                    </span>
+                    <CreatableSelect
+                      value={settings.department}
+                      onChange={(val) => setSettings({ ...settings, department: val })}
+                      options={DEFAULT_DEPARTMENTS}
+                      placeholder="Science — Physics & Research"
+                      searchPlaceholder="Search or type department..."
+                      createPlaceholder="Select"
+                      label="Department / Specialization"
+                    />
+                  </div>
                   <Field
                     label="Office hours"
                     value={settings.officeHours}

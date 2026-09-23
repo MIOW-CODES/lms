@@ -353,7 +353,7 @@ export function AttendanceKiosk() {
               counts={feedCounts}
             />
           </div>
-          <Card className="max-h-[560px] divide-y divide-border overflow-y-auto">
+          <Card className="custom-scrollbar max-h-[560px] divide-y divide-border overflow-y-auto">
             {visibleLogs.length === 0 && (
               <p className="p-6 text-center text-sm text-muted-foreground">
                 {todayLogs.length === 0 ? "No taps yet today." : "No records match this filter."}

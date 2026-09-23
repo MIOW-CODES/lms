@@ -234,7 +234,7 @@ function TeacherStudentsPage() {
           }
         />
       ) : (
-        <Card className="overflow-x-auto">
+        <Card className="custom-scrollbar overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">

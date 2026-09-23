@@ -28,6 +28,8 @@ import {
   useRfidScanner,
 } from "@/components/lms";
 import { LoadingSkeleton } from "@/components/ui-elements";
+import { CreatableSelect } from "@/components/ui/creatable-select";
+import { DEFAULT_DEPARTMENTS } from "@/lib/constants";
 
 export const Route = createFileRoute("/dashboard/admin/teachers")({
   head: () => ({
@@ -91,11 +93,13 @@ function TeachersPage() {
     open && listening,
   );
 
-  const departments = useMemo(
-    () =>
-      Array.from(new Set((teachers ?? []).map((t) => t.department).filter(Boolean))) as string[],
-    [teachers],
-  );
+  const departments = useMemo(() => {
+    const set = new Set(DEFAULT_DEPARTMENTS);
+    (teachers ?? []).forEach((t) => {
+      if (t.department?.trim()) set.add(t.department.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [teachers]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -246,7 +250,7 @@ function TeachersPage() {
           }
         />
       ) : (
-        <Card className="overflow-x-auto">
+        <Card className="custom-scrollbar overflow-x-auto">
           <table className="w-full min-w-[820px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -370,13 +374,18 @@ function TeachersPage() {
             placeholder="Employee ID * (e.g. FAC-2026-014)"
             className={INPUT}
           />
-          <input
-            value={form.department}
-            onChange={set("department")}
-            aria-label="Department"
-            placeholder="Department / specialization *"
-            className={`${INPUT} sm:col-span-2`}
-          />
+          <div className="sm:col-span-2">
+            <CreatableSelect
+              value={form.department}
+              onChange={(val) => setForm((f) => ({ ...f, department: val }))}
+              options={departments}
+              placeholder="Department / specialization *"
+              searchPlaceholder="Search or type department..."
+              createPlaceholder="Add"
+              emptyText="No departments found."
+              label="Department / specialization"
+            />
+          </div>
           <input
             value={form.pin}
             onChange={(e) =>
@@ -422,6 +431,7 @@ function TeachersPage() {
 
       <TeacherDetailModal
         teacher={selected}
+        departments={departments}
         onClose={() => setSelected(null)}
         onChanged={() => {
           qc.invalidateQueries({ queryKey: ["teacher-directory"] });
@@ -435,11 +445,13 @@ function TeachersPage() {
 
 function TeacherDetailModal({
   teacher,
+  departments = [],
   onClose,
   onChanged,
   onRemove,
 }: {
   teacher: TeacherRecord | null;
+  departments?: string[];
   onClose: () => void;
   onChanged: () => void;
   onRemove: (t: TeacherRecord) => void;
@@ -586,13 +598,18 @@ function TeacherDetailModal({
           placeholder="Employee ID"
           className={INPUT}
         />
-        <input
-          value={dept}
-          onChange={(e) => setDept(e.target.value)}
-          aria-label="Department"
-          placeholder="Department"
-          className={INPUT}
-        />
+        <div className="sm:col-span-2">
+          <CreatableSelect
+            value={dept}
+            onChange={setDept}
+            options={departments}
+            placeholder="Department / specialization"
+            searchPlaceholder="Search or type department..."
+            createPlaceholder="Assign"
+            emptyText="No departments found."
+            label="Department / specialization"
+          />
+        </div>
       </div>
       <button
         onClick={saveDetails}

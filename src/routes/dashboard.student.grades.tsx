@@ -122,7 +122,7 @@ function GradesPage() {
       </div>
 
       {showTable && (
-        <Card className="mb-5 max-h-56 overflow-y-auto p-4">
+        <Card className="custom-scrollbar mb-5 max-h-56 overflow-y-auto p-4">
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
             DepEd Transmutation (Initial → Transmuted)
           </p>
