@@ -77,15 +77,22 @@ function splitInlineOptions(line: string): Array<{ letter: string; text: string 
 
 function detectSection(line: string): ParsedQuestionKind | null {
   const l = line.toLowerCase();
-  if (
+  const isHeading =
     /^section\s+[ivx1-4]+[\s:—–-]/.test(l) ||
-    /^(multiple choice|fill in the blank|matching type|essay\s*\/\s*short answer)$/.test(l)
-  ) {
-    if (/multiple choice/.test(l) || /section\s+(i|1)[\s:—–-]/.test(l)) return "mc";
-    if (/fill in the blank/.test(l) || /section\s+(ii|2)[\s:—–-]/.test(l)) return "fill";
-    if (/matching/.test(l) || /section\s+(iii|3)[\s:—–-]/.test(l)) return "matching";
-    if (/essay|short answer/.test(l) || /section\s+(iv|4)[\s:—–-]/.test(l)) return "essay";
-  }
+    /^(multiple choice|fill in the blank|matching type|essay\s*\/\s*short answer)$/.test(l);
+  if (!isHeading) return null;
+  // Keyword matching wins over the roman numeral so that re-numbered or
+  // subset headings (e.g. "Section II: Essay / Short Answer" when the teacher
+  // selected only MC + Essay) still resolve to the correct kind.
+  if (/multiple choice/.test(l)) return "mc";
+  if (/fill in the blank/.test(l)) return "fill";
+  if (/matching/.test(l)) return "matching";
+  if (/essay|short answer/.test(l)) return "essay";
+  // Roman-numeral fallback for bare headings like "Section II:".
+  if (/section\s+(i|1)[\s:—–-]/.test(l)) return "mc";
+  if (/section\s+(ii|2)[\s:—–-]/.test(l)) return "fill";
+  if (/section\s+(iii|3)[\s:—–-]/.test(l)) return "matching";
+  if (/section\s+(iv|4)[\s:—–-]/.test(l)) return "essay";
   return null;
 }
 

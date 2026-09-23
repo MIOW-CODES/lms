@@ -65,6 +65,23 @@ export const Route = createFileRoute("/dashboard/student/quizzes")({
 
 type QuizSuccess = Extract<SubmitQuizResult, { ok: true }>;
 
+/**
+ * Stable idempotency key for a single worksheet attempt. Retrying a submit
+ * (double-click, flaky network) reuses it so the server replays the stored
+ * result instead of recording a duplicate attempt.
+ */
+function newSubmissionId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 /** "Attempt 2 of 3", "Attempt 2", or "Unlimited attempts". */
 function attemptLabel(used: number, allowed: number | null, next = false): string {
   const n = next ? used + 1 : used;
@@ -102,6 +119,7 @@ function QuizzesPage() {
   const [idx, setIdx] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [result, setResult] = useState<QuizSuccess | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   // Persist timer + answers per quiz so closing/reopening doesn't reset progress
   const savedTimerRef = useRef<Map<string, number>>(new Map());
   const savedAnswersRef = useRef<Map<string, Record<string, string>>>(new Map());
@@ -110,7 +128,7 @@ function QuizzesPage() {
   // so the next attempt (retake) fetches a fresh, non-overlapping bank subset.
   // Session-only (in-memory): a full page reload starts a new attempt.
   const savedAttemptRef = useRef<
-    Map<string, { questions: QuizQuestionPublic[]; duration: number }>
+    Map<string, { questions: QuizQuestionPublic[]; duration: number; submissionId: string }>
   >(new Map());
 
   const activeQuiz = useMemo(
@@ -141,7 +159,11 @@ function QuizzesPage() {
     let attempt = savedAttemptRef.current.get(id);
     if (!attempt) {
       const { quiz, questions } = await getQuiz(id);
-      attempt = { questions, duration: quiz.duration_minutes * 60 };
+      attempt = {
+        questions,
+        duration: quiz.duration_minutes * 60,
+        submissionId: newSubmissionId(),
+      };
       savedAttemptRef.current.set(id, attempt);
     }
     setQuestions(attempt.questions);
@@ -219,6 +241,7 @@ function QuizzesPage() {
   const finish = async () => {
     if (!activeId || result || !questions.length || submittedRef.current) return;
     submittedRef.current = true;
+    setSubmitting(true);
     try {
       // Answers are scored server-side; the server enforces the retake policy
       // before recording the attempt. Pass question_ids for question bank scoring.
@@ -227,6 +250,7 @@ function QuizzesPage() {
         answers,
         questions.map((q) => q.id),
         tabSwitches,
+        savedAttemptRef.current.get(activeId)?.submissionId,
       );
       await queryClient.invalidateQueries({ queryKey: ["quiz-summaries"] });
       if (!res.ok) {
@@ -240,7 +264,12 @@ function QuizzesPage() {
       }
       setResult(res);
     } catch {
+      // Network drop / transient error: allow the student to retry instead of
+      // leaving them stuck on a permanently-disabled submit button.
+      submittedRef.current = false;
       toast.error("Could not score the worksheet — please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -628,9 +657,12 @@ function QuizzesPage() {
               ) : (
                 <button
                   onClick={finish}
-                  className="h-11 flex-1 rounded-xl bg-emerald-600 text-sm font-semibold text-white hover:opacity-90"
+                  disabled={submitting}
+                  className="h-11 flex-1 rounded-xl bg-emerald-600 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Submit answers ({answeredCount}/{questions.length})
+                  {submitting
+                    ? "Submitting…"
+                    : `Submit answers (${answeredCount}/${questions.length})`}
                 </button>
               )}
             </div>

@@ -1,6 +1,7 @@
 // ClassMate Assistant streaming chat endpoint.
 // Calls OpenCode Go directly with mimo-v2.5 (bypasses AI SDK streaming for reasoning models).
 import { createFileRoute } from "@tanstack/react-router";
+import { SOURCE_MATERIAL_MAX_CHARS } from "@/lib/classmate-source";
 
 type ChatRequestBody = {
   messages?: unknown;
@@ -9,20 +10,50 @@ type ChatRequestBody = {
 };
 
 /** Sanitize the optional Create Worksheet form context (course/title/sourceMaterial). */
-function parseWorksheetContext(
-  raw: unknown,
-): { course?: string; title?: string; sourceMaterial?: string } | undefined {
+function parseWorksheetContext(raw: unknown):
+  | {
+      course?: string;
+      title?: string;
+      sourceMaterial?: string;
+      sourceFileNames?: string[];
+      questionTypes?: string[];
+    }
+  | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const o = raw as Record<string, unknown>;
   const course = typeof o["course"] === "string" ? o["course"].slice(0, 200) : undefined;
   const title = typeof o["title"] === "string" ? o["title"].slice(0, 200) : undefined;
+  // The client already budgets the material via buildSourceMaterial; this is a
+  // defensive upper bound so a malformed request can't blow up the prompt.
   const sourceMaterial =
-    typeof o["sourceMaterial"] === "string" ? o["sourceMaterial"].slice(0, 15000) : undefined;
+    typeof o["sourceMaterial"] === "string"
+      ? o["sourceMaterial"].slice(0, SOURCE_MATERIAL_MAX_CHARS * 2)
+      : undefined;
+  const sourceFileNames = Array.isArray(o["sourceFileNames"])
+    ? o["sourceFileNames"]
+        .filter((n): n is string => typeof n === "string")
+        .slice(0, 50)
+        .map((n) => n.slice(0, 200))
+    : undefined;
+  const questionTypes = Array.isArray(o["questionTypes"])
+    ? o["questionTypes"]
+        .filter((t): t is string => typeof t === "string")
+        .slice(0, 8)
+        .map((t) => t.slice(0, 40))
+    : undefined;
   if (!course && !title && !sourceMaterial) return undefined;
-  const ctx: { course?: string; title?: string; sourceMaterial?: string } = {};
+  const ctx: {
+    course?: string;
+    title?: string;
+    sourceMaterial?: string;
+    sourceFileNames?: string[];
+    questionTypes?: string[];
+  } = {};
   if (course) ctx.course = course;
   if (title) ctx.title = title;
   if (sourceMaterial) ctx.sourceMaterial = sourceMaterial;
+  if (sourceFileNames?.length) ctx.sourceFileNames = sourceFileNames;
+  if (questionTypes?.length) ctx.questionTypes = questionTypes;
   return ctx;
 }
 
@@ -129,6 +160,18 @@ export const Route = createFileRoute("/api/chat")({
         }
 
         const ctx = parseWorksheetContext(body.worksheetContext);
+        if (ctx?.sourceMaterial) {
+          // Observability: make any received-vs-usable mismatch visible in logs
+          // instead of letting the model silently under-count uploaded files.
+          const usableHeaders = (ctx.sourceMaterial.match(/^--- SOURCE MATERIAL \d+:/gm) ?? [])
+            .length;
+          const received = ctx.sourceFileNames?.length ?? usableHeaders;
+          if (received !== usableHeaders) {
+            console.warn(
+              `[chat] source material mismatch: received=${received} usable=${usableHeaders}`,
+            );
+          }
+        }
         const oaMessages = toOpenAIMessages(messages, systemPromptFor(profile, ctx));
 
         const { AI_BASE_URL } = await import("@/lib/ai-gateway.server");

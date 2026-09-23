@@ -4,9 +4,20 @@ import { toast } from "sonner";
 import { CloudUpload, FileText, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { type Course, createQuizWithQuestions, formatFileSize } from "@/lib/lms";
 import { extractTextFromFile, isWorksheetAcceptedFile } from "@/lib/extract-text";
-import { aggregateSourceMaterial, type SourceFile } from "@/lib/classmate-source";
+import {
+  aggregateSourceMaterial,
+  buildSourceMaterial,
+  type SourceFile,
+} from "@/lib/classmate-source";
 import { parseWorksheet } from "@/lib/worksheet-parser";
 import { openWorksheetChat, onPasteToWorksheet } from "@/lib/worksheet-context";
+import {
+  DEFAULT_QUESTION_TYPES,
+  QUESTION_TYPE_LABELS,
+  WORKSHEET_QUESTION_TYPES,
+  formatQuestionTypes,
+  type WorksheetQuestionType,
+} from "@/lib/worksheet-types";
 import { Modal } from "@/components/lms";
 import { PolicyFields } from "@/components/courses/policy-fields";
 import {
@@ -52,6 +63,8 @@ export function CreateQuizModal({
   const [manualQuestions, setManualQuestions] = useState<ManualQuestion[]>([]);
   const [quizFileDrag, setQuizFileDrag] = useState(false);
   const [quizFiles, setQuizFiles] = useState<SourceFile[]>([]);
+  const [questionTypes, setQuestionTypes] =
+    useState<WorksheetQuestionType[]>(DEFAULT_QUESTION_TYPES);
 
   // Listen for "Send to worksheet" from ClassMate chat
   useEffect(() => {
@@ -73,6 +86,7 @@ export function CreateQuizModal({
     setQuizMode("classmate");
     setManualQuestions([]);
     setQuizFiles([]);
+    setQuestionTypes(DEFAULT_QUESTION_TYPES);
   };
 
   /** Sync the aggregated source material into the questions textarea. */
@@ -128,9 +142,18 @@ export function CreateQuizModal({
       })),
     );
     results.forEach((result, i) => {
-      if (result.status === "fulfilled") loaded.push(result.value);
-      else
+      if (result.status === "fulfilled" && result.value.text.trim()) {
+        loaded.push(result.value);
+      } else if (result.status === "fulfilled") {
+        // Extraction "succeeded" but produced no text (e.g. a scanned/image
+        // PDF). Treat it as a failure so it is never silently dropped from the
+        // model's file count.
+        toast.error(
+          `No readable text found in "${batch[i]!.name}" — try another file or paste the content.`,
+        );
+      } else {
         toast.error(`Could not read "${batch[i]!.name}" — try another file or paste the content.`);
+      }
     });
     if (loaded.length === 0) return;
 
@@ -149,11 +172,16 @@ export function CreateQuizModal({
     const course = courses.find((c) => c.id === quizForm.course_id);
     if (course && quizForm.title.trim()) {
       const perStudent = Math.max(0, parseInt(quizForm.question_count) || 0);
+      // Budget across ALL files so none is dropped, and hand the model the exact
+      // file names + selected question types.
+      const built = buildSourceMaterial(next);
       openWorksheetChat({
         course: `${course.code} — ${course.title}`,
         title: quizForm.title.trim(),
-        sourceMaterial: combined,
-        autoMessage: `Generate ${classmateBankSize(perStudent)} parser-ready multiple-choice and fill-in-the-blank questions based on the uploaded material (${next.length} source file${next.length > 1 ? "s" : ""}) for "${quizForm.title.trim()}". Follow the strict 4-section format with Answer Key.`,
+        sourceMaterial: built.text,
+        sourceFileNames: built.files.map((f) => f.name),
+        questionTypes,
+        autoMessage: `Generate ${classmateBankSize(perStudent)} parser-ready questions of these types only: ${formatQuestionTypes(questionTypes)} — based on the uploaded material (${next.length} source file${next.length > 1 ? "s" : ""}) for "${quizForm.title.trim()}". Follow the parser format and include an Answer Key.`,
       });
       toast.success("Files loaded — ClassMate is generating questions now.");
     } else {
@@ -191,7 +219,7 @@ export function CreateQuizModal({
       const parsed = parseWorksheet(quizForm.questions);
       if (!parsed.questions.length) {
         toast.error(
-          "No valid questions found — paste the four-section worksheet (with its Answer Key), upload a file, or use 'Generate with ClassMate'.",
+          "No valid questions found — paste a worksheet (with its Answer Key), upload a file, or use 'Generate with ClassMate'.",
         );
         return;
       }
@@ -237,6 +265,7 @@ export function CreateQuizModal({
       setManualQuestions([]);
       setQuizMode("classmate");
       setQuizFiles([]);
+      setQuestionTypes(DEFAULT_QUESTION_TYPES);
       onClose();
     } catch {
       toast.error("Could not create worksheet.");
@@ -326,6 +355,45 @@ export function CreateQuizModal({
 
         {quizMode === "classmate" && (
           <>
+            <div className="rounded-xl border border-border bg-muted/20 p-3">
+              <p className="mb-2 text-xs font-semibold text-muted-foreground">
+                Question types ClassMate should generate
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {WORKSHEET_QUESTION_TYPES.map((t) => {
+                  const active = questionTypes.includes(t);
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() =>
+                        setQuestionTypes((prev) =>
+                          prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t],
+                        )
+                      }
+                      className={cn(
+                        "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                        active
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-background text-muted-foreground hover:bg-muted",
+                      )}
+                    >
+                      {QUESTION_TYPE_LABELS[t]}
+                    </button>
+                  );
+                })}
+              </div>
+              {questionTypes.length === 0 ? (
+                <p className="mt-2 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                  Select at least one question type before generating.
+                </p>
+              ) : (
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  ClassMate will generate only these types: {formatQuestionTypes(questionTypes)}.
+                </p>
+              )}
+            </div>
             {quizFiles.length > 0 && (
               <div className="grid gap-1.5">
                 {quizFiles.map((f, i) => (
@@ -405,6 +473,7 @@ export function CreateQuizModal({
             />
             <button
               type="button"
+              disabled={questionTypes.length === 0}
               onClick={() => {
                 const course = courses.find((c) => c.id === quizForm.course_id);
                 if (!course) {
@@ -417,14 +486,19 @@ export function CreateQuizModal({
                   toast.error("Enter a worksheet title first.");
                   return;
                 }
+                if (questionTypes.length === 0) {
+                  toast.error("Select at least one question type.");
+                  return;
+                }
                 openWorksheetChat({
                   course: `${course.code} — ${course.title}`,
                   title: quizForm.title.trim(),
+                  questionTypes,
                   ...(quizForm.questions ? { sourceMaterial: quizForm.questions } : {}),
                 });
                 toast.success("ClassMate is ready — tell it the topic and item count.");
               }}
-              className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-4 text-sm font-semibold text-primary transition hover:bg-primary/15"
+              className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-4 text-sm font-semibold text-primary transition hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Sparkles className="h-4 w-4" />
               Generate with ClassMate

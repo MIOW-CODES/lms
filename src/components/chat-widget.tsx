@@ -35,6 +35,7 @@ import { useAssessmentMode } from "@/lib/assessment-mode";
 import type { Profile } from "@/lib/lms";
 import { WORKSHEET_CHAT_EVENT, type WorksheetAssistContext } from "@/lib/worksheet-context";
 import { pasteToWorksheet } from "@/lib/worksheet-context";
+import { SOURCE_MATERIAL_MAX_CHARS } from "@/lib/classmate-source";
 
 const TOOL_LABELS: Record<string, string> = {
   list_announcements: "Reading announcements",
@@ -471,7 +472,21 @@ export function ChatWidget({ profile }: { profile: Profile }) {
           title: String(detail.title ?? "").slice(0, 200),
         };
         if (typeof detail.sourceMaterial === "string" && detail.sourceMaterial) {
-          ctx.sourceMaterial = detail.sourceMaterial.slice(0, 15000);
+          // Already budgeted by buildSourceMaterial on the sender; keep a hard
+          // safety cap so a malformed event can't send an unbounded payload.
+          ctx.sourceMaterial = detail.sourceMaterial.slice(0, SOURCE_MATERIAL_MAX_CHARS * 2);
+        }
+        if (Array.isArray(detail.sourceFileNames) && detail.sourceFileNames.length) {
+          ctx.sourceFileNames = detail.sourceFileNames
+            .filter((n): n is string => typeof n === "string")
+            .slice(0, 50)
+            .map((n) => n.slice(0, 200));
+        }
+        if (Array.isArray(detail.questionTypes) && detail.questionTypes.length) {
+          ctx.questionTypes = detail.questionTypes
+            .filter((t): t is string => typeof t === "string")
+            .slice(0, 8)
+            .map((t) => t.slice(0, 40));
         }
         if (typeof detail.autoMessage === "string" && detail.autoMessage) {
           ctx.autoMessage = detail.autoMessage;

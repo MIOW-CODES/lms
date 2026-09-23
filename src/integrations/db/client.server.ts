@@ -48,7 +48,20 @@ let _pool: Pool | undefined;
 function getPool(): Pool {
   if (_pool) return _pool;
   if (!USE_PG) throw new Error("[db] Postgres not configured (missing DATABASE_URL)");
-  _pool = new Pool({ connectionString: DATABASE_URL });
+  // Bound the pool so a burst of concurrent requests (e.g. a whole class taking
+  // a worksheet at once) queues instead of exhausting the database's connection
+  // limit. On Vercel serverless each instance keeps its own small pool, so keep
+  // `max` conservative; Supabase's pooler (port 6543) multiplexes them.
+  const max = Number(process.env["PG_POOL_MAX"] ?? 10);
+  _pool = new Pool({
+    connectionString: DATABASE_URL,
+    max: Number.isFinite(max) && max > 0 ? max : 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+    // Never let a single query pin a connection indefinitely.
+    statement_timeout: 15_000,
+    query_timeout: 15_000,
+  });
   _pool.on("error", (err) => console.error("[db] pool error", err));
   if (process.env["DEBUG_LOGS"])
     console.log(`[db] Using local Postgres (${DATABASE_URL.replace(/:.*@/, ":***@")})`);
@@ -85,6 +98,7 @@ interface DbError {
 interface DbQueryBuilder extends PromiseLike<{ data: unknown; error: DbError | null }> {
   select(cols?: string, opts?: Record<string, unknown>): DbQueryBuilder;
   insert(data: unknown): DbQueryBuilder;
+  upsert(data: unknown, opts?: { onConflict?: string; ignoreDuplicates?: boolean }): DbQueryBuilder;
   update(data: Record<string, unknown>): DbQueryBuilder;
   delete(): DbQueryBuilder;
   eq(col: string, val: unknown): DbQueryBuilder;
@@ -143,6 +157,8 @@ function createPgCompatLayer(): DbLike {
     private insertData: unknown = null;
     private updateData: Record<string, unknown> | null = null;
     private returning: string | null = null;
+    private conflictTarget: string | null = null;
+    private ignoreDuplicates = false;
 
     constructor(table: string) {
       this.table = table;
@@ -162,6 +178,15 @@ function createPgCompatLayer(): DbLike {
       this.op = "insert";
       this.insertData = data;
       this.returning = "*";
+      return this;
+    }
+
+    upsert(data: unknown, opts?: { onConflict?: string; ignoreDuplicates?: boolean }): this {
+      this.op = "insert";
+      this.insertData = data;
+      this.returning = "*";
+      this.conflictTarget = opts?.onConflict ?? null;
+      this.ignoreDuplicates = opts?.ignoreDuplicates ?? false;
       return this;
     }
 
@@ -325,8 +350,15 @@ function createPgCompatLayer(): DbLike {
             return `(${vals.join(", ")})`;
           })
           .join(", ");
+        const conflictClause =
+          this.conflictTarget && this.ignoreDuplicates
+            ? ` ON CONFLICT (${this.conflictTarget
+                .split(",")
+                .map((c) => qi(c.trim()))
+                .join(", ")}) DO NOTHING`
+            : "";
         const sql =
-          `INSERT INTO ${table} (${colsSql}) VALUES ${valuesSql} ${returningClause()};`.trim();
+          `INSERT INTO ${table} (${colsSql}) VALUES ${valuesSql}${conflictClause} ${returningClause()};`.trim();
         const res = await pool.query(sql, params);
         if (this.limitOne) {
           if (!res.rows.length) {

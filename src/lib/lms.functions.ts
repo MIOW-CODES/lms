@@ -353,6 +353,7 @@ export const submitQuizAttemptFn = createServerFn({ method: "POST" })
       data.token,
       data.question_ids,
       data.tab_switches,
+      data.submission_id,
     ),
   );
 

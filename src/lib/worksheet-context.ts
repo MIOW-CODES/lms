@@ -12,6 +12,10 @@ export interface WorksheetAssistContext {
   title: string;
   /** Uploaded file content — AI generates questions based on this material. */
   sourceMaterial?: string;
+  /** Names of every uploaded source file, so the model can count them exactly. */
+  sourceFileNames?: string[];
+  /** Question types the teacher wants generated (e.g. ["mc", "fill"]). */
+  questionTypes?: string[];
   /** If set, auto-send this message when the chat opens (e.g. from file upload). */
   autoMessage?: string;
 }

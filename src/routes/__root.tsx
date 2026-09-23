@@ -9,6 +9,8 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 import { Toaster } from "sonner";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 import appCss from "../styles.css?url";
 import { reportError } from "../lib/error-reporting";
@@ -143,6 +145,9 @@ function RootComponent() {
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
       <Toaster richColors position="top-right" />
+      {/* Vercel Web Analytics + Speed Insights (no-op outside Vercel). */}
+      <Analytics />
+      <SpeedInsights />
     </QueryClientProvider>
   );
 }
