@@ -18,7 +18,7 @@ jobs:
 
       - name: Get PR diff
         run: |
-          gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }} | head -c 12000 > /tmp/pr_diff.txt
+          gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }} | head -c 24000 > /tmp/pr_diff.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -30,9 +30,14 @@ jobs:
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_URL: ${{ github.event.pull_request.html_url }}
 
-      - name: Post review to Discord
+      - name: Post review to GitHub and Discord
         run: python3 scripts/post-review.py
         env:
+          # GitHub PR comment (Hermes Agent Review)
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          # Optional Discord mirror — skipped cleanly when unset
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}

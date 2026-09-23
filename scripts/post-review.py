@@ -8,31 +8,11 @@ webhook = os.environ.get("DISCORD_WEBHOOK_URL", "")
 repo = os.environ.get("GITHUB_REPOSITORY", "")
 pr_number = os.environ.get("PR_NUMBER", "")
 
-# Post to Discord
-embed = {
-    "title": f"PR Review: {title}",
-    "url": url,
-    "description": review[:4000],
-    "color": 5814783,
-    "author": {"name": author},
-    "footer": {"text": "Hermes Agent - Auto Review"}
-}
-
-payload = json.dumps({"embeds": [embed]})
-
-result = subprocess.run([
-    "curl", "-s", "-X", "POST", webhook,
-    "-H", "Content-Type: application/json",
-    "-d", payload
-], capture_output=True, text=True)
-
-print(f"Discord webhook response: {result.stdout[:200]}")
-
-# Post review as PR comment on GitHub
+# Post review as PR comment on GitHub (primary channel)
 if repo and pr_number:
     gh_token = os.environ.get("GH_TOKEN", "")
     if gh_token:
-        comment_body = f"## Hermes Agent Review\n\n{review}"
+        comment_body = f"## 🤖 Hermes Agent Review\n\n{review}"
         comment_payload = json.dumps({"body": comment_body})
         result = subprocess.run([
             "curl", "-s", "-X", "POST",
@@ -42,3 +22,27 @@ if repo and pr_number:
             "-d", comment_payload
         ], capture_output=True, text=True)
         print(f"GitHub comment response: {result.stdout[:200]}")
+    else:
+        print("GH_TOKEN not set — skipping GitHub comment")
+else:
+    print("GITHUB_REPOSITORY/PR_NUMBER not set — skipping GitHub comment")
+
+# Optionally mirror to Discord (skipped cleanly when no webhook configured)
+if webhook:
+    embed = {
+        "title": f"PR Review: {title}",
+        "url": url,
+        "description": review[:4000],
+        "color": 5814783,
+        "author": {"name": author},
+        "footer": {"text": "Hermes Agent - Auto Review"}
+    }
+    payload = json.dumps({"embeds": [embed]})
+    result = subprocess.run([
+        "curl", "-s", "-X", "POST", webhook,
+        "-H", "Content-Type: application/json",
+        "-d", payload
+    ], capture_output=True, text=True)
+    print(f"Discord webhook response: {result.stdout[:200]}")
+else:
+    print("DISCORD_WEBHOOK_URL not set — skipping Discord mirror")
