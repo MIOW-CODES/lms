@@ -238,7 +238,7 @@ export interface AssignmentSubmission {
   student_no: string | null;
   section: string | null;
   content: string | null;
-  file_urls: Attachment[] | null;
+  file_urls: Attachment[];
   score: number | null;
   feedback: string | null;
   status: "pending" | "submitted" | "graded";

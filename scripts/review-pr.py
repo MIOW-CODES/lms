@@ -1,6 +1,10 @@
 import json, os, subprocess
 
 diff = open("/tmp/pr_diff.txt").read()
+try:
+    files = open("/tmp/pr_files.txt").read()
+except Exception:
+    files = "(file list unavailable)"
 title = os.environ.get("PR_TITLE", "unknown")
 author = os.environ.get("PR_AUTHOR", "unknown")
 url = os.environ.get("PR_URL", "#")
@@ -14,10 +18,11 @@ prompt = f"""You are a senior code reviewer. Review this pull request and provid
 
 Be concise and actionable.
 
-IMPORTANT: The diff below may be truncated for length. Only report issues that
-are directly visible in the provided diff. Do NOT claim that an import,
-function, or line is "missing" or "broken" merely because it is absent from the
-diff — absent code may simply be outside the truncated window. If you cannot see
+IMPORTANT: The diff below may be truncated for length. The COMPLETE list of
+files changed in this PR is provided. A file listed there IS part of the PR even
+if its diff is not shown. Do NOT claim that a file, migration, import, or line is
+"missing" or "broken" merely because it is absent from the truncated diff.
+Only report issues directly visible in the provided diff; if you cannot see
 enough to judge, say so instead of guessing.
 
 Prefer substance over volume: if there are no material bugs or security issues,
@@ -26,6 +31,9 @@ say so and rate LGTM rather than inventing minor nits.
 PR: {title}
 Author: {author}
 URL: {url}
+
+Files changed in this PR:
+{files}
 
 Diff:
 {diff}"""
