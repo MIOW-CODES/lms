@@ -9,8 +9,7 @@ import {
   subscribeProfile,
   type Role,
 } from "@/lib/lms";
-
-const THEME_KEY = "miow-theme";
+import { THEME_KEY } from "@/lib/settings";
 
 export function useProfile(roles?: Role[]) {
   const [profile, setProfile] = useState<import("@/lib/lms").Profile | null>(null);

@@ -8,12 +8,18 @@
 export type ThemeMode = "light" | "dark" | "system";
 export type FontSize = "small" | "medium" | "large";
 
-export const THEME_KEY = "northview-theme";
-const FONT_KEY = "northview-fontsize";
-const CONTRAST_KEY = "northview-contrast";
-const ADMIN_CFG_KEY = "northview-admin-config";
-const AUDIT_KEY = "northview-audit-log";
-export const SESSION_KEY = "northview-lms-session";
+/**
+ * Single source of truth for the localStorage prefix. The no-flash script in
+ * `__root.tsx`, `useTheme`, the sidebar and the chat widget all read/write
+ * `miow-*` keys, so settings must use the same namespace or saved preferences
+ * are silently ignored on reload.
+ */
+export const THEME_KEY = "miow-theme";
+const FONT_KEY = "miow-fontsize";
+const CONTRAST_KEY = "miow-contrast";
+const ADMIN_CFG_KEY = "miow-admin-config";
+const AUDIT_KEY = "miow-audit-log";
+export const SESSION_KEY = "miow-lms-session";
 
 function readJson<T>(key: string): T | null {
   try {
@@ -124,7 +130,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   channels: { email: true, inApp: true, push: false },
 };
 
-const userKey = (id: string) => `northview-settings-${id}`;
+const userKey = (id: string) => `miow-settings-${id}`;
 
 export function getUserSettings(profileId: string): UserSettings {
   const saved = readJson<Partial<UserSettings>>(userKey(profileId)) ?? {};
@@ -178,7 +184,7 @@ export const DEFAULT_TEACHER_SETTINGS: TeacherSettings = {
   },
 };
 
-const teacherKey = (id: string) => `northview-teacher-settings-${id}`;
+const teacherKey = (id: string) => `miow-teacher-settings-${id}`;
 
 export function getTeacherSettings(profileId: string): TeacherSettings {
   const saved = readJson<Partial<TeacherSettings>>(teacherKey(profileId)) ?? {};
@@ -313,13 +319,13 @@ export function downloadFile(name: string, content: string, mime = "text/plain")
   URL.revokeObjectURL(url);
 }
 
-/** Clear every northview-* localStorage key except the active session. */
+/** Clear every miow-* localStorage key except the active session. */
 export function resetLocalPreferences() {
   try {
     const doomed: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.startsWith("northview-") && k !== SESSION_KEY) doomed.push(k);
+      if (k && k.startsWith("miow-") && k !== SESSION_KEY) doomed.push(k);
     }
     doomed.forEach((k) => localStorage.removeItem(k));
   } catch {
