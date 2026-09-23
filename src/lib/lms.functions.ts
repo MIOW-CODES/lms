@@ -270,9 +270,10 @@ export const enrollStudentFn = createServerFn({ method: "POST" })
 export const createOrEnrollStudentFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.studentEnroll.parse(data))
   .handler(async ({ data }) => {
-    if (data.course_id) await server.requireCourseOwnerOrAdmin(data.token, data.course_id);
-    else await server.requireStaff(data.token);
-    return server.createOrEnrollStudent(data);
+    const caller = data.course_id
+      ? await server.requireCourseOwnerOrAdmin(data.token, data.course_id)
+      : await server.requireStaff(data.token);
+    return server.createOrEnrollStudent(data, caller);
   });
 
 /* ---------- Submissions ---------- */

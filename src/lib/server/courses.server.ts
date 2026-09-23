@@ -6,6 +6,7 @@ import { unwrap, withoutToken } from "@/lib/server/utils.server";
 import { requireStaff } from "@/lib/server/auth.server";
 import { schemas } from "@/lib/server/schemas.server";
 import { createProfile, getProfileById, updateProfile } from "@/lib/server/profiles.server";
+import { type ProfileRole } from "@/lib/server/db-types";
 
 export async function listCourses() {
   const courses = await unwrap<any[]>(db.from("courses").select("*").order("code"));
@@ -127,11 +128,19 @@ export async function enrollStudent(student_id: string, course_id: string) {
  * then `email`, so re-submitting a student that already exists links them to the
  * target course instead of failing with a duplicate-identity error.
  *
+ * Authorization mirrors `authorizeProfileUpdate`: only admins may change login
+ * credentials (PIN/RFID/email) or edit non-student accounts; teachers may refresh
+ * the non-credential roster fields (name/grade/section) of student records.
+ *
  * Returns `{ profile, created, enrolled }` so callers can show the right toast.
  */
-export async function createOrEnrollStudent(input: z.infer<typeof schemas.studentEnroll>) {
+export async function createOrEnrollStudent(
+  input: z.infer<typeof schemas.studentEnroll>,
+  caller: { id: string; role: ProfileRole },
+) {
   const { course_id, ...rest } = input;
   const fields = withoutToken(rest) as Record<string, unknown>;
+  const isAdmin = caller.role === "admin";
   const studentId = typeof fields["student_id"] === "string" ? fields["student_id"].trim() : null;
   const email =
     typeof fields["email"] === "string" && fields["email"].trim()
@@ -161,15 +170,25 @@ export async function createOrEnrollStudent(input: z.infer<typeof schemas.studen
   let profile;
   let created: boolean;
   if (existingId) {
+    const existing = await getProfileById(existingId);
+    if (!existing) throw new Error("Student not found");
+    // The roster form is for students only — never silently rewrite a staff
+    // account that happens to share an identity.
+    if (existing.role !== "student") {
+      throw new Error("That identity belongs to a non-student account.");
+    }
     // Reuse the record: refresh the editable roster fields, but never rewrite
     // the identity columns that were used to find them.
     const patch: Record<string, unknown> = {};
     if (fields["full_name"]) patch["full_name"] = fields["full_name"];
-    if (email) patch["email"] = email;
     if (fields["grade_level"] != null) patch["grade_level"] = fields["grade_level"];
     if (fields["section"] != null) patch["section"] = fields["section"];
-    if (fields["pin"]) patch["pin"] = fields["pin"];
-    if (fields["rfid_uid"]) patch["rfid_uid"] = fields["rfid_uid"];
+    // Credentials and email are admin-only (same rule as updateProfile).
+    if (isAdmin) {
+      if (email) patch["email"] = email;
+      if (fields["pin"]) patch["pin"] = fields["pin"];
+      if (fields["rfid_uid"]) patch["rfid_uid"] = fields["rfid_uid"];
+    }
     // Deliberately do NOT touch avatar_url here: the roster form always sends a
     // generated avatar, and re-enrolling an existing student must not replace
     // the photo they may have uploaded.

@@ -59,6 +59,22 @@ describe("selectQuestionBank", () => {
     }
     expect(seen.size).toBeGreaterThan(1);
   });
+
+  it("always returns a unique subset of the pool, for many random inputs", () => {
+    const ids = new Set(pool.map((q) => q.id));
+    for (let count = 1; count <= 12; count++) {
+      for (let run = 0; run < 25; run++) {
+        const used = pool.slice(0, run % 11).map((q) => q.id);
+        const picked = selectQuestionBank(pool, count, used);
+        // Never longer than requested or the pool.
+        expect(picked.length).toBe(Math.min(count, pool.length));
+        // Every item comes from the pool.
+        expect(picked.every((q) => ids.has(q.id))).toBe(true);
+        // No duplicates.
+        expect(new Set(picked.map((q) => q.id)).size).toBe(picked.length);
+      }
+    }
+  });
 });
 
 /* ---------- parseKeywordCategories ---------- */

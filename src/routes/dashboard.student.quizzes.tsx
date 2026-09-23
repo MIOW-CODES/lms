@@ -97,6 +97,7 @@ function QuizzesPage() {
   // Persist the sampled question set for the in-progress attempt so reopening a
   // worksheet keeps the SAME questions (answers stay mapped). Cleared on submit,
   // so the next attempt (retake) fetches a fresh, non-overlapping bank subset.
+  // Session-only (in-memory): a full page reload starts a new attempt.
   const savedAttemptRef = useRef<
     Map<string, { questions: QuizQuestionPublic[]; duration: number }>
   >(new Map());
