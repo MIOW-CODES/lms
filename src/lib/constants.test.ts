@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { DEFAULT_DEPARTMENTS, DEFAULT_STUDENT_SECTIONS } from "./constants";
+import {
+  ALL_SECTIONS_LABEL,
+  ALL_SECTIONS_VALUE,
+  DEFAULT_DEPARTMENTS,
+  DEFAULT_STUDENT_SECTIONS,
+  resolveSectionFilter,
+} from "./constants";
 
 describe("constants", () => {
   it("exports non-empty DEFAULT_DEPARTMENTS containing standard school departments", () => {
@@ -17,5 +23,18 @@ describe("constants", () => {
     expect(DEFAULT_STUDENT_SECTIONS).toContain("Rizal");
     expect(DEFAULT_STUDENT_SECTIONS).toContain("Bonifacio");
     expect(DEFAULT_STUDENT_SECTIONS).toContain("Mabini");
+  });
+
+  it("resolveSectionFilter maps the reset label and empty value to the all sentinel", () => {
+    expect(ALL_SECTIONS_VALUE).toBe("all");
+    expect(resolveSectionFilter("")).toBe(ALL_SECTIONS_VALUE);
+    expect(resolveSectionFilter(ALL_SECTIONS_LABEL)).toBe(ALL_SECTIONS_VALUE);
+    // The literal reset label must never leak through as a real section name.
+    expect(resolveSectionFilter(ALL_SECTIONS_LABEL)).not.toBe(ALL_SECTIONS_LABEL);
+  });
+
+  it("resolveSectionFilter passes through a real section name", () => {
+    expect(resolveSectionFilter("Rizal")).toBe("Rizal");
+    expect(resolveSectionFilter("Custom Section")).toBe("Custom Section");
   });
 });

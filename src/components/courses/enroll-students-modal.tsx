@@ -1,12 +1,17 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Filter, Search, UserPlus } from "lucide-react";
+import { Search, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { enrollStudents, listStudents, type Profile } from "@/lib/lms";
 import { Modal } from "@/components/lms";
 import { UserAvatar } from "@/components/ui-elements";
 import { CreatableSelect } from "@/components/ui/creatable-select";
-import { DEFAULT_STUDENT_SECTIONS } from "@/lib/constants";
+import {
+  ALL_SECTIONS_LABEL,
+  ALL_SECTIONS_VALUE,
+  DEFAULT_STUDENT_SECTIONS,
+  resolveSectionFilter,
+} from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 /**
@@ -32,7 +37,7 @@ export function EnrollStudentsModal({
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [sectionFilter, setSectionFilter] = useState("all");
+  const [sectionFilter, setSectionFilter] = useState(ALL_SECTIONS_VALUE);
   const [saving, setSaving] = useState(false);
 
   // Reuses the shared ["students"] roster cache (same queryFn as the students
@@ -58,7 +63,7 @@ export function EnrollStudentsModal({
     const q = search.trim().toLowerCase();
     return (students ?? []).filter((s) => {
       if (enrolled.has(s.id)) return false;
-      if (sectionFilter !== "all" && (s.section ?? "") !== sectionFilter) return false;
+      if (sectionFilter !== ALL_SECTIONS_VALUE && (s.section ?? "") !== sectionFilter) return false;
       if (!q) return true;
       return (
         s.full_name.toLowerCase().includes(q) ||
@@ -131,10 +136,10 @@ export function EnrollStudentsModal({
         </label>
         <div className="w-full sm:w-48">
           <CreatableSelect
-            value={sectionFilter === "all" ? "" : sectionFilter}
-            onChange={(val) => setSectionFilter(val || "all")}
-            options={["All sections", ...availableSections]}
-            placeholder="All sections"
+            value={sectionFilter === ALL_SECTIONS_VALUE ? "" : sectionFilter}
+            onChange={(val) => setSectionFilter(resolveSectionFilter(val))}
+            options={[ALL_SECTIONS_LABEL, ...availableSections]}
+            placeholder={ALL_SECTIONS_LABEL}
             searchPlaceholder="Filter section..."
             createPlaceholder="Filter"
             emptyText="No sections found."

@@ -109,7 +109,7 @@ export function CreatableSelect({
         aria-label={label || placeholder}
         aria-expanded={open}
         className={cn(
-          "flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 text-sm text-left shadow-sm outline-none transition focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+          "flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 text-sm text-left shadow-sm outline-none transition focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
           !value && "text-muted-foreground",
         )}
       >

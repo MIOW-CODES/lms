@@ -397,7 +397,13 @@ export function Modal({
                 ✕
               </button>
             </div>
-            <div className="custom-scrollbar flex-1 overflow-y-auto px-6 py-4">{children}</div>
+            <div
+              role="region"
+              aria-label={`${title} content`}
+              className="custom-scrollbar flex-1 overflow-y-auto px-6 py-4"
+            >
+              {children}
+            </div>
           </motion.div>
         </motion.div>
       )}
