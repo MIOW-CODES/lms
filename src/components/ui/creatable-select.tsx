@@ -36,8 +36,11 @@ export function CreatableSelect({
 }: CreatableSelectProps) {
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const listboxId = React.useId();
   const containerRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const listRef = React.useRef<HTMLDivElement>(null);
 
   // Close dropdown on outside click
   React.useEffect(() => {
@@ -89,6 +92,18 @@ export function CreatableSelect({
     return uniqueOptions.some((o) => o.toLowerCase() === trimmedSearch.toLowerCase());
   }, [uniqueOptions, trimmedSearch]);
 
+  // Keep the highlighted option in range as the filtered list changes.
+  React.useEffect(() => {
+    setActiveIndex((i) => Math.min(i, Math.max(filteredOptions.length - 1, 0)));
+  }, [filteredOptions.length]);
+
+  // Keep the highlighted option scrolled into view during keyboard navigation.
+  React.useEffect(() => {
+    if (!open) return;
+    const el = listRef.current?.querySelector<HTMLElement>('[data-active="true"]');
+    el?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, open]);
+
   const handleSelect = (val: string) => {
     onChange(val);
     setOpen(false);
@@ -98,6 +113,25 @@ export function CreatableSelect({
     if (!trimmedSearch) return;
     onChange(trimmedSearch);
     setOpen(false);
+  };
+
+  const onInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.min(i + 1, Math.max(filteredOptions.length - 1, 0)));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (!exactMatchExists && trimmedSearch) {
+        handleCreate();
+      } else if (filteredOptions[activeIndex]) {
+        handleSelect(filteredOptions[activeIndex]!);
+      } else if (filteredOptions.length > 0) {
+        handleSelect(filteredOptions[0]!);
+      }
+    }
   };
 
   return (
@@ -131,23 +165,27 @@ export function CreatableSelect({
                 ref={inputRef}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    if (!exactMatchExists && trimmedSearch) {
-                      handleCreate();
-                    } else if (filteredOptions.length > 0) {
-                      handleSelect(filteredOptions[0]!);
-                    }
-                  }
-                }}
+                onKeyDown={onInputKeyDown}
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={open}
+                aria-controls={listboxId}
+                aria-activedescendant={
+                  filteredOptions[activeIndex] ? `${listboxId}-opt-${activeIndex}` : undefined
+                }
                 placeholder={searchPlaceholder}
                 className="h-8 w-full rounded-lg border border-input bg-background pl-8 pr-2 text-xs outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
           </div>
 
-          <div className="max-h-56 overflow-y-auto p-1 text-sm custom-scrollbar">
+          <div
+            ref={listRef}
+            id={listboxId}
+            role="listbox"
+            aria-label={label || placeholder}
+            className="max-h-56 overflow-y-auto p-1 text-sm custom-scrollbar"
+          >
             {trimmedSearch && !exactMatchExists && (
               <button
                 type="button"
@@ -169,18 +207,26 @@ export function CreatableSelect({
               <div className="py-4 text-center text-xs text-muted-foreground">{emptyText}</div>
             ) : null}
 
-            {filteredOptions.map((opt) => {
+            {filteredOptions.map((opt, idx) => {
               const selected = opt === value;
+              const active = idx === activeIndex;
               return (
                 <button
                   key={opt}
+                  id={`${listboxId}-opt-${idx}`}
                   type="button"
+                  role="option"
+                  aria-selected={selected}
+                  data-active={active}
+                  onMouseEnter={() => setActiveIndex(idx)}
                   onClick={() => handleSelect(opt)}
                   className={cn(
                     "flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition",
                     selected
                       ? "bg-accent font-semibold text-accent-foreground"
-                      : "hover:bg-muted text-foreground",
+                      : active
+                        ? "bg-muted text-foreground"
+                        : "hover:bg-muted text-foreground",
                   )}
                 >
                   <span className="truncate">{opt}</span>

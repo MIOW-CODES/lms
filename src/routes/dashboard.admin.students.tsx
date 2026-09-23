@@ -445,10 +445,15 @@ function StudentProfileModal({
   const [editSection, setEditSection] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Sync edit section when student changes
+  const studentId = student?.id;
+  const studentSection = student?.section;
+
+  // Seed the section editor only when a genuinely different student is opened
+  // (or its stored section changes), so a background roster refetch returning a
+  // new object reference never clobbers an in-progress edit.
   useEffect(() => {
-    if (student) setEditSection(student.section ?? "");
-  }, [student]);
+    setEditSection(studentSection ?? "");
+  }, [studentId, studentSection]);
 
   const { data: grades } = useQuery({
     queryKey: ["student-grades", student?.id],
