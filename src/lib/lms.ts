@@ -269,6 +269,48 @@ export interface AttemptDetail {
 
 export type RetakePolicy = "highest_score" | "latest_attempt" | "average_score";
 
+/** College term breakdown — 4 periods per semester, 2 semesters. */
+export const COLLEGE_TERMS = [
+  { value: 1, label: "Prelim", semester: 1 },
+  { value: 2, label: "Midterm", semester: 1 },
+  { value: 3, label: "Semi-Final", semester: 1 },
+  { value: 4, label: "Final", semester: 1 },
+  { value: 5, label: "Prelim", semester: 2 },
+  { value: 6, label: "Midterm", semester: 2 },
+  { value: 7, label: "Semi-Final", semester: 2 },
+  { value: 8, label: "Final", semester: 2 },
+] as const;
+
+/** True when a course uses the college semestral grading model. */
+export function isCollegeGrading(
+  course?: {
+    grading_system?: string | null;
+    education_level?: string | null;
+  } | null,
+): boolean {
+  if (!course) return false;
+  return course.grading_system === "college_semestral" || course.education_level === "college";
+}
+
+/** "Q2" for K-12, or "Midterm (Sem 1)" for college. */
+export function termLabel(
+  term: number,
+  course?: { grading_system?: string | null; education_level?: string | null } | null,
+): string {
+  if (isCollegeGrading(course)) {
+    const t = COLLEGE_TERMS.find((x) => x.value === term);
+    return t ? `${t.label} · Sem ${t.semester}` : `Term ${term}`;
+  }
+  return `Q${term}`;
+}
+
+/** Selectable term values for a course (4 for K-12, 8 for college). */
+export function termOptions(
+  course?: { grading_system?: string | null; education_level?: string | null } | null,
+): number[] {
+  return isCollegeGrading(course) ? COLLEGE_TERMS.map((t) => t.value) : [1, 2, 3, 4];
+}
+
 export interface Quiz {
   id: string;
   course_id: string;

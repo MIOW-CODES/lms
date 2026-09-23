@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Search, Send } from "lucide-react";
+import { Download, FileSpreadsheet, Search, Send } from "lucide-react";
 import { toast } from "sonner";
 import { LoadingSkeleton, UserAvatar } from "@/components/ui-elements";
 import { ATTENDANCE_LIMIT_GRADES } from "@/components/courses/constants";
@@ -13,6 +13,8 @@ import {
   listCourses,
   listGradesForCourse,
   listStudents,
+  termLabel,
+  termOptions,
   transmute,
   upsertGrade,
   weightedInitial,
@@ -20,6 +22,8 @@ import {
   listQuizScoresForCourse,
   type QuizCourseScore,
 } from "@/lib/lms";
+import { buildXlsx, downloadBlob, type XlsxCell } from "@/lib/xlsx";
+import { ClassRecord } from "@/components/courses/class-record";
 import {
   TEACHER_NAV,
   AppShell,
@@ -81,7 +85,7 @@ export function GradebookPage() {
   const [cells, setCells] = useState<Record<string, CellState>>({});
   const [saving, setSaving] = useState(false);
   const [published, setPublished] = useState(false);
-  const [gradeTab, setGradeTab] = useState<"grades" | "quizzes">("grades");
+  const [gradeTab, setGradeTab] = useState<"grades" | "quizzes" | "class">("grades");
   const [search, setSearch] = useState("");
 
   const course = useMemo(() => (courses ?? []).find((c) => c.id === courseId), [courses, courseId]);
@@ -259,6 +263,44 @@ export function GradebookPage() {
     toast.success("CSV exported.");
   };
 
+  const exportXlsx = () => {
+    const header: XlsxCell[] = [
+      "Student No",
+      "Name",
+      "Section",
+      "Attendance (10%)",
+      "WW (20%)",
+      "PT (40%)",
+      "Exam (30%)",
+      "Initial",
+      "Transmuted",
+      "Remarks",
+    ];
+    const body: XlsxCell[][] = visibleRoster.map((s) => {
+      const c = cells[s.id] ?? { ww: "", pt: "", ex: "" };
+      const p = preview(s.id);
+      return [
+        s.student_id ?? "",
+        s.full_name,
+        s.section ?? "",
+        attOf(s.id) ?? "",
+        c.ww,
+        c.pt,
+        c.ex,
+        p ? Number(p.initial.toFixed(1)) : "",
+        p ? p.t : "",
+        p ? gradeRemarks(p.t) : "",
+      ];
+    });
+    const termTag = termLabel(quarter, course).replace(/[^A-Za-z0-9]+/g, "-");
+    const blob = buildXlsx([{ name: "Grades", rows: [header, ...body] }]);
+    downloadBlob(
+      blob,
+      `${course?.code ?? "grades"}-${termTag}${section === "all" ? "" : `-${section}`}.xlsx`,
+    );
+    toast.success("Excel exported.");
+  };
+
   return (
     <AppShell nav={TEACHER_NAV} profile={profile} subtitle="Teacher Portal">
       <div className="mb-1 flex flex-wrap items-center gap-2">
@@ -284,17 +326,17 @@ export function GradebookPage() {
             </option>
           ))}
         </select>
-        <div className="flex gap-1 rounded-xl bg-muted p-1">
-          {[1, 2, 3, 4].map((q) => (
+        <div className="flex flex-wrap gap-1 rounded-xl bg-muted p-1">
+          {termOptions(course).map((q) => (
             <button
               key={q}
               onClick={() => setQuarter(q)}
               className={cn(
-                "rounded-lg px-4 py-2 text-sm font-semibold",
+                "rounded-lg px-3 py-2 text-xs font-semibold sm:text-sm",
                 quarter === q ? "bg-card shadow-sm" : "text-muted-foreground",
               )}
             >
-              Q{q}
+              {termLabel(q, course)}
             </button>
           ))}
         </div>
@@ -340,6 +382,13 @@ export function GradebookPage() {
             <Download className="h-4 w-4" /> CSV
           </button>
           <button
+            onClick={exportXlsx}
+            disabled={!courseId || visibleRoster.length === 0}
+            className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50"
+          >
+            <FileSpreadsheet className="h-4 w-4" /> Excel
+          </button>
+          <button
             onClick={saveAll}
             disabled={saving || !courseId}
             className="flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
@@ -373,6 +422,17 @@ export function GradebookPage() {
             )}
           >
             Quiz Scores {quizScores && quizScores.length > 0 ? `(${quizScores.length})` : ""}
+          </button>
+          <button
+            onClick={() => setGradeTab("class")}
+            className={cn(
+              "rounded-lg px-5 py-2 text-sm font-semibold transition",
+              gradeTab === "class"
+                ? "bg-card shadow-sm text-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Class Record
           </button>
         </div>
       )}
@@ -554,6 +614,11 @@ export function GradebookPage() {
             </Card>
           )}
         </div>
+      )}
+
+      {/* ── Class Record Tab ─────────────────────────────────────── */}
+      {gradeTab === "class" && courseId && (
+        <ClassRecord courseId={courseId} courseCode={course?.code ?? ""} roster={visibleRoster} />
       )}
     </AppShell>
   );
