@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, EyeOff, Save, X } from "lucide-react";
@@ -33,15 +33,15 @@ export function AttemptDetail({
   const [total, setTotal] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
   const [saving, setSaving] = useState(false);
-  const [seeded, setSeeded] = useState(false);
 
-  // Seed the override form once data arrives (without clobbering user edits).
-  if (data && !seeded) {
+  // Seed the override form once per loaded student (effect, not render, so it
+  // is StrictMode-safe and never clobbers in-progress edits on re-render).
+  useEffect(() => {
+    if (!data) return;
     setScore(data.override?.score?.toString() ?? "");
     setTotal(data.override?.total?.toString() ?? "");
     setNotes(data.override?.notes ?? "");
-    setSeeded(true);
-  }
+  }, [data, studentId]);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["attempt-detail", quizId, studentId] });
@@ -51,6 +51,7 @@ export function AttemptDetail({
   };
 
   const saveOverride = async () => {
+    if (saving) return;
     setSaving(true);
     try {
       const parsedScore = score.trim() === "" ? null : Number(score);

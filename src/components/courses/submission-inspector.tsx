@@ -156,6 +156,7 @@ function SubmissionDetail({
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
+    if (saving) return;
     setSaving(true);
     try {
       const parsed = score.trim() === "" ? null : Number(score);

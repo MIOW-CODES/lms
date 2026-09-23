@@ -171,10 +171,15 @@ async function main() {
   console.log(`[import-subjects] Parsed ${subjects.length} subject(s) from ${file}`);
 
   const pool = new Pool({ connectionString: DATABASE_URL });
+  const client = await pool.connect();
   try {
+    // Single transaction: either the whole import lands or none of it does,
+    // so a mid-run failure can never leave a partially-imported catalog.
+    await client.query("BEGIN");
+
     let upserted = 0;
     for (const s of subjects) {
-      await pool.query(
+      await client.query(
         `INSERT INTO public.subjects
            (code, title, units, lecture_hours, lab_hours, description, prerequisites,
             education_level, program, college_year, term, updated_at)
@@ -214,7 +219,7 @@ async function main() {
       for (const s of subjects) {
         const gradeLevel =
           s.education_level === "college" && s.college_year ? 12 + s.college_year : 10;
-        await pool.query(
+        await client.query(
           `INSERT INTO public.courses (title, code, grade_level, education_level, college_year, program, color, grading_system, subject_id)
            VALUES ($1,$2,$3,$4,$5,$6,'indigo',$7, (SELECT id FROM public.subjects WHERE code = $2))
            ON CONFLICT (code) DO UPDATE SET
@@ -244,7 +249,7 @@ async function main() {
         let total = 0;
         for (const s of subjects) {
           if (!s.section) continue;
-          const res = await pool.query(
+          const res = await client.query(
             `INSERT INTO public.enrollments (student_id, course_id)
              SELECT p.id, c.id
              FROM public.profiles p
@@ -259,8 +264,14 @@ async function main() {
         console.log(`[import-subjects] Auto-enrolled ${total} student(s) by section.`);
       }
     }
+
+    await client.query("COMMIT");
     console.log("[import-subjects] Done.");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
   } finally {
+    client.release();
     await pool.end();
   }
 }

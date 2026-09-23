@@ -8,6 +8,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+# Local deepwork/orchestrator scratch state (kept out of version control).
 .slim/deepwork/
 package-lock.json
 dist
