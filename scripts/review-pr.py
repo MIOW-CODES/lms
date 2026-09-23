@@ -44,6 +44,12 @@ payload = json.dumps({
     "stream": False
 })
 
+# Write the payload to a file and use curl's @file form: passing a very large
+# body as a command-line argument exceeds the OS ARG_MAX limit.
+payload_path = "/tmp/pr_review_payload.json"
+with open(payload_path, "w") as f:
+    f.write(payload)
+
 session_id = f"miow-pr-review-{os.environ.get('PR_NUMBER', 'na')}-{os.environ.get('GITHUB_RUN_ID', 'local')}"
 
 result = subprocess.run([
@@ -52,7 +58,7 @@ result = subprocess.run([
     "-H", "Content-Type: application/json",
     "-H", f"Authorization: Bearer {api_key}",
     "-H", f"x-opencode-session: {session_id}",
-    "-d", payload
+    "-d", f"@{payload_path}"
 ], capture_output=True, text=True)
 
 try:
