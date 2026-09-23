@@ -33,24 +33,23 @@
  * term) are stored verbatim (trimmed/clamped) and are only ever rendered as
  * escaped text by the UI — never as raw HTML.
  */
+import "dotenv/config";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { Pool } from "pg";
 
-// Local-only, non-secret development credential. It matches the Postgres
-// service in docker-compose.yml and is identical to the default used by
-// scripts/migrate.ts and scripts/seed.ts. Never used in production: a real
-// DATABASE_URL is required when NODE_ENV=production (see resolveDatabaseUrl).
-const DEV_DATABASE_URL = "postgres://miow:miow_dev_password@localhost:5432/miow";
-
-/** Resolve the connection string; refuse the local dev default in production. */
+/**
+ * Resolve the connection string from the environment. No credential is embedded
+ * in this file: set DATABASE_URL in your shell or `.env` (see `.env.example`;
+ * the docker-compose default is documented there and in docker-compose.yml).
+ */
 function resolveDatabaseUrl(): string {
   const url = process.env["DATABASE_URL"];
-  if (url) return url;
-  if (process.env["NODE_ENV"] === "production") {
-    throw new Error("DATABASE_URL must be set when NODE_ENV=production.");
-  }
-  return DEV_DATABASE_URL;
+  if (url && url.trim()) return url.trim();
+  throw new Error(
+    "DATABASE_URL is not set. Add it to your .env (see .env.example) or export it, " +
+      "e.g. DATABASE_URL=postgres://<user>:<password>@localhost:5432/miow",
+  );
 }
 
 type SubjectInput = {
