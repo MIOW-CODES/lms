@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Search, UserPlus } from "lucide-react";
+import { Filter, Search, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { enrollStudents, listStudents, type Profile } from "@/lib/lms";
 import { Modal } from "@/components/lms";
 import { UserAvatar } from "@/components/ui-elements";
+import { CreatableSelect } from "@/components/ui/creatable-select";
+import { DEFAULT_STUDENT_SECTIONS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 /**
@@ -30,6 +32,7 @@ export function EnrollStudentsModal({
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [sectionFilter, setSectionFilter] = useState("all");
   const [saving, setSaving] = useState(false);
 
   // Reuses the shared ["students"] roster cache (same queryFn as the students
@@ -43,10 +46,19 @@ export function EnrollStudentsModal({
 
   const enrolled = useMemo(() => new Set(enrolledIds), [enrolledIds]);
 
+  const availableSections = useMemo(() => {
+    const set = new Set(DEFAULT_STUDENT_SECTIONS);
+    (students ?? []).forEach((s) => {
+      if (s.section?.trim()) set.add(s.section.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [students]);
+
   const candidates = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (students ?? []).filter((s) => {
       if (enrolled.has(s.id)) return false;
+      if (sectionFilter !== "all" && (s.section ?? "") !== sectionFilter) return false;
       if (!q) return true;
       return (
         s.full_name.toLowerCase().includes(q) ||
@@ -55,7 +67,7 @@ export function EnrollStudentsModal({
         (s.section ?? "").toLowerCase().includes(q)
       );
     });
-  }, [students, enrolled, search]);
+  }, [students, enrolled, search, sectionFilter]);
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -106,16 +118,30 @@ export function EnrollStudentsModal({
       title={courseLabel ? `Enroll students — ${courseLabel}` : "Enroll students"}
       wide
     >
-      <label className="relative mb-3 block">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          aria-label="Search students to enroll"
-          placeholder="Search name, student no., email or section…"
-          className="h-11 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-        />
-      </label>
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <label className="relative flex-1 block">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search students to enroll"
+            placeholder="Search name, student no., email or section…"
+            className="h-11 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+        </label>
+        <div className="w-full sm:w-48">
+          <CreatableSelect
+            value={sectionFilter === "all" ? "" : sectionFilter}
+            onChange={(val) => setSectionFilter(val || "all")}
+            options={["All sections", ...availableSections]}
+            placeholder="All sections"
+            searchPlaceholder="Filter section..."
+            createPlaceholder="Filter"
+            emptyText="No sections found."
+            label="Filter students by section"
+          />
+        </div>
+      </div>
 
       {isPending ? (
         <div className="grid gap-1.5 sm:grid-cols-2">
@@ -130,7 +156,7 @@ export function EnrollStudentsModal({
             : "Every matching student is already enrolled in this course."}
         </p>
       ) : (
-        <ul className="grid max-h-80 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-2">
+        <ul className="grid gap-1.5 sm:grid-cols-2">
           {candidates.map((s: Profile) => {
             const checked = selected.has(s.id);
             return (

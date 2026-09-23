@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Nfc, Plus, Search, Trash2 } from "lucide-react";
@@ -37,6 +37,8 @@ import {
   useProfile,
 } from "@/components/lms";
 import { gradeLevelLabel } from "@/lib/utils";
+import { CreatableSelect } from "@/components/ui/creatable-select";
+import { DEFAULT_STUDENT_SECTIONS } from "@/lib/constants";
 
 export const Route = createFileRoute("/dashboard/admin/students")({
   head: () => ({
@@ -90,8 +92,11 @@ function StudentsPage() {
   const [selected, setSelected] = useState<Profile | null>(null);
 
   const sections = useMemo(() => {
-    const set = new Set((students ?? []).map((s) => s.section).filter(Boolean));
-    return Array.from(set).sort();
+    const set = new Set(DEFAULT_STUDENT_SECTIONS);
+    (students ?? []).forEach((s) => {
+      if (s.section?.trim()) set.add(s.section.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [students]);
 
   const filtered = useMemo(() => {
@@ -249,7 +254,7 @@ function StudentsPage() {
           }
         />
       ) : (
-        <Card className="overflow-x-auto">
+        <Card className="custom-scrollbar overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -353,12 +358,15 @@ function StudentsPage() {
               ))}
             </SelectContent>
           </Select>
-          <input
+          <CreatableSelect
             value={form.section}
-            onChange={set("section")}
-            aria-label="Section"
+            onChange={(val) => setForm((f) => ({ ...f, section: val }))}
+            options={sections}
             placeholder="Section (e.g. Rizal)"
-            className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            searchPlaceholder="Search or type new section..."
+            createPlaceholder="Add"
+            emptyText="No sections found."
+            label="Section"
           />
           <input
             value={form.pin}
@@ -410,6 +418,7 @@ function StudentsPage() {
       {/* Student profile + rebind */}
       <StudentProfileModal
         student={selected}
+        sections={sections}
         onClose={() => setSelected(null)}
         onChanged={() => {
           qc.invalidateQueries({ queryKey: ["students"] });
@@ -422,16 +431,24 @@ function StudentsPage() {
 
 function StudentProfileModal({
   student,
+  sections = [],
   onClose,
   onChanged,
 }: {
   student: Profile | null;
+  sections?: string[];
   onClose: () => void;
   onChanged: () => void;
 }) {
   const [newRfid, setNewRfid] = useState("");
   const [newPin, setNewPin] = useState("");
+  const [editSection, setEditSection] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // Sync edit section when student changes
+  useEffect(() => {
+    if (student) setEditSection(student.section ?? "");
+  }, [student]);
 
   const { data: grades } = useQuery({
     queryKey: ["student-grades", student?.id],
@@ -489,6 +506,45 @@ function StudentProfileModal({
           <Badge tone="indigo">
             {gradeLevelLabel(student.grade_level)} · {student.section ?? "—"}
           </Badge>
+        </div>
+      </div>
+
+      {/* Section update */}
+      <div className="mb-4 rounded-xl bg-muted/40 p-4">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Section Assignment
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex-1">
+            <CreatableSelect
+              value={editSection}
+              onChange={setEditSection}
+              options={sections}
+              placeholder="Assign section (e.g. Rizal)"
+              searchPlaceholder="Search or type section..."
+              createPlaceholder="Assign"
+              label="Student section"
+            />
+          </div>
+          <button
+            onClick={async () => {
+              if (editSection.trim() === (student.section ?? "")) return;
+              setBusy(true);
+              try {
+                await updateProfile(student.id, { section: editSection.trim() || null });
+                toast.success("Section updated.");
+                onChanged();
+              } catch {
+                toast.error("Failed to update section.");
+              } finally {
+                setBusy(false);
+              }
+            }}
+            disabled={busy || editSection.trim() === (student.section ?? "")}
+            className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            Update Section
+          </button>
         </div>
       </div>
 

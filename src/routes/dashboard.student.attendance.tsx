@@ -218,7 +218,7 @@ function AttendancePage() {
               sub="Tap your ID at the gate kiosk to start your streak."
             />
           ) : (
-            <Card className="max-h-[430px] divide-y divide-border overflow-y-auto">
+            <Card className="custom-scrollbar max-h-[430px] divide-y divide-border overflow-y-auto">
               {all.slice(0, 40).map((l) => {
                 const t = attendanceTone(l.status);
                 return (

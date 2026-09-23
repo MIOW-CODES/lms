@@ -382,22 +382,22 @@ export function Modal({
             aria-modal="true"
             aria-label={title}
             className={cn(
-              "max-h-[90vh] w-full overflow-y-auto rounded-2xl border border-border/70 bg-card/95 p-6 shadow-lift backdrop-blur-xl",
+              "flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/95 shadow-lift backdrop-blur-xl",
               wide ? "max-w-3xl" : "max-w-lg",
             )}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-4 flex items-center justify-between">
+            <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-6 py-4">
               <h3 className="text-lg font-bold">{title}</h3>
               <button
                 onClick={onClose}
                 aria-label="Close dialog"
-                className="rounded-lg px-2 py-1 text-sm text-muted-foreground hover:bg-muted"
+                className="rounded-lg px-2 py-1 text-sm text-muted-foreground transition hover:bg-muted"
               >
                 ✕
               </button>
             </div>
-            {children}
+            <div className="custom-scrollbar flex-1 overflow-y-auto px-6 py-4">{children}</div>
           </motion.div>
         </motion.div>
       )}

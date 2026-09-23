@@ -443,7 +443,7 @@ export function CreateQuizModal({
                 </p>
               </div>
             )}
-            <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+            <div className="space-y-3 pr-1">
               {manualQuestions.map((q, qi) => (
                 <div key={qi} className="rounded-xl border border-border p-3 space-y-2">
                   <div className="flex items-center justify-between gap-2">
