@@ -265,8 +265,11 @@ export async function uploadSubmissionFile(
         .update({ file_urls: [...list, attachment] })
         .eq("id", submissionId),
     );
-  } catch {
-    /* mirror is optional */
+  } catch (e) {
+    // The mirror into submissions.file_urls is best-effort (the canonical
+    // record lives in submission_files), but log it so persistent failures
+    // don't go unnoticed.
+    console.error("[materials] failed to mirror submission file_urls:", e);
   }
   return attachment;
 }

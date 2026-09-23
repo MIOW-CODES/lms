@@ -128,7 +128,13 @@ export async function listSubmissionsForStudent(studentId: string) {
 export async function listSubmissionsForAssignment(assignmentId: string, token: string) {
   await requireStaff(token);
   const rows = await unwrap<any[]>(
-    db.from("submissions").select("*").eq("assignment_id", assignmentId),
+    db
+      .from("submissions")
+      // Explicit columns — never expose future/internal columns via SELECT *.
+      .select(
+        "id, assignment_id, student_id, content, file_urls, score, feedback, status, submitted_at",
+      )
+      .eq("assignment_id", assignmentId),
   );
   if (!rows.length) return [];
   const studentIds = [...new Set(rows.map((r) => r.student_id as string))];
