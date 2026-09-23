@@ -2,11 +2,12 @@
  * Import a subject database (CSV or JSON) into the MIOW-LMS `subjects` catalog.
  *
  * Usage:
- *   bun run scripts/import-subjects.ts <file.csv|file.json> [--offer] [--enroll]
+ *   bun run scripts/import-subjects.ts <file.csv|file.json> [--offer] [--enroll] [--dry-run]
  *
  * Flags:
  *   --offer    Also create a `courses` offering for each subject (idempotent by code).
  *   --enroll   With --offer, enroll students whose `section` matches the subject's section.
+ *   --dry-run  Parse + validate and print a preview without writing anything.
  *
  * CSV headers (case-insensitive, flexible aliases):
  *   code        (required)  e.g. TVE100
@@ -190,9 +191,10 @@ async function main() {
   const file = args.find((a) => !a.startsWith("--"));
   const offer = args.includes("--offer");
   const enroll = args.includes("--enroll");
+  const dryRun = args.includes("--dry-run");
   if (!file) {
     console.error(
-      "Usage: bun run scripts/import-subjects.ts <file.csv|file.json> [--offer] [--enroll]",
+      "Usage: bun run scripts/import-subjects.ts <file.csv|file.json> [--offer] [--enroll] [--dry-run]",
     );
     process.exit(1);
   }
@@ -203,6 +205,30 @@ async function main() {
     process.exit(1);
   }
   console.log(`[import-subjects] Parsed ${subjects.length} subject(s) from ${file}`);
+
+  if (dryRun) {
+    // Validation-only preview: report what WOULD happen without writing.
+    const byLevel = subjects.reduce<Record<string, number>>((acc, s) => {
+      const k = s.education_level ?? "unknown";
+      acc[k] = (acc[k] ?? 0) + 1;
+      return acc;
+    }, {});
+    const withSection = subjects.filter((s) => s.section).length;
+    console.log("[import-subjects] DRY RUN — no database writes will occur.");
+    console.log(`  subjects:        ${subjects.length}`);
+    console.log(`  by level:        ${JSON.stringify(byLevel)}`);
+    console.log(`  would offer:     ${offer ? subjects.length : 0} course(s)`);
+    console.log(`  would enroll by: ${enroll ? `${withSection} section(s)` : "0"}`);
+    console.log("  sample:");
+    for (const s of subjects.slice(0, 5)) {
+      console.log(
+        `    ${s.code} — ${s.title} [${s.education_level ?? "college"}${
+          s.college_year ? ` Yr${s.college_year}` : ""
+        }${s.section ? ` · ${s.section}` : ""}]`,
+      );
+    }
+    return;
+  }
 
   const pool = new Pool({ connectionString: resolveDatabaseUrl() });
   const client = await pool.connect();

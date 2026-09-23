@@ -501,11 +501,28 @@ export async function overrideQuizAttempt(
       .eq("student_id", student_id)
       .maybeSingle(),
   );
+  // If a score is given without a total, default the total to the student's
+  // latest attempt total so the override reads as a proper fraction instead of
+  // "score/—". A null score (with null total) clears the override.
+  let resolvedTotal = total;
+  if (score != null && resolvedTotal == null) {
+    const rows = await unwrap<any[]>(
+      db
+        .from("quiz_attempts")
+        .select("attempt_number, total")
+        .eq("quiz_id", quiz_id)
+        .eq("student_id", student_id),
+    );
+    if (rows.length) {
+      const latest = rows.reduce((a, b) => (b.attempt_number > a.attempt_number ? b : a));
+      resolvedTotal = (latest.total as number | null) ?? null;
+    }
+  }
   const payload = {
     quiz_id,
     student_id,
     score,
-    total,
+    total: resolvedTotal,
     notes,
     overridden_by: caller.id,
     updated_at: new Date().toISOString(),
