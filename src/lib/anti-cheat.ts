@@ -63,6 +63,8 @@ const EMPTY_COUNTS: Record<IntegrityEventType, number> = {
 const FLASH_MS = 3000;
 const DEVTOOLS_SIZE_DELTA = 180;
 const DEVTOOLS_THROTTLE_MS = 2000;
+/** Client-side cap — the server schema also caps at 500; drop the oldest beyond this. */
+const MAX_EVENTS = 500;
 
 /**
  * Detect and log assessment-integrity events.
@@ -81,6 +83,8 @@ export function useAntiCheat(active: boolean): AntiCheatState {
 
   const record = useCallback((type: IntegrityEventType) => {
     const entry: IntegrityEvent = { at: Date.now(), type };
+    // Bound memory: drop the oldest events once the cap is reached.
+    if (eventsRef.current.length >= MAX_EVENTS) eventsRef.current.shift();
     eventsRef.current.push(entry);
     setCount(eventsRef.current.length);
     setCounts((prev) => ({ ...prev, [type]: prev[type] + 1 }));

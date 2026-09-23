@@ -32,7 +32,11 @@ interface ChatMessage {
   parts?: Array<{ type?: string; text?: string }>;
 }
 
-/** Keep prompts small enough to start fast — long source dumps are the main latency driver. */
+/**
+ * Keep prompts small enough to start fast — long source dumps are the main
+ * latency driver. Tuned to the mimo-v2.5 context window; revisit if the model
+ * (or its max context) changes.
+ */
 const MAX_MESSAGE_CHARS = 24_000;
 const MAX_TOTAL_CHARS = 60_000;
 

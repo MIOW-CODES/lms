@@ -42,7 +42,10 @@ export function RowActionsMenu({
       <DropdownMenuContent align="end">
         {actions.map((action, i) => (
           <React.Fragment key={action.label}>
-            {action.destructive && i > 0 && <DropdownMenuSeparator />}
+            {/* One separator before the destructive group, wherever it starts. */}
+            {action.destructive && i > 0 && !actions[i - 1]?.destructive && (
+              <DropdownMenuSeparator />
+            )}
             <DropdownMenuItem
               onSelect={(e) => {
                 e.preventDefault();
