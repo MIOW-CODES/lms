@@ -32,22 +32,40 @@ interface ChatMessage {
   parts?: Array<{ type?: string; text?: string }>;
 }
 
+/** Keep prompts small enough to start fast — long source dumps are the main latency driver. */
+const MAX_MESSAGE_CHARS = 24_000;
+const MAX_TOTAL_CHARS = 60_000;
+
+/**
+ * Collapse a UI message to plain text, trimming pathological inputs while always
+ * preserving the most recent turns.
+ */
 function toOpenAIMessages(messages: ChatMessage[], systemPrompt: string) {
-  const out: Array<{ role: string; content: string }> = [{ role: "system", content: systemPrompt }];
+  const out: Array<{ role: string; content: string }> = [];
   for (const m of messages) {
-    if (m.role === "user" || m.role === "assistant") {
-      let text = "";
-      if (typeof m.content === "string") text = m.content;
-      else if (Array.isArray(m.parts)) {
-        text = m.parts
-          .filter((p) => p.type === "text")
-          .map((p) => p.text ?? "")
-          .join("");
-      }
-      if (text.trim()) out.push({ role: m.role, content: text });
+    if (m.role !== "user" && m.role !== "assistant") continue;
+    let text = "";
+    if (typeof m.content === "string") text = m.content;
+    else if (Array.isArray(m.parts)) {
+      text = m.parts
+        .filter((p) => p.type === "text")
+        .map((p) => p.text ?? "")
+        .join("");
     }
+    text = text.trim();
+    if (!text) continue;
+    if (text.length > MAX_MESSAGE_CHARS) {
+      text = `${text.slice(0, MAX_MESSAGE_CHARS)}\n…[truncated ${text.length - MAX_MESSAGE_CHARS} chars]`;
+    }
+    out.push({ role: m.role, content: text });
   }
-  return out;
+  // Drop the oldest turns if the whole prompt is still too large; always keep the last one.
+  let total = out.reduce((n, m) => n + m.content.length, 0);
+  while (total > MAX_TOTAL_CHARS && out.length > 1) {
+    const dropped = out.shift()!;
+    total -= dropped.content.length;
+  }
+  return [{ role: "system", content: systemPrompt }, ...out];
 }
 
 const chatRateLimits = new Map<string, number>();
@@ -136,8 +154,12 @@ export const Route = createFileRoute("/api/chat")({
         const encoder = new TextEncoder();
         const decoder = new TextDecoder();
         let textStarted = false;
+        let reasoningStarted = false;
         const textId = `txt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const reasoningId = `rsn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         let buffer = "";
+
+        const sse = (payload: unknown) => encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
 
         const transform = new TransformStream({
           transform(chunk, controller) {
@@ -149,34 +171,49 @@ export const Route = createFileRoute("/api/chat")({
               if (!line.startsWith("data: ")) continue;
               const data = line.slice(6).trim();
               if (data === "[DONE]") {
+                if (reasoningStarted) {
+                  controller.enqueue(sse({ type: "reasoning-end", id: reasoningId }));
+                }
                 if (textStarted) {
-                  controller.enqueue(
-                    encoder.encode(`data: ${JSON.stringify({ type: "text-end", id: textId })}\n\n`),
-                  );
+                  controller.enqueue(sse({ type: "text-end", id: textId }));
                 }
                 controller.enqueue(encoder.encode("data: [DONE]\n\n"));
                 continue;
               }
               try {
-                const parsed: { choices?: Array<{ delta?: { content?: string } }> } =
-                  JSON.parse(data);
+                const parsed: {
+                  choices?: Array<{
+                    delta?: { content?: string; reasoning_content?: string; reasoning?: string };
+                  }>;
+                } = JSON.parse(data);
                 const delta = parsed.choices?.[0]?.delta;
                 if (!delta) continue;
-                if (delta.content === null || delta.content === undefined) continue;
-                if (delta.content === "") continue;
-                if (!textStarted) {
+
+                // Reasoning models stream their chain-of-thought first. Forward it
+                // so the UI shows live progress instead of a stalled "Thinking…".
+                const reasoning = delta.reasoning_content ?? delta.reasoning;
+                if (typeof reasoning === "string" && reasoning.length > 0) {
+                  if (!reasoningStarted) {
+                    controller.enqueue(sse({ type: "reasoning-start", id: reasoningId }));
+                    reasoningStarted = true;
+                  }
                   controller.enqueue(
-                    encoder.encode(
-                      `data: ${JSON.stringify({ type: "text-start", id: textId })}\n\n`,
-                    ),
+                    sse({ type: "reasoning-delta", id: reasoningId, delta: reasoning }),
                   );
+                  continue;
+                }
+
+                const content = delta.content;
+                if (content === null || content === undefined || content === "") continue;
+                if (reasoningStarted) {
+                  controller.enqueue(sse({ type: "reasoning-end", id: reasoningId }));
+                  reasoningStarted = false;
+                }
+                if (!textStarted) {
+                  controller.enqueue(sse({ type: "text-start", id: textId }));
                   textStarted = true;
                 }
-                controller.enqueue(
-                  encoder.encode(
-                    `data: ${JSON.stringify({ type: "text-delta", id: textId, delta: delta.content })}\n\n`,
-                  ),
-                );
+                controller.enqueue(sse({ type: "text-delta", id: textId, delta: content }));
               } catch (e) {
                 console.error("[chat-api]", e);
               }

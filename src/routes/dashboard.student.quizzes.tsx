@@ -15,9 +15,15 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { setAssessmentMode } from "@/lib/assessment-mode";
-import { useAntiCheat } from "@/lib/anti-cheat";
+import {
+  useAntiCheat,
+  integrityLabel,
+  isSevereIntegrityEvent,
+  INTEGRITY_EVENT_TYPES,
+} from "@/lib/anti-cheat";
 import {
   getQuiz,
+  enrollmentsForStudent,
   listCourses,
   listQuizzes,
   materialHref,
@@ -84,6 +90,11 @@ function QuizzesPage() {
     queryFn: myQuizSummaries,
     enabled: !!profile,
   });
+  const { data: enrolledCourseIds } = useQuery({
+    queryKey: ["enrollments", "student", profile?.id],
+    queryFn: () => enrollmentsForStudent(profile!.id),
+    enabled: !!profile?.id,
+  });
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [questions, setQuestions] = useState<QuizQuestionPublic[]>([]);
@@ -119,8 +130,8 @@ function QuizzesPage() {
     return () => setAssessmentMode(false);
   }, [taking]);
 
-  // Anti-cheat: detect tab switches during active assessment
-  const { tabSwitches, switchCount, showFlash } = useAntiCheat(taking);
+  // Anti-cheat: detect tab switches / devtools / paste during active assessment
+  const { tabSwitches, switchCount, counts, showFlash, flashType } = useAntiCheat(taking);
 
   // Resume or start attempt: restore saved timer/answers if the student
   // closed and reopened the same worksheet within this session.
@@ -185,7 +196,7 @@ function QuizzesPage() {
     if (secondsLeft === 0 && finishRef.current) finishRef.current();
   }, [secondsLeft]);
 
-  const isLoading = !courses || !quizzes || !summaries;
+  const isLoading = !courses || !quizzes || !summaries || !enrolledCourseIds;
 
   if (!profile) return null;
 
@@ -196,7 +207,12 @@ function QuizzesPage() {
       </AppShell>
     );
 
-  const myCourses = (courses ?? []).filter((c) => c.grade_level === profile.grade_level);
+  // Enrollment is the source of truth (mixed college sections); grade level is a
+  // fallback so a student with no enrollment rows still sees their year's work.
+  const enrolled = new Set(enrolledCourseIds ?? []);
+  const myCourses = (courses ?? []).filter(
+    (c) => enrolled.has(c.id) || c.grade_level === profile.grade_level,
+  );
   const courseIds = new Set(myCourses.map((c) => c.id));
   const myQuizzes = (quizzes ?? []).filter((q) => courseIds.has(q.course_id));
 
@@ -497,21 +513,40 @@ function QuizzesPage() {
               Assessment integrity: the ClassMate Assistant is disabled until you submit.
             </p>
 
-            {/* Anti-cheat: tab-switch warning */}
+            {/* Anti-cheat: integrity warning */}
             {switchCount > 0 && (
-              <p
+              <div
                 className={cn(
-                  "mb-4 flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors",
+                  "mb-4 rounded-xl border px-3 py-2 text-xs transition-colors",
                   showFlash
-                    ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                    ? flashType && isSevereIntegrityEvent(flashType)
+                      ? "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                      : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
                     : "border-amber-500/20 bg-amber-500/5 text-amber-600 dark:text-amber-400",
                 )}
               >
-                <EyeOff className="h-3.5 w-3.5 shrink-0" />
-                {showFlash
-                  ? `Tab switch recorded (${switchCount} total)`
-                  : `Tab switches are being logged (${switchCount})`}
-              </p>
+                <p className="flex items-center gap-1.5 font-semibold">
+                  <EyeOff className="h-3.5 w-3.5 shrink-0" />
+                  {showFlash && flashType
+                    ? `${integrityLabel(flashType)} recorded`
+                    : "Integrity events are being logged"}
+                  <span className="ml-auto font-bold tabular-nums">{switchCount} total</span>
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {INTEGRITY_EVENT_TYPES.filter((t) => counts[t] > 0).map((t) => (
+                    <span
+                      key={t}
+                      className="rounded-full border border-current/25 px-2 py-0.5 text-[10px] font-medium"
+                    >
+                      {integrityLabel(t)} · {counts[t]}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-[11px] opacity-80">
+                  Keep this tab focused while answering — repeated events are shared with your
+                  teacher.
+                </p>
+              </div>
             )}
 
             {/* Stepper dots */}

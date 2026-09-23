@@ -4,6 +4,7 @@ import { type Course, type Quiz } from "@/lib/lms";
 import { MotionCard, courseStyle } from "@/components/lms";
 import { POLICY_LABELS } from "@/components/courses/constants";
 import { MaterialManager } from "@/components/courses/material-manager";
+import { RowActionsMenu } from "@/components/courses/row-actions";
 import { cn } from "@/lib/utils";
 
 interface WorksheetsSectionProps {
@@ -51,31 +52,34 @@ export const WorksheetsSection = React.memo(function WorksheetsSection({
                 </p>
               </div>
               <button
-                onClick={() => onPolicy(q)}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted"
-              >
-                <Settings2 className="h-3.5 w-3.5" /> Policy
-              </button>
-              <button
                 onClick={() => onRoster(q)}
                 className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/15"
               >
                 <Users className="h-3.5 w-3.5" /> Attempts
               </button>
-              <button
-                onClick={() => onEdit(q)}
-                aria-label={`Edit worksheet ${q.title}`}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted"
-              >
-                <Pencil className="h-3.5 w-3.5" /> Edit
-              </button>
-              <button
-                onClick={() => onRemove(q)}
-                aria-label={`Remove worksheet ${q.title}`}
-                className="flex h-9 items-center rounded-lg p-2 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              <RowActionsMenu
+                label={`Actions for worksheet ${q.title}`}
+                actions={[
+                  {
+                    label: "Retake policy",
+                    icon: <Settings2 className="h-3.5 w-3.5" />,
+                    onSelect: () => onPolicy(q),
+                  },
+                  {
+                    label: "Edit",
+                    icon: <Pencil className="h-3.5 w-3.5" />,
+                    onSelect: () => onEdit(q),
+                    ariaLabel: `Edit worksheet ${q.title}`,
+                  },
+                  {
+                    label: "Delete",
+                    icon: <Trash2 className="h-3.5 w-3.5" />,
+                    onSelect: () => onRemove(q),
+                    destructive: true,
+                    ariaLabel: `Remove worksheet ${q.title}`,
+                  },
+                ]}
+              />
               <div className="w-full">
                 <MaterialManager
                   target="quiz"
