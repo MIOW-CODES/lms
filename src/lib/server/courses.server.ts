@@ -7,6 +7,7 @@ import { requireStaff } from "@/lib/server/auth.server";
 import { schemas } from "@/lib/server/schemas.server";
 import { createProfile, getProfileById, updateProfile } from "@/lib/server/profiles.server";
 import { type ProfileRole } from "@/lib/server/db-types";
+import { ENROLLMENT_ERRORS } from "@/lib/enrollment";
 
 export async function listCourses() {
   const courses = await unwrap<any[]>(db.from("courses").select("*").order("code"));
@@ -193,11 +194,11 @@ export async function createOrEnrollStudent(
   let created: boolean;
   if (existingId) {
     const existing = await getProfileById(existingId);
-    if (!existing) throw new Error("Student not found");
+    if (!existing) throw new Error(ENROLLMENT_ERRORS.notFound);
     // The roster form is for students only — never silently rewrite a staff
     // account that happens to share an identity.
     if (existing.role !== "student") {
-      throw new Error(`That identity belongs to a ${existing.role} account, not a student.`);
+      throw new Error(ENROLLMENT_ERRORS.nonStudent(existing.role));
     }
     // Reuse the record: refresh the editable roster fields, but never rewrite
     // the identity columns that were used to find them.

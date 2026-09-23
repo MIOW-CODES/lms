@@ -69,6 +69,9 @@ import {
   overrideAttemptFn,
   listStudentAttemptDetailFn,
 } from "@/lib/lms.functions";
+import type { StudentEnrollInput } from "@/lib/enrollment";
+
+export type { StudentEnrollInput };
 
 /* ---------- Types ---------- */
 
@@ -1174,7 +1177,7 @@ export async function enrollStudents(
  * then email) and optionally enroll them into a course. Staff-only.
  */
 export async function createOrEnrollStudent(
-  input: Partial<Profile>,
+  input: StudentEnrollInput,
   courseId?: string | null,
 ): Promise<{ profile: Profile; created: boolean; enrolled: boolean }> {
   return createOrEnrollStudentFn({
