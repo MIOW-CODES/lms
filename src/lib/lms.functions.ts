@@ -260,8 +260,19 @@ export const enrollmentsForStudentFn = createServerFn({ method: "POST" })
 export const enrollStudentFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.enrollment.parse(data))
   .handler(async ({ data }) => {
-    await server.requireStaff(data.token);
+    // Teachers may only enroll into courses they lead; admins are universal.
+    await server.requireCourseOwnerOrAdmin(data.token, data.course_id);
     return server.enrollStudent(data.student_id, data.course_id);
+  });
+
+// Create a new student OR reuse an existing one (matched by student number,
+// then email) and optionally enroll them into a course — one staff-only call.
+export const createOrEnrollStudentFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.studentEnroll.parse(data))
+  .handler(async ({ data }) => {
+    if (data.course_id) await server.requireCourseOwnerOrAdmin(data.token, data.course_id);
+    else await server.requireStaff(data.token);
+    return server.createOrEnrollStudent(data);
   });
 
 /* ---------- Submissions ---------- */
@@ -315,8 +326,10 @@ export const listQuizzesFn = createServerFn({ method: "POST" })
 export const getQuizFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.id.parse(data))
   .handler(async ({ data }) => {
-    await server.requireSession(data.token);
-    return server.getQuizPublic(data.id);
+    const caller = await server.requireSession(data.token);
+    // Pass the caller id so the question bank can avoid questions this student
+    // already saw in prior attempts (fresh items on retakes).
+    return server.getQuizPublic(data.id, caller.id);
   });
 
 // Submit a worksheet attempt. The server enforces the worksheet's retake

@@ -15,6 +15,7 @@ import {
   COURSE_MATERIAL_MAX_BYTES,
   SOURCE_FILES_MAX_COUNT,
   SOURCE_FILES_MAX_TOTAL_BYTES,
+  classmateBankSize,
   policyPayload,
   type QuizMode,
   type ManualQuestion,
@@ -147,11 +148,12 @@ export function CreateQuizModal({
 
     const course = courses.find((c) => c.id === quizForm.course_id);
     if (course && quizForm.title.trim()) {
+      const perStudent = Math.max(0, parseInt(quizForm.question_count) || 0);
       openWorksheetChat({
         course: `${course.code} — ${course.title}`,
         title: quizForm.title.trim(),
         sourceMaterial: combined,
-        autoMessage: `Generate ${quizForm.question_count && parseInt(quizForm.question_count) > 0 ? parseInt(quizForm.question_count) : 20} parser-ready multiple-choice and fill-in-the-blank questions based on the uploaded material (${next.length} source file${next.length > 1 ? "s" : ""}) for "${quizForm.title.trim()}". Follow the strict 4-section format with Answer Key.`,
+        autoMessage: `Generate ${classmateBankSize(perStudent)} parser-ready multiple-choice and fill-in-the-blank questions based on the uploaded material (${next.length} source file${next.length > 1 ? "s" : ""}) for "${quizForm.title.trim()}". Follow the strict 4-section format with Answer Key.`,
       });
       toast.success("Files loaded — ClassMate is generating questions now.");
     } else {
@@ -166,6 +168,11 @@ export function CreateQuizModal({
       toast.error("Course and title are required.");
       return;
     }
+
+    // Question-bank size: 0 = serve every question; N>0 = serve a random,
+    // per-attempt non-overlapping subset of N. Clamp to the parsed bank size so
+    // a worksheet can't ask for more items than it actually has.
+    const requested = Math.max(0, parseInt(quizForm.question_count) || 0);
 
     let questions: Array<{ question: string; options: string[]; correct_answer: string }>;
 
@@ -193,14 +200,17 @@ export function CreateQuizModal({
           `${parsed.dropped} item${parsed.dropped > 1 ? "s were" : " was"} skipped — check their numbering against the Answer Key.`,
         );
       }
-      const requested = parseInt(quizForm.question_count) || 0;
       if (requested > 0 && parsed.questions.length > requested) {
         toast.warning(
-          `ClassMate generated ${parsed.questions.length} questions but you requested ${requested}. All ${parsed.questions.length} will be saved.`,
+          `ClassMate generated ${parsed.questions.length} questions but you requested ${requested}. All ${parsed.questions.length} will be saved; each student still only sees ${requested} at random.`,
         );
       }
       questions = parsed.questions;
     }
+
+    // Never store a bank size larger than the question pool — otherwise every
+    // attempt would show the same full set.
+    const questionCount = requested > 0 && requested < questions.length ? requested : 0;
 
     setSaving(true);
     try {
@@ -209,6 +219,7 @@ export function CreateQuizModal({
           course_id: quizForm.course_id,
           title: quizForm.title,
           duration_minutes: parseInt(quizForm.duration_minutes) || 15,
+          question_count: questionCount,
           ...policyPayload(quizForm),
         },
         questions,
@@ -278,7 +289,7 @@ export function CreateQuizModal({
             />
           </label>
           <span className="text-[11px] text-muted-foreground">
-            0 = all questions · e.g. 10 = random 10 per student
+            0 = all questions · e.g. 10 = a different random 10 per student/attempt
           </span>
         </div>
         <PolicyFields

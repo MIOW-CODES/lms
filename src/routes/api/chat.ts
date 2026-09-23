@@ -89,6 +89,12 @@ export const Route = createFileRoute("/api/chat")({
           return new Response("Session expired — please sign in again", { status: 401 });
         }
 
+        // ClassMate Assistant is staff-only. Students must not be able to invoke
+        // the assistant even by calling the endpoint directly.
+        if (profile.role === "student") {
+          return new Response("ClassMate is not available for student accounts", { status: 403 });
+        }
+
         const now = Date.now();
         const lastRequest = chatRateLimits.get(profile.id);
         if (lastRequest && now - lastRequest < CHAT_RATE_LIMIT_MS) {

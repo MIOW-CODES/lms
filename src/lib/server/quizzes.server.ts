@@ -10,7 +10,39 @@ export async function listQuizzes() {
   return unwrap<any[]>(db.from("quizzes").select("*").is("deleted_at", null));
 }
 
-export async function getQuizPublic(id: string) {
+/** In-place Fisher-Yates shuffle (uniform random permutation). */
+function shuffleInPlace<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j]!, arr[i]!];
+  }
+  return arr;
+}
+
+/**
+ * Question-bank selection. Chooses `count` questions out of `all`, preferring
+ * questions the student has NOT seen in prior attempts (so retakes surface fresh
+ * items), then filling any remainder from the previously-seen pool when the bank
+ * is exhausted. Both pools are shuffled so the presentation order also varies.
+ *
+ * Pure and exported for unit testing.
+ */
+export function selectQuestionBank<T extends { id: string }>(
+  all: T[],
+  count: number,
+  usedIds: Iterable<string>,
+): T[] {
+  if (count <= 0 || all.length <= count) return all;
+  const used = new Set(usedIds);
+  const unused: T[] = [];
+  const seen: T[] = [];
+  for (const q of all) (used.has(q.id) ? seen : unused).push(q);
+  shuffleInPlace(unused);
+  shuffleInPlace(seen);
+  return [...unused, ...seen].slice(0, count);
+}
+
+export async function getQuizPublic(id: string, studentId?: string) {
   const quiz = await unwrap<any>(
     db.from("quizzes").select("*").eq("id", id).is("deleted_at", null).single(),
   );
@@ -21,17 +53,24 @@ export async function getQuizPublic(id: string) {
       .eq("quiz_id", id)
       .order("position"),
   );
-  // Question bank: if question_count > 0, shuffle and take a random subset
+  // Question bank: if question_count > 0, take a random subset that avoids
+  // questions this student already answered in prior attempts when possible.
   const questionCount = quiz.question_count ?? 0;
   if (questionCount > 0 && questions.length > questionCount) {
-    // Fisher-Yates shuffle
-    for (let i = questions.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [questions[i], questions[j]] = [questions[j]!, questions[i]!];
+    let usedIds: string[] = [];
+    if (studentId) {
+      const prior = await unwrap<Array<{ question_ids: string[] | null }>>(
+        db
+          .from("quiz_attempts")
+          .select("question_ids")
+          .eq("quiz_id", id)
+          .eq("student_id", studentId),
+      );
+      usedIds = prior.flatMap((a) => (Array.isArray(a.question_ids) ? a.question_ids : []));
     }
-    questions = questions.slice(0, questionCount);
-    // Re-assign positions after shuffle
-    questions = questions.map((q, i) => ({ ...q, position: i + 1 }));
+    const selected = selectQuestionBank(questions, questionCount, usedIds);
+    // Randomize presentation order, then re-number positions.
+    questions = shuffleInPlace([...selected]).map((q, i) => ({ ...q, position: i + 1 }));
   }
   return { quiz, questions };
 }

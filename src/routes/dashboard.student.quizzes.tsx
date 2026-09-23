@@ -94,6 +94,12 @@ function QuizzesPage() {
   // Persist timer + answers per quiz so closing/reopening doesn't reset progress
   const savedTimerRef = useRef<Map<string, number>>(new Map());
   const savedAnswersRef = useRef<Map<string, Record<string, string>>>(new Map());
+  // Persist the sampled question set for the in-progress attempt so reopening a
+  // worksheet keeps the SAME questions (answers stay mapped). Cleared on submit,
+  // so the next attempt (retake) fetches a fresh, non-overlapping bank subset.
+  const savedAttemptRef = useRef<
+    Map<string, { questions: QuizQuestionPublic[]; duration: number }>
+  >(new Map());
 
   const activeQuiz = useMemo(
     () => (quizzes ?? []).find((q) => q.id === activeId),
@@ -118,8 +124,15 @@ function QuizzesPage() {
   // Resume or start attempt: restore saved timer/answers if the student
   // closed and reopened the same worksheet within this session.
   const beginAttempt = async (id: string) => {
-    const { quiz, questions } = await getQuiz(id);
-    setQuestions(questions);
+    // Reuse the in-progress attempt's sampled questions when present so a
+    // reopen doesn't swap the question set (and lose already-answered items).
+    let attempt = savedAttemptRef.current.get(id);
+    if (!attempt) {
+      const { quiz, questions } = await getQuiz(id);
+      attempt = { questions, duration: quiz.duration_minutes * 60 };
+      savedAttemptRef.current.set(id, attempt);
+    }
+    setQuestions(attempt.questions);
     setResult(null);
     // Restore saved answers if they exist for this quiz
     setAnswers(savedAnswersRef.current.get(id) ?? {});
@@ -129,7 +142,7 @@ function QuizzesPage() {
     if (saved != null && saved > 0) {
       setSecondsLeft(saved);
     } else {
-      setSecondsLeft(quiz.duration_minutes * 60);
+      setSecondsLeft(attempt.duration);
     }
   };
 
@@ -160,6 +173,7 @@ function QuizzesPage() {
     if (result?.ok && activeId) {
       savedTimerRef.current.delete(activeId);
       savedAnswersRef.current.delete(activeId);
+      savedAttemptRef.current.delete(activeId);
     }
   }, [result, activeId]);
 

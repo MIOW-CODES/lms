@@ -315,7 +315,8 @@ export function AppShell({
         </nav>
         <main className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
-      <ChatWidget profile={profile} />
+      {/* ClassMate Assistant is staff-only — students never see the launcher. */}
+      {profile.role !== "student" && <ChatWidget profile={profile} />}
     </div>
   );
 }

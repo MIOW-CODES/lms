@@ -4,6 +4,7 @@ import {
   createAssignmentFn,
   createCourseFn,
   createProfileFn,
+  createOrEnrollStudentFn,
   createQuizWithQuestionsFn,
   deleteAnnouncementFn,
   deleteAttendanceLogFn,
@@ -1157,6 +1158,23 @@ export async function enrollmentsForStudent(studentId: string): Promise<string[]
 
 export async function enrollStudent(student_id: string, course_id: string): Promise<void> {
   await enrollStudentFn({ data: { student_id, course_id, token: sessionToken() } });
+}
+
+/**
+ * Create a new student OR reuse an existing one (matched by student number,
+ * then email) and optionally enroll them into a course. Staff-only.
+ */
+export async function createOrEnrollStudent(
+  input: Partial<Profile>,
+  courseId?: string | null,
+): Promise<{ profile: Profile; created: boolean; enrolled: boolean }> {
+  return createOrEnrollStudentFn({
+    data: {
+      ...(input as object),
+      course_id: courseId ?? null,
+      token: sessionToken(),
+    } as Record<string, unknown>,
+  }) as Promise<{ profile: Profile; created: boolean; enrolled: boolean }>;
 }
 
 export async function countRows(table: string): Promise<number> {

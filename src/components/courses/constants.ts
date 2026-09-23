@@ -102,3 +102,13 @@ export function isAcceptedFile(file: File): boolean {
   if (ACCEPTED_MIME.includes(file.type)) return true;
   return /\.(pdf|docx?|png|jpe?g|zip)$/i.test(file.name);
 }
+
+/**
+ * How many items to ask ClassMate to generate. When a per-student count is set,
+ * request a larger bank (roughly 3×, at least +10) so every student/attempt can
+ * receive a different subset of that size. Falls back to 20 when unset.
+ */
+export function classmateBankSize(perStudent: number): number {
+  if (perStudent <= 0) return 20;
+  return Math.min(100, Math.max(perStudent + 10, perStudent * 3));
+}

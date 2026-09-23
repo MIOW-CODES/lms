@@ -14,14 +14,16 @@ import { toast } from "sonner";
 import { LoadingSkeleton, UserAvatar } from "@/components/ui-elements";
 import {
   attendancePercent,
-  createProfile,
+  createOrEnrollStudent,
   deleteProfile,
   gradeRemarks,
   listAttendance,
+  listCourses,
   listGradesForStudent,
   listStudents,
   transmutedOf,
   updateProfile,
+  type Course,
   type Profile,
 } from "@/lib/lms";
 import {
@@ -63,6 +65,7 @@ const EMPTY_FORM = {
   section: "",
   pin: "",
   rfid_uid: "",
+  course_id: "",
 };
 
 function StudentsPage() {
@@ -71,6 +74,11 @@ function StudentsPage() {
   const { data: students } = useQuery({
     queryKey: ["students"],
     queryFn: listStudents,
+    enabled: !!profile,
+  });
+  const { data: courses } = useQuery({
+    queryKey: ["courses"],
+    queryFn: listCourses,
     enabled: !!profile,
   });
   const [open, setOpen] = useState(false);
@@ -126,23 +134,34 @@ function StudentsPage() {
     }
     setSaving(true);
     try {
-      await createProfile({
-        full_name: form.full_name,
-        student_id: form.student_id,
-        email: form.email || null,
-        role: "student",
-        grade_level: parseInt(form.grade_level) || 7,
-        section: form.section || null,
-        pin: form.pin || null,
-        rfid_uid: form.rfid_uid || null,
-        avatar_url: AVATARS[Math.floor(Math.random() * AVATARS.length)] ?? null,
-      });
-      toast.success(`${form.full_name} enrolled.`);
+      const { created, enrolled } = await createOrEnrollStudent(
+        {
+          full_name: form.full_name,
+          student_id: form.student_id,
+          email: form.email || null,
+          role: "student",
+          grade_level: parseInt(form.grade_level) || 7,
+          section: form.section || null,
+          pin: form.pin || null,
+          rfid_uid: form.rfid_uid || null,
+          avatar_url: AVATARS[Math.floor(Math.random() * AVATARS.length)] ?? null,
+        },
+        form.course_id || null,
+      );
+      const who = created ? form.full_name : "Existing student";
+      toast.success(
+        enrolled
+          ? `${who} enrolled into the selected course.`
+          : created
+            ? `${form.full_name} added.`
+            : `${who} updated.`,
+      );
       setOpen(false);
       setForm(EMPTY_FORM);
       qc.invalidateQueries({ queryKey: ["students"] });
-    } catch {
-      toast.error("Could not save student.");
+      qc.invalidateQueries({ queryKey: ["enrollments"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save student.");
     } finally {
       setSaving(false);
     }
@@ -296,7 +315,7 @@ function StudentsPage() {
       )}
 
       {/* Add student */}
-      <Modal open={open} onClose={() => setOpen(false)} title="Enroll a student">
+      <Modal open={open} onClose={() => setOpen(false)} title="Add or enroll a student">
         <div className="grid gap-3 sm:grid-cols-2">
           <input
             value={form.full_name}
@@ -355,7 +374,30 @@ function StudentsPage() {
             placeholder="RFID UID (6–20 digits)"
             className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
+          <Select
+            value={form.course_id || "none"}
+            onValueChange={(v) => setForm((f) => ({ ...f, course_id: v === "none" ? "" : v }))}
+          >
+            <SelectTrigger
+              className="h-11 rounded-xl sm:col-span-2"
+              aria-label="Enroll into course (optional)"
+            >
+              <SelectValue placeholder="Enroll into course (optional)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No course — just save the student</SelectItem>
+              {(courses ?? []).map((c: Course) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.code} · {c.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          If the student number or email already exists, the record is reused and (optionally)
+          enrolled into the course above instead of creating a duplicate.
+        </p>
         <button
           onClick={save}
           disabled={saving}

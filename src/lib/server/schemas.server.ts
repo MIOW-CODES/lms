@@ -27,6 +27,30 @@ const attachmentMeta = z.object({
   path: z.string().min(1).max(400),
 });
 
+/** Shared student/profile fields, reused by create + create-or-enroll. */
+const profileFields = {
+  full_name: z.string().min(1).max(200),
+  student_id: z.string().max(50).nullable().optional(),
+  email: z.string().max(320).nullable().optional(),
+  role: z.enum(["student", "teacher", "admin"]).optional(),
+  grade_level: z.number().int().min(7).max(16).nullable().optional(),
+  section: z.string().max(50).nullable().optional(),
+  employee_id: z.string().max(50).nullable().optional(),
+  prefix: z.string().max(20).nullable().optional(),
+  department: z.string().max(100).nullable().optional(),
+  pin: z
+    .string()
+    .regex(/^\d{4,8}$/)
+    .nullable()
+    .optional(),
+  rfid_uid: z
+    .string()
+    .regex(/^\d{6,20}$/)
+    .nullable()
+    .optional(),
+  avatar_url: avatarUrl.nullable().optional(),
+};
+
 export const schemas = {
   rfid: z.object({ uid: z.string().min(1).max(64) }),
   pinLogin: z.object({ login: z.string().min(1).max(320), secret: z.string().min(1).max(200) }),
@@ -60,26 +84,15 @@ export const schemas = {
     ...token,
   }),
   profileInput: z.object({
-    full_name: z.string().min(1).max(200),
-    student_id: z.string().max(50).nullable().optional(),
-    email: z.string().max(320).nullable().optional(),
-    role: z.enum(["student", "teacher", "admin"]).optional(),
-    grade_level: z.number().int().min(7).max(16).nullable().optional(),
-    section: z.string().max(50).nullable().optional(),
-    employee_id: z.string().max(50).nullable().optional(),
-    prefix: z.string().max(20).nullable().optional(),
-    department: z.string().max(100).nullable().optional(),
-    pin: z
-      .string()
-      .regex(/^\d{4,8}$/)
-      .nullable()
-      .optional(),
-    rfid_uid: z
-      .string()
-      .regex(/^\d{6,20}$/)
-      .nullable()
-      .optional(),
-    avatar_url: avatarUrl.nullable().optional(),
+    ...profileFields,
+    ...token,
+  }),
+  // Enroll a new OR existing student (matched by student_id/email) into a
+  // course in one step. `course_id` is optional so the same call can create a
+  // bare student record.
+  studentEnroll: z.object({
+    ...profileFields,
+    course_id: uuid.nullable().optional(),
     ...token,
   }),
   teacherInput: z.object({
