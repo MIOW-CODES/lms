@@ -52,18 +52,20 @@ export function AttemptDetail({
 
   const saveOverride = async () => {
     if (saving) return;
+    // Validate before entering the saving state so an invalid input never
+    // touches the button/loading state at all.
+    const parsedScore = score.trim() === "" ? null : Number(score);
+    const parsedTotal = total.trim() === "" ? null : Number(total);
+    if (parsedScore != null && (!Number.isFinite(parsedScore) || parsedScore < 0)) {
+      toast.error("Score must be a non-negative number.");
+      return;
+    }
+    if (parsedTotal != null && (!Number.isFinite(parsedTotal) || parsedTotal <= 0)) {
+      toast.error("Total must be a positive number.");
+      return;
+    }
     setSaving(true);
     try {
-      const parsedScore = score.trim() === "" ? null : Number(score);
-      const parsedTotal = total.trim() === "" ? null : Number(total);
-      if (parsedScore != null && (!Number.isFinite(parsedScore) || parsedScore < 0)) {
-        toast.error("Score must be a non-negative number.");
-        return;
-      }
-      if (parsedTotal != null && (!Number.isFinite(parsedTotal) || parsedTotal <= 0)) {
-        toast.error("Total must be a positive number.");
-        return;
-      }
       await overrideQuizAttempt(quizId, studentId, parsedScore, parsedTotal, notes.trim() || null);
       toast.success("Override saved — this supersedes the AI score.");
       refresh();

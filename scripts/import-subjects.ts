@@ -29,12 +29,18 @@
  * Security: every value is passed as a bound query parameter ($1, $2, ...) and
  * never interpolated into SQL. Inputs are additionally restricted to a safe
  * charset in `normalize()` as defense-in-depth, and the whole run is wrapped in
- * a single transaction.
+ * a single transaction. Free-text fields (title, description, prerequisites,
+ * term) are stored verbatim (trimmed/clamped) and are only ever rendered as
+ * escaped text by the UI — never as raw HTML.
  */
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { Pool } from "pg";
 
+// Local-only, non-secret development credential. It matches the Postgres
+// service in docker-compose.yml and is identical to the default used by
+// scripts/migrate.ts and scripts/seed.ts. Never used in production: a real
+// DATABASE_URL is required when NODE_ENV=production (see resolveDatabaseUrl).
 const DEV_DATABASE_URL = "postgres://miow:miow_dev_password@localhost:5432/miow";
 
 /** Resolve the connection string; refuse the local dev default in production. */
@@ -161,6 +167,14 @@ function normalize(raw: Record<string, unknown>): SubjectInput | null {
 }
 
 async function loadSubjects(file: string): Promise<SubjectInput[]> {
+  // Guard against accidentally pointing the importer at a huge file.
+  const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+  const info = await stat(file);
+  if (info.size > MAX_IMPORT_BYTES) {
+    throw new Error(
+      `File is too large (${Math.round(info.size / 1024 / 1024)} MB); limit is 10 MB.`,
+    );
+  }
   const text = await readFile(file, "utf-8");
   const ext = path.extname(file).toLowerCase();
   let records: Array<Record<string, unknown>> = [];

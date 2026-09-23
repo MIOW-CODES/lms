@@ -157,13 +157,14 @@ function SubmissionDetail({
 
   const save = async () => {
     if (saving) return;
+    // Validate before entering the saving state.
+    const parsed = score.trim() === "" ? null : Number(score);
+    if (parsed != null && (!Number.isFinite(parsed) || parsed < 0)) {
+      toast.error("Score must be a non-negative number.");
+      return;
+    }
     setSaving(true);
     try {
-      const parsed = score.trim() === "" ? null : Number(score);
-      if (parsed != null && (!Number.isFinite(parsed) || parsed < 0)) {
-        toast.error("Score must be a non-negative number.");
-        return;
-      }
       await gradeSubmission(submission.id, {
         score: parsed,
         feedback: feedback.trim() || null,
