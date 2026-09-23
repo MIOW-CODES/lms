@@ -10,8 +10,7 @@
 //  - Submission files: the owning student, or any staff member.
 import { createFileRoute } from "@tanstack/react-router";
 
-const PATH_RE_MATERIAL =
-  /^[0-9a-f-]{36}\/material_\d+_[0-9a-f]{8}\.(pdf|docx?|png|jpe?g|zip)$/;
+const PATH_RE_MATERIAL = /^[0-9a-f-]{36}\/material_\d+_[0-9a-f]{8}\.(pdf|docx?|png|jpe?g|zip)$/;
 const PATH_RE_SUBMISSION =
   /^submissions\/([0-9a-f-]{36})\/file_\d+_[0-9a-f]{8}\.(pdf|docx?|png|jpe?g|zip)$/;
 const MIME: Record<string, string> = {

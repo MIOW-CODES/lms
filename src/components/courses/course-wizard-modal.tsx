@@ -243,23 +243,23 @@ export function CourseWizardModal({
       {wizardStep === "assignment" && (
         <div className="grid gap-3">
           <label className="block">
-              <span className="mb-1 block text-xs font-semibold text-muted-foreground">
-                Course lead (teacher)
-              </span>
-              <select
-                aria-label="Course lead"
-                value={courseForm.teacher_id}
-                onChange={(e) => setCourseForm((f) => ({ ...f, teacher_id: e.target.value }))}
-                className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="">Assign teacher…</option>
-                {teachers.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.full_name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <span className="mb-1 block text-xs font-semibold text-muted-foreground">
+              Course lead (teacher)
+            </span>
+            <select
+              aria-label="Course lead"
+              value={courseForm.teacher_id}
+              onChange={(e) => setCourseForm((f) => ({ ...f, teacher_id: e.target.value }))}
+              className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="">Assign teacher…</option>
+              {teachers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.full_name}
+                </option>
+              ))}
+            </select>
+          </label>
           {(courseForm.grade_level === "11" || courseForm.grade_level === "12") && (
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-muted-foreground">

@@ -85,11 +85,13 @@ ON CONFLICT (student_id) DO UPDATE SET
   grade_level = EXCLUDED.grade_level,
   section = EXCLUDED.section;
 
--- Auto-enroll all B8 students into TVE100
+-- Auto-enroll all B8 students into TVE100 (resolve the course id by code so
+-- this stays correct even if the course already existed with another id).
 INSERT INTO public.enrollments (student_id, course_id)
-SELECT p.id, 'e1000000-0000-4000-8000-000000000100'
+SELECT p.id, c.id
 FROM public.profiles p
-WHERE p.section = 'B8' AND p.role = 'student'
+CROSS JOIN public.courses c
+WHERE c.code = 'TVE100' AND p.section = 'B8' AND p.role = 'student'
 ON CONFLICT (student_id, course_id) DO NOTHING;
 
 -- Add college sections for BTVTED-DT program

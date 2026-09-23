@@ -24,16 +24,5 @@ ALTER TABLE public.courses ADD COLUMN IF NOT EXISTS grading_system text CHECK (g
 -- Backfill: college courses get semestral
 UPDATE public.courses SET grading_system = 'college_semestral' WHERE education_level = 'college' AND (grading_system IS NULL OR grading_system = 'k12_quarterly');
 
--- 5. Seed TVE100 subject as a course
-INSERT INTO public.courses (id, title, code, grade_level, education_level, college_year, program, color, grading_system)
-VALUES (
-  gen_random_uuid(),
-  'The Teacher and the Community, School Culture & Organizational Leadership',
-  'TVE100',
-  14,  -- 2nd year = grade_level 14
-  'college',
-  2,
-  'BTVTED-DT',
-  'violet',
-  'college_semestral'
-) ON CONFLICT (code) DO NOTHING;
+-- NOTE: the TVE100 course offering + roster are seeded in
+-- 20260923000001_seed_tve100_roster.sql (single source of truth for its id).

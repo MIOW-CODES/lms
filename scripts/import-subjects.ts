@@ -106,7 +106,13 @@ function normalize(raw: Record<string, unknown>): SubjectInput | null {
   const row: Record<string, string> = {};
   for (const [k, v] of Object.entries(raw)) row[k.toLowerCase()] = v == null ? "" : String(v);
   const code = pick(row, ["code", "subject_code", "subject code", "course_code"]);
-  const title = pick(row, ["title", "subject_title", "descriptive_title", "name", "description_title"]);
+  const title = pick(row, [
+    "title",
+    "subject_title",
+    "descriptive_title",
+    "name",
+    "description_title",
+  ]);
   if (!code || !title) return null;
   const levelRaw = pick(row, ["level", "education_level", "education level"])?.toLowerCase();
   const level =
@@ -133,9 +139,12 @@ async function loadSubjects(file: string): Promise<SubjectInput[]> {
   let records: Array<Record<string, unknown>> = [];
   if (ext === ".json") {
     const parsed = JSON.parse(text) as unknown;
-    if (Array.isArray(parsed)) records = parsed as Array<Record<string, unknown>>;
-    else if (parsed && typeof parsed === "object" && Array.isArray((parsed as any).subjects))
-      records = (parsed as any).subjects as Array<Record<string, unknown>>;
+    if (Array.isArray(parsed)) {
+      records = parsed as Array<Record<string, unknown>>;
+    } else if (parsed && typeof parsed === "object" && "subjects" in parsed) {
+      const nested = (parsed as { subjects?: unknown }).subjects;
+      if (Array.isArray(nested)) records = nested as Array<Record<string, unknown>>;
+    }
   } else {
     records = parseCsv(text);
   }
@@ -148,7 +157,9 @@ async function main() {
   const offer = args.includes("--offer");
   const enroll = args.includes("--enroll");
   if (!file) {
-    console.error("Usage: bun run scripts/import-subjects.ts <file.csv|file.json> [--offer] [--enroll]");
+    console.error(
+      "Usage: bun run scripts/import-subjects.ts <file.csv|file.json> [--offer] [--enroll]",
+    );
     process.exit(1);
   }
 

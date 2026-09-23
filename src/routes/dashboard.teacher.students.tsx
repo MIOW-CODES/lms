@@ -81,7 +81,6 @@ function TeacherStudentsPage() {
     return map;
   }, [allAttendance]);
 
-
   const [search, setSearch] = useState("");
   const [gradeFilter, setGradeFilter] = useState("all");
   const [sectionFilter, setSectionFilter] = useState("all");
@@ -96,8 +95,8 @@ function TeacherStudentsPage() {
 
   const teacherCourseIds = useMemo(() => {
     if (!profile || !courses) return [];
-    if (profile.role === "admin") return (courses ?? []).map(c => c.id);
-    return (courses ?? []).filter(c => c.teacher_id === profile.id).map(c => c.id);
+    if (profile.role === "admin") return (courses ?? []).map((c) => c.id);
+    return (courses ?? []).filter((c) => c.teacher_id === profile.id).map((c) => c.id);
   }, [profile, courses]);
 
   // Fetch enrollments for teacher's courses (parallel, single query per course)
@@ -105,7 +104,7 @@ function TeacherStudentsPage() {
     queryKey: ["teacher-enrolled-students", teacherCourseIds],
     queryFn: async () => {
       if (!teacherCourseIds.length) return [];
-      const results = await Promise.all(teacherCourseIds.map(id => enrollmentsForCourse(id)));
+      const results = await Promise.all(teacherCourseIds.map((id) => enrollmentsForCourse(id)));
       return [...new Set(results.flat())];
     },
     enabled: !!profile && teacherCourseIds.length > 0,
@@ -116,7 +115,7 @@ function TeacherStudentsPage() {
     if (!students || !enrolledStudentIds) return [];
     if (profile?.role === "admin") return students;
     const idSet = new Set(enrolledStudentIds);
-    return students.filter(s => idSet.has(s.id));
+    return students.filter((s) => idSet.has(s.id));
   }, [students, enrolledStudentIds, profile]);
 
   const sections = useMemo(() => {
@@ -126,10 +125,16 @@ function TeacherStudentsPage() {
 
   // Only batch-fetch grades when student list is manageable (≤ 100)
   const { data: batchGrades } = useQuery({
-    queryKey: ["batch-grades", enrolledStudents.map(s => s.id).sort().join(",")],
+    queryKey: [
+      "batch-grades",
+      enrolledStudents
+        .map((s) => s.id)
+        .sort()
+        .join(","),
+    ],
     queryFn: async () => {
-      const ids = enrolledStudents.map(s => s.id);
-      const results = await Promise.all(ids.map(id => listGradesForStudent(id).catch(() => [])));
+      const ids = enrolledStudents.map((s) => s.id);
+      const results = await Promise.all(ids.map((id) => listGradesForStudent(id).catch(() => [])));
       const map = new Map<string, Grade[]>();
       ids.forEach((id, i) => map.set(id, results[i]!));
       return map;
