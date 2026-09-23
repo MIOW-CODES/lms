@@ -203,13 +203,15 @@ export const listCoursesFn = createServerFn({ method: "POST" })
     return server.listCourses();
   });
 
-// Course lifecycle: teachers and admins may create courses. Only admins may
-// reassign course leads or delete courses. Teachers edit their own courses.
+// Course lifecycle: teachers and admins may create courses. Teachers may only
+// lead the courses they create; only admins may assign an arbitrary lead.
+// Only admins may reassign course leads or delete courses.
 export const createCourseFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.courseInput.parse(data))
   .handler(async ({ data }) => {
-    await server.requireStaff(data.token);
-    return server.createCourse(data);
+    const caller = await server.requireStaff(data.token);
+    const input = caller.role === "teacher" ? { ...data, teacher_id: caller.id } : data;
+    return server.createCourse(input);
   });
 
 export const updateCourseFn = createServerFn({ method: "POST" })

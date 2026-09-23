@@ -169,7 +169,9 @@ function SubmissionDetail({
       await gradeSubmission(submission.id, {
         score: parsed,
         feedback: feedback.trim() || null,
-        status: parsed != null ? "graded" : "submitted",
+        // Only assert "graded" when a score is present; clearing the score
+        // leaves the server-side status untouched (never downgrades).
+        ...(parsed != null ? { status: "graded" as const } : {}),
       });
       toast.success("Grade saved.");
       onGraded();

@@ -171,7 +171,7 @@ export async function gradeSubmission(
   },
 ) {
   const submission = await unwrap<any>(
-    db.from("submissions").select("id, assignment_id").eq("id", submissionId).maybeSingle(),
+    db.from("submissions").select("id, assignment_id, status").eq("id", submissionId).maybeSingle(),
   );
   if (!submission) throw new Error("Submission not found");
   // Reuse the assignment-ownership guard so teachers only grade their own courses.
@@ -181,7 +181,11 @@ export async function gradeSubmission(
     score: patch.score,
     feedback: patch.feedback,
   };
-  row["status"] = patch.status ?? (patch.score != null ? "graded" : "submitted");
+  // Status: an explicit status wins; otherwise setting a score marks it graded,
+  // while clearing the score (score == null) PRESERVES the existing status so a
+  // previously graded submission is never silently downgraded to "submitted".
+  if (patch.status) row["status"] = patch.status;
+  else if (patch.score != null) row["status"] = "graded";
   await unwrap(db.from("submissions").update(row).eq("id", submissionId));
 }
 

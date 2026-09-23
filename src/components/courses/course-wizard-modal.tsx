@@ -250,15 +250,27 @@ export function CourseWizardModal({
               aria-label="Course lead"
               value={courseForm.teacher_id}
               onChange={(e) => setCourseForm((f) => ({ ...f, teacher_id: e.target.value }))}
-              className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              disabled={!isAdmin}
+              className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-70"
             >
-              <option value="">Assign teacher…</option>
-              {teachers.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.full_name}
+              {!isAdmin && (
+                <option value={courseForm.teacher_id}>
+                  {teachers.find((t) => t.id === courseForm.teacher_id)?.full_name ?? "You"}
                 </option>
-              ))}
+              )}
+              {isAdmin && <option value="">Assign teacher…</option>}
+              {isAdmin &&
+                teachers.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.full_name}
+                  </option>
+                ))}
             </select>
+            {!isAdmin && (
+              <span className="mt-1 block text-xs text-muted-foreground">
+                You will be assigned as the course lead.
+              </span>
+            )}
           </label>
           {(courseForm.grade_level === "11" || courseForm.grade_level === "12") && (
             <label className="block">

@@ -674,12 +674,22 @@ export async function listQuizScoresForCourse(course_id: string, token: string) 
     studentMap.set(a.student_id, arr);
   }
 
-  // Teacher overrides keyed by quiz → student.
+  // Teacher overrides keyed by quiz → student. If an override carries a score
+  // but no total (possible when it was written before attempts existed), resolve
+  // the total from the student's latest attempt — mirroring overrideQuizAttempt.
   const overrideMap = new Map<string, Map<string, { score: number; total: number }>>();
   for (const o of overrides) {
-    if (o.score == null || o.total == null) continue;
+    if (o.score == null) continue;
+    let total = o.total as number | null;
+    if (total == null) {
+      const attempts = byQuizStudent.get(o.quiz_id)?.get(o.student_id) ?? [];
+      if (attempts.length) {
+        total = attempts.reduce((a, b) => (b.attempt_number > a.attempt_number ? b : a)).total;
+      }
+    }
+    if (total == null) continue;
     const m = overrideMap.get(o.quiz_id) ?? new Map();
-    m.set(o.student_id, { score: o.score as number, total: o.total as number });
+    m.set(o.student_id, { score: o.score as number, total });
     overrideMap.set(o.quiz_id, m);
   }
 
