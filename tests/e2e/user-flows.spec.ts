@@ -219,6 +219,27 @@ test.describe("Admin dashboard flow", () => {
     }
   });
 
+  test("Create Worksheet exposes question-type override + manual entry", async ({ page }) => {
+    await page.goto("/dashboard/admin/courses");
+    await page.waitForTimeout(2000);
+    const quizBtn = page.getByRole("button", { name: /Worksheet/ });
+    if (!(await quizBtn.isVisible())) return;
+    await quizBtn.click();
+    await page.waitForTimeout(500);
+
+    // Question types the teacher can toggle (ClassMate generation).
+    await expect(page.locator("body")).toContainText("Question types ClassMate should generate");
+    const matchingChip = page.getByRole("button", { name: "Matching Type", exact: true });
+    await expect(matchingChip).toBeVisible();
+    await matchingChip.click();
+    await expect(page.locator("body")).toContainText("Matching Type");
+
+    // Manual entry: adding a question renders an editor row.
+    await page.getByRole("button", { name: /Manual Entry/ }).click();
+    await page.getByRole("button", { name: /Add Question/ }).click();
+    await expect(page.locator("body")).toContainText("Q1");
+  });
+
   test("admin can open Google Docs import modal", async ({ page }) => {
     await page.goto("/dashboard/admin/courses");
     await page.waitForTimeout(2000);

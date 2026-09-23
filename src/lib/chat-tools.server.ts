@@ -6,6 +6,13 @@
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import * as lms from "./server";
+import {
+  DEFAULT_QUESTION_TYPES,
+  QUESTION_TYPE_LABELS,
+  formatQuestionTypes,
+  normalizeQuestionTypes,
+  type WorksheetQuestionType,
+} from "./worksheet-types";
 
 export interface ChatCaller {
   id: string;
@@ -19,6 +26,10 @@ export interface WorksheetFormContext {
   course?: string;
   title?: string;
   sourceMaterial?: string;
+  /** Names of every uploaded file, so the model can count them exactly. */
+  sourceFileNames?: string[];
+  /** Question types the teacher selected in the form (e.g. ["mc", "fill"]). */
+  questionTypes?: string[];
 }
 
 export interface ChatMemoryContext {
@@ -42,6 +53,44 @@ export function systemPromptFor(
       : `The caller is ${profile.role === "admin" ? "an ADMIN" : "a TEACHER"}: ${profile.full_name}. ` +
         "They may query class lists, individual student records, and course performance. " +
         "They can also ask you to author full assessments, rubrics, and learning materials for their courses.";
+
+  // Question types the teacher selected. When the form didn't specify (plain
+  // chat), fall back to the sensible default instead of forcing all four types.
+  const ctxTypes = normalizeQuestionTypes(worksheetContext?.questionTypes);
+  const selectedTypes: WorksheetQuestionType[] =
+    ctxTypes.length > 0 ? ctxTypes : DEFAULT_QUESTION_TYPES;
+  const typesFromForm = ctxTypes.length > 0;
+  const ROMAN = ["I", "II", "III", "IV", "V", "VI"];
+  const SECTION_SPECS: Record<WorksheetQuestionType, string> = {
+    mc: "an 'Instructions:' line, then each item as 'N. [stem]' followed by options 'A. ', 'B. ', 'C. ', 'D. ' (exactly 4 options, exactly one correct answer, plausible distractors).",
+    fill: "an 'Instructions:' line, then each item as 'N. [context sentence with exactly one clean underline written as ______]'.",
+    matching:
+      "an 'Instructions:' line, then 'Column A:' with numbered premises continuing the same sequence, then 'Column B:' with lettered options ('A. ', 'B. ', 'C. ', ...) including exactly one extra distractor that matches nothing.",
+    essay:
+      "an 'Instructions:' line, then each item as 'N. [prompt answerable in 2-3 complete sentences]'.",
+  };
+  const sectionSpecLines = selectedTypes.map(
+    (t, i) => `Section ${ROMAN[i] ?? i + 1}: ${QUESTION_TYPE_LABELS[t]} — ${SECTION_SPECS[t]}`,
+  );
+  const sourceFileNames = worksheetContext?.sourceFileNames ?? [];
+  const sourceFileLine =
+    sourceFileNames.length > 0
+      ? `The teacher uploaded ${sourceFileNames.length} source file(s): ${sourceFileNames.join(", ")}. ` +
+        "ALL of them are included below — treat each '--- SOURCE MATERIAL N: name ---' block as exactly one provided file, " +
+        "and count them by those blocks. A block ending with '[truncated N chars]' was shortened to fit the prompt but still " +
+        "counts as a provided file; never claim a file is missing when its block is present."
+      : "";
+  const answerKeyFormatParts: string[] = [];
+  if (selectedTypes.includes("mc"))
+    answerKeyFormatParts.push("'N. [Letter] - [brief explanation]' for multiple choice");
+  if (selectedTypes.includes("fill"))
+    answerKeyFormatParts.push(
+      "'N. [Primary answer] (Acceptable: [Synonym 1], [Synonym 2])' for fill in the blank",
+    );
+  if (selectedTypes.includes("matching")) answerKeyFormatParts.push("'N. [Letter]' for matching");
+  const answerKeyFormat = answerKeyFormatParts.length
+    ? `Format: ${answerKeyFormatParts.join("; ")}.`
+    : "";
 
   return [
     "You are ClassMate, an expert Educational Curriculum and Assessment Assistant built into Integrated Developmental School (MIOW).",
@@ -76,6 +125,13 @@ export function systemPromptFor(
       "CRITICAL: The Total Item Count is the TOTAL number of questions across ALL sections combined, NOT per section. " +
       "If the user says '20 questions', generate exactly 20 questions total (e.g. 12 MC + 8 Fill = 20). " +
       "Never exceed the requested count — generate fewer only if the topic is too narrow.",
+    ...(typesFromForm
+      ? [
+          `QUESTION TYPES (pre-selected by the teacher): generate ONLY these types — ${formatQuestionTypes(selectedTypes)}. ` +
+            "Do NOT add any other question type or section, and never ask which types to use — the selection is final. " +
+            `Number the sections sequentially from Section I in the order: ${formatQuestionTypes(selectedTypes)}.`,
+        ]
+      : []),
     ...(worksheetContext && (worksheetContext.course || worksheetContext.title)
       ? [
           `ACTIVE FORM CONTEXT: the teacher's Create Worksheet form is open with Course = "${worksheetContext.course || "not selected"}" ` +
@@ -89,8 +145,9 @@ export function systemPromptFor(
           "SOURCE MATERIAL: The teacher has uploaded the following file content. Generate questions STRICTLY based on this material. " +
             "Do not invent questions from outside this content. Extract key concepts, terms, facts, and procedures from the material " +
             "and create questions that test comprehension of the uploaded content.",
+          ...(sourceFileLine ? [sourceFileLine] : []),
           "--- START OF UPLOADED FILE ---",
-          worksheetContext.sourceMaterial.slice(0, 15000),
+          worksheetContext.sourceMaterial,
           "--- END OF UPLOADED FILE ---",
         ]
       : [
@@ -108,32 +165,29 @@ export function systemPromptFor(
       "(Bloom's: Remembering, Understanding, Applying, Analyzing, Evaluating, Creating). Keep the TOS outside the assessment body.",
     "PARSER-COMPATIBLE OUTPUT (strict): the assessment body must contain NO metadata brackets, internal IDs, or labels such as " +
       "'[WS-SCI10-001]' or 'Question 1: Multiple Choice'. Every item starts directly with its sequential number, a period, and " +
-      "a space ('1. ', '2. '), numbered continuously across all four sections. " +
+      "a space ('1. ', '2. '), numbered continuously across all sections. " +
       "CRITICAL: Always include the section headings (Section I, Section II, etc.) AND always include item numbers in the Answer Key. " +
       "The parser will skip unnumbered answer key entries and questions without section context.",
-    "Use these exact section headings and syntax:",
-    "Section I: Multiple Choice — an 'Instructions:' line, then each item as 'N. [stem]' followed by options 'A. ', 'B. ', 'C. ', " +
-      "'D. ' (exactly 4 options, exactly one correct answer, plausible distractors).",
-    "Section II: Fill in the Blank — an 'Instructions:' line, then each item as 'N. [context sentence with exactly one clean " +
-      "underline written as ______]'.",
-    "Section III: Matching Type — an 'Instructions:' line, then 'Column A:' with numbered premises continuing the same sequence, " +
-      "then 'Column B:' with lettered options ('A. ', 'B. ', 'C. ', ...) including exactly one extra distractor that matches nothing.",
-    "Section IV: Essay / Short Answer — an 'Instructions:' line, then each item as 'N. [prompt answerable in 2-3 complete sentences]'.",
+    "Use ONLY these section headings and syntax (one section per selected type, in this order):",
+    ...sectionSpecLines,
     "End the entire assessment with 'Answer Key:' listing EVERY numbered item — THIS IS CRITICAL: " +
       "each answer key line MUST start with the item number followed by a period and space (e.g. '1. B - explanation'). " +
       "Do NOT omit item numbers — the parser will skip any unnumbered answer. " +
-      "Format: 'N. [Letter] - [brief explanation]' for multiple choice, " +
-      "'N. [Primary answer] (Acceptable: [Synonym 1], [Synonym 2])' for fill in the blank, 'N. [Letter]' for matching, and for essays " +
-      "'N. Rubric/Key Points: PASS requires two elements: 1) [coherent explanation of the WHY/concept] AND 2) [identification of the " +
-      "specific technique/evidence]. FAIL on gibberish, single-word, or incomplete responses. | Keywords: [category1] = k1, k2, k3; " +
-      "[category2] = k4, k5, k6'.",
-    // Auto-grader contract — essays are scored deterministically, not leniently
-    "ESSAY AUTO-GRADER (strict, deterministic): every rubric you write MUST end with a '| Keywords: ...' block declaring at least " +
-      "TWO keyword categories separated by semicolons (e.g. 'why = accessibility, mobile, user experience; technique = media queries, " +
-      "css, flexbox, grid'). The grader automatically FAILS any answer that: (a) contains fewer than 5 real words, (b) is gibberish or " +
-      "random keystrokes, or (c) fails to form coherent sentences — regardless of accidental keyword hits. A passing answer must " +
-      "contain at least one keyword from TWO DISTINCT categories. Write rubric criteria as explicit pass/fail conditions, never as a " +
-      "passive description of a good answer.",
+      answerKeyFormat,
+    ...(selectedTypes.includes("essay")
+      ? [
+          "For essays, the answer key line is 'N. Rubric/Key Points: PASS requires two elements: 1) [coherent explanation of the " +
+            "WHY/concept] AND 2) [identification of the specific technique/evidence]. FAIL on gibberish, single-word, or incomplete " +
+            "responses. | Keywords: [category1] = k1, k2, k3; [category2] = k4, k5, k6'.",
+          // Auto-grader contract — essays are scored deterministically, not leniently
+          "ESSAY AUTO-GRADER (strict, deterministic): every rubric you write MUST end with a '| Keywords: ...' block declaring at least " +
+            "TWO keyword categories separated by semicolons (e.g. 'why = accessibility, mobile, user experience; technique = media queries, " +
+            "css, flexbox, grid'). The grader automatically FAILS any answer that: (a) contains fewer than 5 real words, (b) is gibberish or " +
+            "random keystrokes, or (c) fails to form coherent sentences — regardless of accidental keyword hits. A passing answer must " +
+            "contain at least one keyword from TWO DISTINCT categories. Write rubric criteria as explicit pass/fail conditions, never as a " +
+            "passive description of a good answer.",
+        ]
+      : []),
     // Terminology
     "Terminology: 'Worksheet' is the primary assessment builder — quizzes, periodic exams, tests, and unit assessments are all " +
       "Worksheets; never call them 'quizzes'. 'Assignment' is reserved strictly for standard classroom activities, homework, " +

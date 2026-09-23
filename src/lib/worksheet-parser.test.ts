@@ -568,3 +568,92 @@ Paris
     expect(result.questions[1]!.correct_answer).toBe("Paris");
   });
 });
+
+// ── subset sections (teacher-chosen question types) ─────────────────
+
+describe("parseWorksheet — subset question types", () => {
+  it("parses MC-only worksheets", () => {
+    const text = `
+Section I: Multiple Choice
+Instructions: Choose the best answer.
+1. What is 7 × 8?
+A. 54
+B. 56
+C. 63
+D. 48
+
+Answer Key:
+1. B - 7 groups of 8 make 56
+`;
+    const { questions, dropped } = parseWorksheet(text);
+    expect(questions).toHaveLength(1);
+    expect(questions[0]!.kind).toBe("mc");
+    expect(questions[0]!.correct_answer).toBe("56");
+    expect(dropped).toBe(0);
+  });
+
+  it("parses Fill-only worksheets", () => {
+    const text = `
+Section I: Fill in the Blank
+Instructions: Complete each sentence.
+1. Water boils at ______ °C.
+
+Answer Key:
+1. 100 (Acceptable: one hundred)
+`;
+    const { questions } = parseWorksheet(text);
+    expect(questions).toHaveLength(1);
+    expect(questions[0]!.kind).toBe("fill");
+    expect(questions[0]!.correct_answer).toBe("100||one hundred");
+  });
+
+  it("resolves re-numbered subset headings by keyword (Section II = Essay)", () => {
+    // When the teacher selects only MC + Essay, sections are numbered I and II.
+    // "Section II" must resolve to Essay (keyword), not Fill (roman numeral).
+    const text = `
+Section I: Multiple Choice
+1. What is 2 + 2?
+A. 3
+B. 4
+C. 5
+D. 6
+
+Section II: Essay / Short Answer
+2. Explain why 2 + 2 equals 4.
+
+Answer Key:
+1. B
+2. Rubric/Key Points: PASS requires a coherent explanation. | Keywords: math = addition, sum; reasoning = because, total
+`;
+    const { questions, dropped } = parseWorksheet(text);
+    expect(dropped).toBe(0);
+    expect(questions).toHaveLength(2);
+    expect(questions[0]!.kind).toBe("mc");
+    expect(questions[1]!.kind).toBe("essay");
+    expect(questions[1]!.question).toContain("Explain why");
+  });
+
+  it("resolves bare roman-numeral headings without keywords", () => {
+    const text = `
+Section I:
+1. What is 3 + 3?
+A. 5
+B. 6
+C. 7
+D. 8
+
+Section III:
+Column A:
+2. Photosynthesis
+Column B:
+A. Produces glucose
+B. Produces sound
+
+Answer Key:
+1. B
+2. A
+`;
+    const { questions } = parseWorksheet(text);
+    expect(questions.map((q) => q.kind).sort()).toEqual(["matching", "mc"]);
+  });
+});

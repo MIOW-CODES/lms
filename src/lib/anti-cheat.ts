@@ -110,16 +110,33 @@ export function useAntiCheat(active: boolean): AntiCheatState {
   useEffect(() => {
     if (!active) return;
 
-    const handleBlur = () => record("blur");
+    // A single tab switch fires BOTH `blur` and `visibilitychange`; collapse
+    // them into one logical event so the count isn't inflated.
+    let lastTabSignal = 0;
+    const recordTabSignal = (type: IntegrityEventType) => {
+      const now = Date.now();
+      if (now - lastTabSignal < 400) return;
+      lastTabSignal = now;
+      record(type);
+    };
+
+    const handleBlur = () => recordTabSignal("blur");
     const handleVisibility = () => {
-      if (document.visibilityState === "hidden") record("visibilitychange");
+      if (document.visibilityState === "hidden") recordTabSignal("visibilitychange");
     };
     const handleFullscreen = () => {
       // Only flag when we actually leave full-screen while assessing.
       if (!document.fullscreenElement) record("fullscreenchange");
     };
     const handlePaste = () => record("paste");
-    const handleContextMenu = () => record("contextmenu");
+    const handleContextMenu = (e: MouseEvent) => {
+      // Long-pressing a text field on mobile opens the native context menu for
+      // legitimate paste/select — don't flag that as cheating.
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || el?.isContentEditable) return;
+      record("contextmenu");
+    };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
@@ -134,8 +151,10 @@ export function useAntiCheat(active: boolean): AntiCheatState {
     };
 
     // Window-size heuristic: docked devtools shrink the viewport well below the
-    // outer window. Throttled so a single open only records once.
+    // outer window. Throttled so a single open only records once. Skipped when
+    // the browser doesn't expose a meaningful outer size (e.g. some mobile UAs).
     const handleResize = () => {
+      if (window.outerWidth <= 0 || window.outerHeight <= 0) return;
       const widthDelta = window.outerWidth - window.innerWidth;
       const heightDelta = window.outerHeight - window.innerHeight;
       if (widthDelta > DEVTOOLS_SIZE_DELTA || heightDelta > DEVTOOLS_SIZE_DELTA) {

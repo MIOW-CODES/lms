@@ -944,6 +944,7 @@ export async function submitQuizAnswers(
   answers: Record<string, string>,
   questionIds?: string[],
   tabSwitches?: Array<{ at: number; type: IntegrityEventType }>,
+  submissionId?: string,
 ): Promise<SubmitQuizResult> {
   return submitQuizAttemptFn({
     data: {
@@ -952,6 +953,7 @@ export async function submitQuizAnswers(
       token: sessionToken(),
       question_ids: questionIds,
       tab_switches: tabSwitches,
+      submission_id: submissionId,
     },
   });
 }

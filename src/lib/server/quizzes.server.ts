@@ -2,7 +2,7 @@
 // Quizzes — CRUD, attempts, retake policy engine, essay grading, scoring.
 import { z } from "zod";
 import { db } from "@/integrations/db/client.server";
-import { unwrap, withoutToken } from "@/lib/server/utils.server";
+import { unwrap, withoutToken, isUniqueViolation } from "@/lib/server/utils.server";
 import { requireSession, requireStaff } from "@/lib/server/auth.server";
 import { schemas } from "@/lib/server/schemas.server";
 import type { IntegrityEventType } from "@/lib/integrity";
@@ -256,6 +256,15 @@ type AttemptRow = {
   tab_switches?: Array<{ at: number; type: string }>;
 };
 
+type ScoredResult = {
+  id: string;
+  question: string;
+  options: string[];
+  chosen: string | null;
+  correct_answer: string;
+  correct: boolean;
+};
+
 function effectiveScore(
   attempts: AttemptRow[],
   policy: RetakePolicy,
@@ -275,15 +284,86 @@ function effectiveScore(
   return { score: best.score, total: best.total };
 }
 
+/** Build the gated submit response shared by fresh inserts and idempotent replays. */
+function gatedResponse(
+  quiz: QuizConfig,
+  attempt: { attempt_number: number; score: number; total: number },
+  results: ScoredResult[],
+  used: number,
+  ceiling: number | null,
+  attemptsIncludingThis: AttemptRow[],
+) {
+  const eff = effectiveScore(attemptsIncludingThis, quiz.retake_score_policy);
+  const isScoreReleased = quiz.score_released === true;
+  const isAnswerKeyReleased = quiz.answer_key_released === true;
+  const gatedResults = isAnswerKeyReleased
+    ? results
+    : results.map((r) => ({ ...r, correct_answer: "" }));
+  return {
+    ok: true as const,
+    score: (isScoreReleased ? attempt.score : null) as number | null,
+    total: attempt.total,
+    results: gatedResults,
+    attempt_number: attempt.attempt_number,
+    attempts_used: used,
+    attempts_allowed: ceiling,
+    can_retake: ceiling == null || used < ceiling,
+    effective_score: (isScoreReleased ? (eff?.score ?? attempt.score) : null) as number | null,
+    retake_score_policy: quiz.retake_score_policy,
+    score_released: isScoreReleased,
+    answer_key_released: isAnswerKeyReleased,
+  };
+}
+
+/** Load a stored attempt (score/total/results) by an idempotency key. */
+async function attemptBySubmissionId(studentId: string, submissionId: string) {
+  return unwrap<{
+    attempt_number: number;
+    score: number;
+    total: number;
+    results: ScoredResult[] | null;
+  } | null>(
+    db
+      .from("quiz_attempts")
+      .select("attempt_number, score, total, results")
+      .eq("student_id", studentId)
+      .eq("submission_id", submissionId)
+      .maybeSingle(),
+  );
+}
+
 export async function submitQuizAttempt(
   quiz_id: string,
   answers: Record<string, string>,
   token: string,
   questionIds?: string[],
   tabSwitches?: Array<{ at: number; type: IntegrityEventType }>,
+  submissionId?: string,
 ) {
   const caller = await requireSession(token);
   const quiz = await getQuizConfig(quiz_id);
+
+  // Idempotency replay: a retry after a lost response (or a duplicate in-flight
+  // request) reuses the same submission_id and returns the stored result
+  // instead of recording another attempt.
+  if (submissionId) {
+    const existing = await attemptBySubmissionId(caller.id, submissionId);
+    if (existing) {
+      const [attempts, extra] = await Promise.all([
+        attemptsFor(quiz_id, caller.id),
+        extraAttemptsFor(quiz_id, caller.id),
+      ]);
+      return gatedResponse(
+        quiz,
+        existing,
+        Array.isArray(existing.results) ? existing.results : [],
+        Math.max(attempts.length, existing.attempt_number),
+        attemptCeiling(quiz, extra),
+        attempts,
+      );
+    }
+  }
+
   const [attempts, extra] = await Promise.all([
     attemptsFor(quiz_id, caller.id),
     extraAttemptsFor(quiz_id, caller.id),
@@ -302,45 +382,73 @@ export async function submitQuizAttempt(
   // questionIds passed from client for question bank scoring
   const { score, total, results } = await scoreQuiz(quiz_id, answers, questionIds);
   const attempt_number = attempts.reduce((m, a) => Math.max(m, a.attempt_number), 0) + 1;
-  await unwrap(
-    db.from("quiz_attempts").insert({
-      quiz_id,
-      student_id: caller.id,
-      attempt_number,
-      score,
-      total,
-      results,
-      question_ids: questionIds ?? [],
-      tab_switches: tabSwitches ?? [],
-    }),
-  );
+
+  const row: Record<string, unknown> = {
+    quiz_id,
+    student_id: caller.id,
+    attempt_number,
+    score,
+    total,
+    results,
+    question_ids: questionIds ?? [],
+    tab_switches: tabSwitches ?? [],
+  };
+  if (submissionId) row["submission_id"] = submissionId;
+
+  // Idempotent insert: a concurrent double-submit collides on the unique
+  // (quiz_id, student_id, attempt_number) index and is ignored.
+  let inserted: Array<{ id: string }>;
+  try {
+    inserted = await unwrap<Array<{ id: string }>>(
+      db
+        .from("quiz_attempts")
+        .upsert(row, {
+          onConflict: "quiz_id,student_id,attempt_number",
+          ignoreDuplicates: true,
+        })
+        .select("id"),
+    );
+  } catch (e) {
+    // A racing identical submit may collide on the submission_id unique index
+    // instead (upsert only ignores the declared conflict target).
+    if (isUniqueViolation(e) && submissionId) {
+      const existing = await attemptBySubmissionId(caller.id, submissionId);
+      if (existing) {
+        const fresh = await attemptsFor(quiz_id, caller.id);
+        return gatedResponse(
+          quiz,
+          existing,
+          Array.isArray(existing.results) ? existing.results : [],
+          Math.max(fresh.length, existing.attempt_number),
+          ceiling,
+          fresh,
+        );
+      }
+    }
+    throw e;
+  }
+
+  // The insert was ignored because a submission with this id already existed.
+  if ((!inserted || inserted.length === 0) && submissionId) {
+    const existing = await attemptBySubmissionId(caller.id, submissionId);
+    if (existing) {
+      const fresh = await attemptsFor(quiz_id, caller.id);
+      return gatedResponse(
+        quiz,
+        existing,
+        Array.isArray(existing.results) ? existing.results : [],
+        Math.max(fresh.length, existing.attempt_number),
+        ceiling,
+        fresh,
+      );
+    }
+  }
 
   const used = attempts.length + 1;
-  const eff = effectiveScore(
-    [...attempts, { attempt_number, score, total }],
-    quiz.retake_score_policy,
-  );
-  const isScoreReleased = quiz.score_released === true;
-  const isAnswerKeyReleased = quiz.answer_key_released === true;
-  const gatedResults = isAnswerKeyReleased
-    ? results
-    : results.map((r) => ({ ...r, correct_answer: "" }));
-  const gatedScore = isScoreReleased ? score : null;
-  const gatedEffective = isScoreReleased ? (eff?.score ?? score) : null;
-  return {
-    ok: true as const,
-    score: gatedScore as number | null,
-    total,
-    results: gatedResults,
-    attempt_number,
-    attempts_used: used,
-    attempts_allowed: ceiling,
-    can_retake: ceiling == null || used < ceiling,
-    effective_score: gatedEffective as number | null,
-    retake_score_policy: quiz.retake_score_policy,
-    score_released: isScoreReleased,
-    answer_key_released: isAnswerKeyReleased,
-  };
+  return gatedResponse(quiz, { attempt_number, score, total }, results, used, ceiling, [
+    ...attempts,
+    { attempt_number, score, total },
+  ]);
 }
 
 export async function quizAttemptInfo(quiz_id: string, token: string) {

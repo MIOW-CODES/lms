@@ -339,6 +339,9 @@ export const schemas = {
       )
       .max(500)
       .optional(),
+    // Client-generated idempotency key: a retry of the same attempt reuses it
+    // so the server can replay the stored result instead of double-recording.
+    submission_id: uuid.optional(),
     ...token,
   }),
   quizScoped: z.object({ quiz_id: uuid, ...token }),

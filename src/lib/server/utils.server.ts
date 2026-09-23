@@ -14,6 +14,29 @@ interface DbError {
 
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/**
+ * Error thrown by {@link unwrap} when a database request ultimately fails.
+ * Carries the underlying Postgres/PostgREST `code` (e.g. "23505" for a unique
+ * violation) so callers can react to specific conditions such as an idempotent
+ * duplicate insert.
+ */
+export class DatabaseError extends Error {
+  code: string | undefined;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "DatabaseError";
+    this.code = code;
+  }
+}
+
+/**
+ * True when an error is a Postgres unique-constraint violation (SQLSTATE 23505).
+ * Used by idempotent inserts to detect a racing duplicate write.
+ */
+export function isUniqueViolation(e: unknown): boolean {
+  return e instanceof DatabaseError && e.code === "23505";
+}
+
 export async function unwrap<T>(
   p: PromiseLike<{ data: unknown; error: DbError | null }>,
 ): Promise<T> {
@@ -35,7 +58,7 @@ export async function unwrap<T>(
     code: error?.code,
     message: error?.message,
   });
-  throw new Error("Database request failed");
+  throw new DatabaseError("Database request failed", error?.code);
 }
 
 /**
