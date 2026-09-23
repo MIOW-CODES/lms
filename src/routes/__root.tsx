@@ -12,6 +12,7 @@ import { Toaster } from "sonner";
 
 import appCss from "../styles.css?url";
 import { reportError } from "../lib/error-reporting";
+import { clearLegacyPreferences } from "../lib/settings";
 
 function NotFoundComponent() {
   return (
@@ -131,6 +132,11 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  // One-time cleanup of dead pre-rename keys (see clearLegacyPreferences).
+  useEffect(() => {
+    clearLegacyPreferences();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // ── Helpers ──────────────────────────────────────────────
-const SESSION_KEY = "northview-lms-session";
+const SESSION_KEY = "miow-lms-session";
 
 function fakeProfile(role: "admin" | "teacher" | "student") {
   return {
@@ -66,7 +66,7 @@ test.describe("Auth page interactions", () => {
     await page.evaluate(() => localStorage.clear());
     await page.goto("/auth");
     await expect(page.locator("body")).toContainText("MIOW", { timeout: 10000 });
-    await expect(page.locator("body")).toContainText("MSU-IIT");
+    await expect(page.locator("body")).toContainText("Integrated Developmental School");
     await expect(page.getByRole("button", { name: /RFID Card/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /PIN Login/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Tap/ })).toBeVisible();
@@ -391,7 +391,7 @@ describeRealDB("Real PIN login", () => {
     await page.waitForTimeout(1000);
     await page.getByRole("button", { name: /PIN Login/ }).click();
     await page.waitForTimeout(500);
-    await page.locator("#login-id").fill("ana.reyes@northview.edu");
+    await page.locator("#login-id").fill("admin@g.msuiit.edu.ph");
     await page.locator("#login-pin").fill("0000");
     await page.getByRole("button", { name: /Sign In/ }).click();
     await page.waitForURL(/\/dashboard\/admin/, { timeout: 20000 });
