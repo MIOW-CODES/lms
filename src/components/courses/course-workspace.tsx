@@ -213,7 +213,7 @@ export function StaffCourseWorkspace({
   onSubmissions: (a: Assignment) => void;
 }) {
   const [tab, setTab] = useState("worksheets");
-  const roster = useCourseRoster(course.id);
+  const { roster, loading: rosterLoading } = useCourseRoster(course.id);
 
   const courseQuizzes = useMemo(
     () => quizzes.filter((q) => q.course_id === course.id),
@@ -303,11 +303,14 @@ export function StaffCourseWorkspace({
           />
         ))}
 
-      {tab === "class" && (
-        <ClassRecord courseId={course.id} courseCode={course.code} roster={roster} />
-      )}
+      {tab === "class" &&
+        (rosterLoading ? (
+          <Card className="p-6 text-sm text-muted-foreground">Loading class record…</Card>
+        ) : (
+          <ClassRecord courseId={course.id} courseCode={course.code} roster={roster} />
+        ))}
 
-      {tab === "roster" && <CourseRoster roster={roster} />}
+      {tab === "roster" && <CourseRoster roster={roster} loading={rosterLoading} />}
     </CourseWorkspaceShell>
   );
 }

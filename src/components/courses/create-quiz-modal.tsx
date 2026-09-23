@@ -117,14 +117,20 @@ export function CreateQuizModal({
     }
 
     const loaded: SourceFile[] = [];
-    for (const file of batch) {
-      try {
-        const text = await extractTextFromFile(file);
-        loaded.push({ name: file.name, size: file.size, text });
-      } catch {
-        toast.error(`Could not read "${file.name}" — try another file or paste the content.`);
-      }
-    }
+    // Extract in parallel; each file is independent so one failure must not
+    // block the others.
+    const results = await Promise.allSettled(
+      batch.map(async (file) => ({
+        name: file.name,
+        size: file.size,
+        text: await extractTextFromFile(file),
+      })),
+    );
+    results.forEach((result, i) => {
+      if (result.status === "fulfilled") loaded.push(result.value);
+      else
+        toast.error(`Could not read "${batch[i]!.name}" — try another file or paste the content.`);
+    });
     if (loaded.length === 0) return;
 
     const next = [...quizFiles, ...loaded];

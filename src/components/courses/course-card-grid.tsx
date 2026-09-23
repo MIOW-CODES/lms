@@ -57,6 +57,7 @@ export function CourseCardGrid({
               <button
                 type="button"
                 onClick={() => onOpen?.(c)}
+                aria-label={`Open course ${c.code} — ${c.title}`}
                 className="mt-1.5 flex w-full items-center gap-2 text-left font-semibold leading-snug hover:text-primary"
               >
                 <span>{c.title}</span>
@@ -71,6 +72,7 @@ export function CourseCardGrid({
               <button
                 type="button"
                 onClick={() => onOpen?.(c)}
+                aria-label={`Open course ${c.code} — ${c.title}`}
                 className="mt-3 flex h-9 w-full items-center justify-center rounded-lg bg-primary/10 text-xs font-semibold text-primary hover:bg-primary/15"
               >
                 Open course →

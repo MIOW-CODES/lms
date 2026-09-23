@@ -106,7 +106,8 @@ function StudentCoursesPage() {
   const subByAssignment = new Map((submissions ?? []).map((s) => [s.assignment_id, s]));
   const summaryByQuiz = new Map((quizSummaries ?? []).map((s) => [s.quiz_id, s]));
 
-  const isLoading = !courses || !assignments || !quizzes || !submissions || !quizSummaries;
+  const isLoading =
+    !courses || !assignments || !quizzes || !submissions || !quizSummaries || !enrolledCourseIds;
 
   if (!profile) return null;
 
@@ -221,6 +222,7 @@ function StudentCoursesPage() {
                         <button
                           type="button"
                           onClick={() => selectCourse(c.id)}
+                          aria-label={`Open course ${c.code} — ${c.title}`}
                           className="mt-1.5 block text-left font-semibold leading-snug hover:text-primary"
                         >
                           {c.title}
@@ -242,6 +244,7 @@ function StudentCoursesPage() {
                         <button
                           type="button"
                           onClick={() => selectCourse(c.id)}
+                          aria-label={`Open course ${c.code} — ${c.title}`}
                           className="mt-3 flex h-9 w-full items-center justify-center rounded-lg bg-primary/10 text-xs font-semibold text-primary hover:bg-primary/15"
                         >
                           Open course →
