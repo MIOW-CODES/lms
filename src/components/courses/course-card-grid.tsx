@@ -9,6 +9,7 @@ interface CourseCardGridProps {
   courses: Course[];
   profile: Profile;
   isAdmin: boolean;
+  onOpen?: (course: Course) => void;
   onEdit: (course: Course) => void;
   onRemove: (course: Course) => void;
 }
@@ -17,6 +18,7 @@ export function CourseCardGrid({
   courses,
   profile,
   isAdmin,
+  onOpen,
   onEdit,
   onRemove,
 }: CourseCardGridProps) {
@@ -52,9 +54,13 @@ export function CourseCardGrid({
                   )}
                 </div>
               </div>
-              <p className="mt-1.5 flex items-center gap-2 font-semibold leading-snug">
+              <button
+                type="button"
+                onClick={() => onOpen?.(c)}
+                className="mt-1.5 flex w-full items-center gap-2 text-left font-semibold leading-snug hover:text-primary"
+              >
                 <span>{c.title}</span>
-              </p>
+              </button>
               <p className="mt-1 text-xs text-muted-foreground">
                 {c.teacher_name ?? "No teacher assigned"}
               </p>
@@ -62,6 +68,13 @@ export function CourseCardGrid({
                 <p className="mt-1 text-xs font-medium text-primary">{formatSchedule(c)}</p>
               )}
               <EnrollmentCount courseId={c.id} />
+              <button
+                type="button"
+                onClick={() => onOpen?.(c)}
+                className="mt-3 flex h-9 w-full items-center justify-center rounded-lg bg-primary/10 text-xs font-semibold text-primary hover:bg-primary/15"
+              >
+                Open course →
+              </button>
             </div>
           </MotionCard>
         );

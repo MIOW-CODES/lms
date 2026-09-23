@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -15,6 +15,8 @@ interface CreateAssignmentModalProps {
   open: boolean;
   onClose: () => void;
   courses: Course[];
+  /** Pre-select this course when the modal opens (course-scoped creation). */
+  defaultCourseId?: string;
   onSaved: () => void;
 }
 
@@ -22,6 +24,7 @@ export function CreateAssignmentModal({
   open,
   onClose,
   courses,
+  defaultCourseId,
   onSaved,
 }: CreateAssignmentModalProps) {
   const qc = useQueryClient();
@@ -36,6 +39,12 @@ export function CreateAssignmentModal({
   });
   const [assignFiles, setAssignFiles] = useState<File[]>([]);
   const [assignUploadPct, setAssignUploadPct] = useState(0);
+
+  // When opened from inside a course, scope the new assignment to that course.
+  useEffect(() => {
+    if (!open || !defaultCourseId) return;
+    setAssignForm((f) => ({ ...f, course_id: defaultCourseId }));
+  }, [open, defaultCourseId]);
 
   const saveAssignment = async () => {
     if (!assignForm.course_id || !assignForm.title) {

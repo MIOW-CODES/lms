@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, BookOpen, ClipboardList, FileQuestion, Paperclip } from "lucide-react";
 import {
   COMPONENT_LABELS,
   daysUntil,
+  enrollmentsForStudent,
   fmtDate,
   listAssignments,
   listCourses,
@@ -14,7 +15,10 @@ import {
   myQuizSummaries,
   formatSchedule,
   type Assignment,
+  type Course,
   type Quiz,
+  type QuizAttemptSummary,
+  type Submission,
 } from "@/lib/lms";
 import {
   AppShell,
@@ -28,6 +32,8 @@ import {
 import { levelLabel } from "@/lib/course-levels";
 import { cn } from "@/lib/utils";
 import { LoadingSkeleton } from "@/components/ui-elements";
+import { CourseWorkspaceShell, type WorkspaceTab } from "@/components/courses/course-workspace";
+import { useCourseSelection } from "@/hooks/useCourseWorkspace";
 
 export const Route = createFileRoute("/dashboard/student/courses")({
   head: () => ({
@@ -49,6 +55,7 @@ type Tab = "courses" | "worksheets" | "assignments";
 function StudentCoursesPage() {
   const profile = useProfile(["student"]);
   const [tab, setTab] = useState<Tab>("courses");
+  const [selectedCourseId, selectCourse] = useCourseSelection();
 
   const { data: courses } = useQuery({
     queryKey: ["courses"],
@@ -78,6 +85,26 @@ function StudentCoursesPage() {
     queryFn: myQuizSummaries,
     enabled: !!profile,
   });
+  const { data: enrolledCourseIds } = useQuery({
+    queryKey: ["enrollments", "student", profile?.id],
+    queryFn: () => enrollmentsForStudent(profile!.id),
+    enabled: !!profile?.id,
+  });
+
+  // A student may belong to several year levels within one course (mixed college
+  // sections), so enrollment is the source of truth — grade level is a fallback.
+  const myCourses = useMemo(() => {
+    const enrolled = new Set(enrolledCourseIds ?? []);
+    return (courses ?? []).filter(
+      (c) => enrolled.has(c.id) || c.grade_level === profile?.grade_level,
+    );
+  }, [courses, enrolledCourseIds, profile?.grade_level]);
+
+  const courseIds = useMemo(() => new Set(myCourses.map((c) => c.id)), [myCourses]);
+  const myAssignments = (assignments ?? []).filter((a) => courseIds.has(a.course_id));
+  const myQuizzes = (quizzes ?? []).filter((q) => courseIds.has(q.course_id));
+  const subByAssignment = new Map((submissions ?? []).map((s) => [s.assignment_id, s]));
+  const summaryByQuiz = new Map((quizSummaries ?? []).map((s) => [s.quiz_id, s]));
 
   const isLoading = !courses || !assignments || !quizzes || !submissions || !quizSummaries;
 
@@ -90,12 +117,22 @@ function StudentCoursesPage() {
       </AppShell>
     );
 
-  const myCourses = (courses ?? []).filter((c) => c.grade_level === profile.grade_level);
-  const courseIds = new Set(myCourses.map((c) => c.id));
-  const myAssignments = (assignments ?? []).filter((a) => courseIds.has(a.course_id));
-  const myQuizzes = (quizzes ?? []).filter((q) => courseIds.has(q.course_id));
-  const subByAssignment = new Map((submissions ?? []).map((s) => [s.assignment_id, s]));
-  const summaryByQuiz = new Map((quizSummaries ?? []).map((s) => [s.quiz_id, s]));
+  const selectedCourse = myCourses.find((c) => c.id === selectedCourseId) ?? null;
+
+  if (selectedCourse) {
+    return (
+      <AppShell nav={STUDENT_NAV} profile={profile} subtitle="Student Portal">
+        <StudentCourseWorkspace
+          course={selectedCourse}
+          quizzes={myQuizzes.filter((q) => q.course_id === selectedCourse.id)}
+          assignments={myAssignments.filter((a) => a.course_id === selectedCourse.id)}
+          subByAssignment={subByAssignment}
+          summaryByQuiz={summaryByQuiz}
+          onBack={() => selectCourse(null)}
+        />
+      </AppShell>
+    );
+  }
 
   const TABS: Array<{ id: Tab; label: string; icon: React.ReactNode; count: number }> = [
     {
@@ -160,41 +197,61 @@ function StudentCoursesPage() {
           {myCourses.length === 0 ? (
             <EmptyState title="No courses yet" sub="Your enrolled courses will appear here." />
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {myCourses.map((c, i) => {
-                const st = courseStyle(c.color);
-                return (
-                  <MotionCard
-                    key={c.id}
-                    delay={Math.min(i * 0.05, 0.3)}
-                    className="overflow-hidden"
-                  >
-                    <div className={cn("h-2", st.chip)} />
-                    <div className="p-5">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-bold text-muted-foreground">{c.code}</p>
-                        <Badge tone="slate">{levelLabel(c.grade_level)}</Badge>
+            <>
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Select a course to see its worksheets, assignments and materials
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {myCourses.map((c, i) => {
+                  const st = courseStyle(c.color);
+                  const courseAssignments = myAssignments.filter((a) => a.course_id === c.id);
+                  const courseQuizzes = myQuizzes.filter((q) => q.course_id === c.id);
+                  return (
+                    <MotionCard
+                      key={c.id}
+                      delay={Math.min(i * 0.05, 0.3)}
+                      className="overflow-hidden"
+                    >
+                      <div className={cn("h-2", st.chip)} />
+                      <div className="p-5">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-bold text-muted-foreground">{c.code}</p>
+                          <Badge tone="slate">{levelLabel(c.grade_level)}</Badge>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => selectCourse(c.id)}
+                          className="mt-1.5 block text-left font-semibold leading-snug hover:text-primary"
+                        >
+                          {c.title}
+                        </button>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {c.teacher_name ?? "TBA"}
+                        </p>
+                        {formatSchedule(c) && (
+                          <p className="mt-1 text-xs font-medium text-primary">
+                            {formatSchedule(c)}
+                          </p>
+                        )}
+                        <p className="mt-3 text-xs font-semibold text-muted-foreground">
+                          {courseAssignments.length} assignment
+                          {courseAssignments.length !== 1 ? "s" : ""} · {courseQuizzes.length}{" "}
+                          worksheet
+                          {courseQuizzes.length !== 1 ? "s" : ""}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => selectCourse(c.id)}
+                          className="mt-3 flex h-9 w-full items-center justify-center rounded-lg bg-primary/10 text-xs font-semibold text-primary hover:bg-primary/15"
+                        >
+                          Open course →
+                        </button>
                       </div>
-                      <p className="mt-1.5 font-semibold leading-snug">{c.title}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {c.teacher_name ?? "TBA"}
-                      </p>
-                      {formatSchedule(c) && (
-                        <p className="mt-1 text-xs font-medium text-primary">{formatSchedule(c)}</p>
-                      )}
-                      <p className="mt-3 text-xs font-semibold text-muted-foreground">
-                        {myAssignments.filter((a) => a.course_id === c.id).length} assignment
-                        {myAssignments.filter((a) => a.course_id === c.id).length !== 1
-                          ? "s"
-                          : ""}{" "}
-                        · {myQuizzes.filter((q) => q.course_id === c.id).length} worksheet
-                        {myQuizzes.filter((q) => q.course_id === c.id).length !== 1 ? "s" : ""}
-                      </p>
-                    </div>
-                  </MotionCard>
-                );
-              })}
-            </div>
+                    </MotionCard>
+                  );
+                })}
+              </div>
+            </>
           )}
         </>
       )}
@@ -209,58 +266,14 @@ function StudentCoursesPage() {
             />
           ) : (
             <div className="grid gap-2">
-              {myQuizzes.map((q) => {
-                const course = myCourses.find((c) => c.id === q.course_id);
-                const st = courseStyle(course?.color ?? "indigo");
-                const summary = summaryByQuiz.get(q.id);
-                return (
-                  <MotionCard key={q.id} className="flex flex-wrap items-center gap-3 p-4">
-                    <span className={cn("rounded-md px-2 py-0.5 text-[11px] font-bold", st.soft)}>
-                      {course?.code ?? "—"}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">{q.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {q.duration_minutes} min
-                        {q.allow_retake
-                          ? q.max_attempts === 0
-                            ? " · Retakes allowed (unlimited)"
-                            : ` · Retakes allowed (up to ${q.max_attempts})`
-                          : " · Single attempt"}
-                      </p>
-                      {(q.attachments ?? []).length > 0 && (
-                        <div className="mt-1.5 flex flex-wrap gap-1">
-                          {q.attachments!.map((a) => (
-                            <a
-                              key={a.path}
-                              href={materialHref(a)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-primary hover:underline"
-                            >
-                              <Paperclip className="h-2.5 w-2.5" />
-                              {a.name}
-                            </a>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    {summary ? (
-                      <Badge tone="green">
-                        Score: {summary.effective_score}/{summary.effective_total}
-                      </Badge>
-                    ) : (
-                      <Badge tone="slate">Not started</Badge>
-                    )}
-                    <Link
-                      to="/dashboard/student/quizzes"
-                      className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/15"
-                    >
-                      {summary ? "Retake" : "Start"} →
-                    </Link>
-                  </MotionCard>
-                );
-              })}
+              {myQuizzes.map((q) => (
+                <StudentWorksheetRow
+                  key={q.id}
+                  quiz={q}
+                  course={myCourses.find((c) => c.id === q.course_id)}
+                  summary={summaryByQuiz.get(q.id)}
+                />
+              ))}
             </div>
           )}
         </>
@@ -276,72 +289,218 @@ function StudentCoursesPage() {
             />
           ) : (
             <div className="grid gap-2">
-              {myAssignments.map((a) => {
-                const course = myCourses.find((c) => c.id === a.course_id);
-                const st = courseStyle(course?.color ?? "indigo");
-                const sub = subByAssignment.get(a.id);
-                const due = daysUntil(a.due_date);
-                const status = !sub || sub.status === "pending" ? "pending" : sub.status;
-                return (
-                  <MotionCard key={a.id} className="flex flex-wrap items-center gap-3 p-4">
-                    <span className={cn("rounded-md px-2 py-0.5 text-[11px] font-bold", st.soft)}>
-                      {course?.code ?? "—"}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">{a.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {COMPONENT_LABELS[a.component_type]} · {a.total_points} pts
-                        {a.due_date ? ` · due ${fmtDate(a.due_date)}` : ""}
-                      </p>
-                      {(a.attachments ?? []).length > 0 && (
-                        <div className="mt-1.5 flex flex-wrap gap-1">
-                          {a.attachments!.map((att) => (
-                            <a
-                              key={att.path}
-                              href={materialHref(att)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-primary hover:underline"
-                            >
-                              <Paperclip className="h-2.5 w-2.5" />
-                              {att.name}
-                            </a>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    {status === "graded" && sub?.score != null ? (
-                      <Badge tone="green">
-                        {sub.score}/{a.total_points}
-                      </Badge>
-                    ) : status === "submitted" ? (
-                      <Badge tone="amber">Submitted</Badge>
-                    ) : (
-                      <Badge
-                        tone={
-                          due === "Overdue"
-                            ? "red"
-                            : due.includes("today") || due.includes("tomorrow")
-                              ? "amber"
-                              : "slate"
-                        }
-                      >
-                        {due}
-                      </Badge>
-                    )}
-                    <Link
-                      to="/dashboard/student/assignments"
-                      className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/15"
-                    >
-                      {status === "pending" ? "Submit" : "View"} →
-                    </Link>
-                  </MotionCard>
-                );
-              })}
+              {myAssignments.map((a) => (
+                <StudentAssignmentRow
+                  key={a.id}
+                  assignment={a}
+                  course={myCourses.find((c) => c.id === a.course_id)}
+                  submission={subByAssignment.get(a.id)}
+                />
+              ))}
             </div>
           )}
         </>
       )}
     </AppShell>
+  );
+}
+
+/** Student view of a single course: its worksheets and assignments. */
+function StudentCourseWorkspace({
+  course,
+  quizzes,
+  assignments,
+  subByAssignment,
+  summaryByQuiz,
+  onBack,
+}: {
+  course: Course;
+  quizzes: Quiz[];
+  assignments: Assignment[];
+  subByAssignment: Map<string, Submission>;
+  summaryByQuiz: Map<string, QuizAttemptSummary>;
+  onBack: () => void;
+}) {
+  const [tab, setTab] = useState("worksheets");
+
+  const tabs: WorkspaceTab[] = [
+    {
+      id: "worksheets",
+      label: "Worksheets",
+      icon: <FileQuestion className="h-4 w-4" />,
+      count: quizzes.length,
+    },
+    {
+      id: "assignments",
+      label: "Assignments",
+      icon: <ClipboardList className="h-4 w-4" />,
+      count: assignments.length,
+    },
+  ];
+
+  return (
+    <CourseWorkspaceShell
+      course={course}
+      onBack={onBack}
+      tabs={tabs}
+      activeTab={tab}
+      onTabChange={setTab}
+    >
+      {tab === "worksheets" &&
+        (quizzes.length === 0 ? (
+          <EmptyState
+            title="No worksheets yet"
+            sub="Worksheets posted by your teacher will appear here."
+          />
+        ) : (
+          <div className="grid gap-2">
+            {quizzes.map((q) => (
+              <StudentWorksheetRow
+                key={q.id}
+                quiz={q}
+                course={course}
+                summary={summaryByQuiz.get(q.id)}
+              />
+            ))}
+          </div>
+        ))}
+
+      {tab === "assignments" &&
+        (assignments.length === 0 ? (
+          <EmptyState
+            title="No assignments yet"
+            sub="Activities posted by your teacher will appear here."
+          />
+        ) : (
+          <div className="grid gap-2">
+            {assignments.map((a) => (
+              <StudentAssignmentRow
+                key={a.id}
+                assignment={a}
+                course={course}
+                submission={subByAssignment.get(a.id)}
+              />
+            ))}
+          </div>
+        ))}
+    </CourseWorkspaceShell>
+  );
+}
+
+function MaterialChips({ attachments }: { attachments: Quiz["attachments"] }) {
+  if (!attachments || attachments.length === 0) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1">
+      {attachments.map((a) => (
+        <a
+          key={a.path}
+          href={materialHref(a)}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-primary hover:underline"
+        >
+          <Paperclip className="h-2.5 w-2.5" />
+          {a.name}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function StudentWorksheetRow({
+  quiz,
+  course,
+  summary,
+}: {
+  quiz: Quiz;
+  course?: Course | undefined;
+  summary?: QuizAttemptSummary | undefined;
+}) {
+  const st = courseStyle(course?.color ?? "indigo");
+  return (
+    <MotionCard className="flex flex-wrap items-center gap-3 p-4">
+      <span className={cn("rounded-md px-2 py-0.5 text-[11px] font-bold", st.soft)}>
+        {course?.code ?? "—"}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold">{quiz.title}</p>
+        <p className="text-xs text-muted-foreground">
+          {quiz.duration_minutes} min
+          {quiz.allow_retake
+            ? quiz.max_attempts === 0
+              ? " · Retakes allowed (unlimited)"
+              : ` · Retakes allowed (up to ${quiz.max_attempts})`
+            : " · Single attempt"}
+        </p>
+        <MaterialChips attachments={quiz.attachments} />
+      </div>
+      {summary && summary.effective_score != null && summary.effective_total != null ? (
+        <Badge tone="green">
+          Score: {summary.effective_score}/{summary.effective_total}
+        </Badge>
+      ) : (
+        <Badge tone="slate">Not started</Badge>
+      )}
+      <Link
+        to="/dashboard/student/quizzes"
+        className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/15"
+      >
+        {summary ? "Retake" : "Start"} →
+      </Link>
+    </MotionCard>
+  );
+}
+
+function StudentAssignmentRow({
+  assignment,
+  course,
+  submission,
+}: {
+  assignment: Assignment;
+  course?: Course | undefined;
+  submission?: Submission | undefined;
+}) {
+  const st = courseStyle(course?.color ?? "indigo");
+  const due = daysUntil(assignment.due_date);
+  const status = !submission || submission.status === "pending" ? "pending" : submission.status;
+  return (
+    <MotionCard className="flex flex-wrap items-center gap-3 p-4">
+      <span className={cn("rounded-md px-2 py-0.5 text-[11px] font-bold", st.soft)}>
+        {course?.code ?? "—"}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold">{assignment.title}</p>
+        <p className="text-xs text-muted-foreground">
+          {COMPONENT_LABELS[assignment.component_type]} · {assignment.total_points} pts
+          {assignment.due_date ? ` · due ${fmtDate(assignment.due_date)}` : ""}
+        </p>
+        <MaterialChips attachments={assignment.attachments} />
+      </div>
+      {status === "graded" && submission?.score != null ? (
+        <Badge tone="green">
+          {submission.score}/{assignment.total_points}
+        </Badge>
+      ) : status === "submitted" ? (
+        <Badge tone="amber">Submitted</Badge>
+      ) : (
+        <Badge
+          tone={
+            due === "Overdue"
+              ? "red"
+              : due.includes("today") || due.includes("tomorrow")
+                ? "amber"
+                : "slate"
+          }
+        >
+          {due}
+        </Badge>
+      )}
+      <Link
+        to="/dashboard/student/assignments"
+        className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/15"
+      >
+        {status === "pending" ? "Submit" : "View"} →
+      </Link>
+    </MotionCard>
   );
 }
