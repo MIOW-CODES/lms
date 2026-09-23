@@ -10,6 +10,13 @@
 --
 -- RFID is intentionally left untouched (no credential is minted for RFID yet).
 --
+-- Login coordination: no application change is required. `verifyPinLogin`
+-- resolves the identifier across email / student_id / username / employee_id,
+-- and `verifySecret` checks `pin_hash` first (bcrypt). Setting `pin_hash` here
+-- therefore makes email+student_id and student_id+student_id both valid, while
+-- the plaintext `pin` column is kept only as a value identical to the already
+-- stored `student_id` (no additional exposure).
+--
 -- Scope: only rows where email OR pin is missing/empty. Existing working
 -- accounts (e.g. the Grade 10 seed which already has an email and a PIN) are
 -- never modified, which keeps this migration idempotent and non-disruptive.
