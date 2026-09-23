@@ -80,6 +80,9 @@ export const MAX_BATCH_BYTES = 60 * 1024 * 1024;
 export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 export const ASSIGNMENT_MAX_BYTES = 15 * 1024 * 1024;
 export const COURSE_MATERIAL_MAX_BYTES = 10 * 1024 * 1024;
+/** ClassMate source material: max files per worksheet and combined size cap. */
+export const SOURCE_FILES_MAX_COUNT = 10;
+export const SOURCE_FILES_MAX_TOTAL_BYTES = 30 * 1024 * 1024;
 export const ATTENDANCE_LIMIT_DASHBOARD = 50;
 export const ATTENDANCE_LIMIT_KIOSK = 60;
 export const ATTENDANCE_LIMIT_GRADES = 500;

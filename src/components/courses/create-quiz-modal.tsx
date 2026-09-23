@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CloudUpload, FileText, Plus, Sparkles, Trash2, X } from "lucide-react";
-import { type Course, createQuizWithQuestions } from "@/lib/lms";
+import { type Course, createQuizWithQuestions, formatFileSize } from "@/lib/lms";
 import { extractTextFromFile, isWorksheetAcceptedFile } from "@/lib/extract-text";
+import { aggregateSourceMaterial, type SourceFile } from "@/lib/classmate-source";
 import { parseWorksheet } from "@/lib/worksheet-parser";
 import { openWorksheetChat, onPasteToWorksheet } from "@/lib/worksheet-context";
 import { Modal } from "@/components/lms";
@@ -12,6 +13,8 @@ import {
   EMPTY_POLICY,
   EMPTY_MANUAL_Q,
   COURSE_MATERIAL_MAX_BYTES,
+  SOURCE_FILES_MAX_COUNT,
+  SOURCE_FILES_MAX_TOTAL_BYTES,
   policyPayload,
   type QuizMode,
   type ManualQuestion,
@@ -22,10 +25,18 @@ interface CreateQuizModalProps {
   open: boolean;
   onClose: () => void;
   courses: Course[];
+  /** Pre-select this course when the modal opens (course-scoped creation). */
+  defaultCourseId?: string;
   onSaved: () => void;
 }
 
-export function CreateQuizModal({ open, onClose, courses, onSaved }: CreateQuizModalProps) {
+export function CreateQuizModal({
+  open,
+  onClose,
+  courses,
+  defaultCourseId,
+  onSaved,
+}: CreateQuizModalProps) {
   const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [quizForm, setQuizForm] = useState({
@@ -39,64 +50,109 @@ export function CreateQuizModal({ open, onClose, courses, onSaved }: CreateQuizM
   const [quizMode, setQuizMode] = useState<QuizMode>("classmate");
   const [manualQuestions, setManualQuestions] = useState<ManualQuestion[]>([]);
   const [quizFileDrag, setQuizFileDrag] = useState(false);
-  const [quizFileName, setQuizFileName] = useState<string | null>(null);
+  const [quizFiles, setQuizFiles] = useState<SourceFile[]>([]);
 
   // Listen for "Send to worksheet" from ClassMate chat
   useEffect(() => {
     return onPasteToWorksheet((text) => {
       setQuizForm((f) => ({ ...f, questions: text }));
-      setQuizFileName(null);
+      setQuizFiles([]);
       toast.success("Worksheet content received from ClassMate");
     });
   }, []);
+
+  // When opened from inside a course, scope the new worksheet to that course.
+  useEffect(() => {
+    if (!open || !defaultCourseId) return;
+    setQuizForm((f) => ({ ...f, course_id: defaultCourseId }));
+  }, [open, defaultCourseId]);
 
   const handleClose = () => {
     onClose();
     setQuizMode("classmate");
     setManualQuestions([]);
-    setQuizFileName(null);
+    setQuizFiles([]);
   };
 
-  const handleFileLoad = (file: File) => {
-    if (!isWorksheetAcceptedFile(file)) {
+  /** Sync the aggregated source material into the questions textarea. */
+  const applySourceFiles = (files: SourceFile[]) => {
+    setQuizFiles(files);
+    setQuizForm((f) => ({ ...f, questions: aggregateSourceMaterial(files) }));
+  };
+
+  const removeSourceFile = (index: number) => {
+    applySourceFiles(quizFiles.filter((_, i) => i !== index));
+  };
+
+  const handleFilesLoad = async (incoming: File[]) => {
+    if (incoming.length === 0) return;
+
+    const accepted = incoming.filter(isWorksheetAcceptedFile);
+    if (accepted.length < incoming.length) {
       toast.error("Only .txt, .md, .pdf, and .docx files are supported.");
+    }
+    const sized = accepted.filter((f) => f.size <= COURSE_MATERIAL_MAX_BYTES);
+    if (sized.length < accepted.length) {
+      toast.error(`Some files were skipped — each file must be 10MB or smaller.`);
+    }
+    if (sized.length === 0) return;
+
+    const room = SOURCE_FILES_MAX_COUNT - quizFiles.length;
+    if (room <= 0) {
+      toast.error(`You can attach up to ${SOURCE_FILES_MAX_COUNT} source files.`);
       return;
     }
-    if (file.size > COURSE_MATERIAL_MAX_BYTES) {
-      toast.error("File is too large (max 10MB).");
+    const batch = sized.slice(0, room);
+    if (batch.length < sized.length) {
+      toast.error(`Only ${SOURCE_FILES_MAX_COUNT} source files are allowed; extras were skipped.`);
+    }
+
+    const existingBytes = quizFiles.reduce((sum, f) => sum + f.size, 0);
+    const batchBytes = batch.reduce((sum, f) => sum + f.size, 0);
+    if (existingBytes + batchBytes > SOURCE_FILES_MAX_TOTAL_BYTES) {
+      toast.error(
+        `Total source material must stay under ${formatFileSize(SOURCE_FILES_MAX_TOTAL_BYTES)}.`,
+      );
       return;
     }
-    extractTextFromFile(file)
-      .then((text) => {
-        setQuizFileName(file.name);
-        setQuizForm((f) => ({ ...f, questions: text }));
-        const { questions, dropped } = parseWorksheet(text);
-        if (questions.length > 0) {
-          toast.success(
-            `Loaded ${questions.length} question(s) from file${dropped ? ` (${dropped} skipped)` : ""}`,
-          );
-        } else {
-          const course = courses.find((c) => c.id === quizForm.course_id);
-          if (course && quizForm.title.trim()) {
-            openWorksheetChat({
-              course: `${course.code} — ${course.title}`,
-              title: quizForm.title.trim(),
-              sourceMaterial: text,
-              autoMessage: `Generate ${quizForm.question_count && parseInt(quizForm.question_count) > 0 ? parseInt(quizForm.question_count) : 20} parser-ready multiple-choice and fill-in-the-blank questions based on the uploaded material for "${quizForm.title.trim()}". Follow the strict 4-section format with Answer Key.`,
-            });
-            toast.success("File loaded — ClassMate is generating questions now.");
-          } else {
-            toast.success(
-              "File loaded. Select a course and title, then click 'Generate with ClassMate'.",
-            );
-          }
-        }
-      })
-      .catch(() => {
-        toast.error(
-          "Could not extract text from this file. Try a different file or paste the content directly.",
-        );
+
+    const loaded: SourceFile[] = [];
+    for (const file of batch) {
+      try {
+        const text = await extractTextFromFile(file);
+        loaded.push({ name: file.name, size: file.size, text });
+      } catch {
+        toast.error(`Could not read "${file.name}" — try another file or paste the content.`);
+      }
+    }
+    if (loaded.length === 0) return;
+
+    const next = [...quizFiles, ...loaded];
+    applySourceFiles(next);
+
+    const combined = aggregateSourceMaterial(next);
+    const { questions, dropped } = parseWorksheet(combined);
+    if (questions.length > 0) {
+      toast.success(
+        `Loaded ${questions.length} question(s) from ${next.length} file${next.length > 1 ? "s" : ""}${dropped ? ` (${dropped} skipped)` : ""}`,
+      );
+      return;
+    }
+
+    const course = courses.find((c) => c.id === quizForm.course_id);
+    if (course && quizForm.title.trim()) {
+      openWorksheetChat({
+        course: `${course.code} — ${course.title}`,
+        title: quizForm.title.trim(),
+        sourceMaterial: combined,
+        autoMessage: `Generate ${quizForm.question_count && parseInt(quizForm.question_count) > 0 ? parseInt(quizForm.question_count) : 20} parser-ready multiple-choice and fill-in-the-blank questions based on the uploaded material (${next.length} source file${next.length > 1 ? "s" : ""}) for "${quizForm.title.trim()}". Follow the strict 4-section format with Answer Key.`,
       });
+      toast.success("Files loaded — ClassMate is generating questions now.");
+    } else {
+      toast.success(
+        "Files loaded. Select a course and title, then click 'Generate with ClassMate'.",
+      );
+    }
   };
 
   const saveQuiz = async () => {
@@ -163,7 +219,7 @@ export function CreateQuizModal({ open, onClose, courses, onSaved }: CreateQuizM
       });
       setManualQuestions([]);
       setQuizMode("classmate");
-      setQuizFileName(null);
+      setQuizFiles([]);
       onClose();
     } catch {
       toast.error("Could not create worksheet.");
@@ -253,63 +309,71 @@ export function CreateQuizModal({ open, onClose, courses, onSaved }: CreateQuizM
 
         {quizMode === "classmate" && (
           <>
-            {quizFileName ? (
-              <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5">
-                <FileText className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                <span className="flex-1 truncate text-xs font-semibold">{quizFileName}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuizFileName(null);
-                    setQuizForm((f) => ({ ...f, questions: "" }));
-                  }}
-                  className="rounded-md p-1 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+            {quizFiles.length > 0 && (
+              <div className="grid gap-1.5">
+                {quizFiles.map((f, i) => (
+                  <div
+                    key={`${f.name}-${i}`}
+                    className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2"
+                  >
+                    <FileText className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <span className="min-w-0 flex-1 truncate text-xs font-semibold">{f.name}</span>
+                    <span className="shrink-0 text-[10px] font-medium text-muted-foreground">
+                      {formatFileSize(f.size)}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${f.name}`}
+                      onClick={() => removeSourceFile(i)}
+                      className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
               </div>
-            ) : (
-              <label
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setQuizFileDrag(true);
-                }}
-                onDragLeave={() => setQuizFileDrag(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setQuizFileDrag(false);
-                  const file = e.dataTransfer.files?.[0];
-                  if (!file) return;
-                  handleFileLoad(file);
-                }}
-                className={cn(
-                  "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-3 py-5 text-center transition",
-                  quizFileDrag
-                    ? "border-primary bg-primary/10 ring-2 ring-primary/40"
-                    : "border-border hover:border-primary/50 hover:bg-muted/60",
-                )}
-              >
-                <CloudUpload
-                  className={cn("h-5 w-5", quizFileDrag ? "text-primary" : "text-muted-foreground")}
-                />
-                <p className="text-xs font-semibold">Drag & drop a file here, or click to browse</p>
-                <p className="text-[11px] text-muted-foreground">
-                  Supports .txt, .md, .pdf, .docx (Max 10MB) — optional, for source material
-                  context.
-                </p>
-                <input
-                  type="file"
-                  accept=".txt,.md,.pdf,.docx"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    handleFileLoad(file);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
             )}
+            <label
+              onDragOver={(e) => {
+                e.preventDefault();
+                setQuizFileDrag(true);
+              }}
+              onDragLeave={() => setQuizFileDrag(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setQuizFileDrag(false);
+                void handleFilesLoad(Array.from(e.dataTransfer.files ?? []));
+              }}
+              className={cn(
+                "flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-3 py-5 text-center transition",
+                quizFileDrag
+                  ? "border-primary bg-primary/10 ring-2 ring-primary/40"
+                  : "border-border hover:border-primary/50 hover:bg-muted/60",
+              )}
+            >
+              <CloudUpload
+                className={cn("h-5 w-5", quizFileDrag ? "text-primary" : "text-muted-foreground")}
+              />
+              <p className="text-xs font-semibold">
+                {quizFiles.length > 0
+                  ? "Add more source files, or drop them here"
+                  : "Drag & drop files here, or click to browse"}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Supports .txt, .md, .pdf, .docx · up to {SOURCE_FILES_MAX_COUNT} files (10MB each,
+                30MB total) — optional, for source material context.
+              </p>
+              <input
+                type="file"
+                accept=".txt,.md,.pdf,.docx"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  void handleFilesLoad(Array.from(e.target.files ?? []));
+                  e.target.value = "";
+                }}
+              />
+            </label>
             <label className="text-xs font-semibold text-muted-foreground">
               Or paste questions &amp; answer key
             </label>

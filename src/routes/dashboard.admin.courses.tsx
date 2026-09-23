@@ -22,8 +22,8 @@ import { PolicyFields } from "@/components/courses/policy-fields";
 import { AttemptRoster } from "@/components/courses/attempt-roster";
 import { SubmissionInspector } from "@/components/courses/submission-inspector";
 import { CourseCardGrid } from "@/components/courses/course-card-grid";
-import { WorksheetsSection } from "@/components/courses/worksheets-section";
-import { AssignmentsSection } from "@/components/courses/assignments-section";
+import { StaffCourseWorkspace } from "@/components/courses/course-workspace";
+import { useCourseSelection } from "@/hooks/useCourseWorkspace";
 import { CourseWizardModal } from "@/components/courses/course-wizard-modal";
 import { CreateAssignmentModal } from "@/components/courses/create-assignment-modal";
 import { CreateQuizModal } from "@/components/courses/create-quiz-modal";
@@ -81,9 +81,11 @@ export function CoursesPage() {
     title: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedCourseId, selectCourse] = useCourseSelection();
 
   if (!profile) return null;
   const isAdmin = profile.role === "admin";
+  const selectedCourse = (courses ?? []).find((c) => c.id === selectedCourseId) ?? null;
   const refresh = () => qc.invalidateQueries({ queryKey: ["courses"] });
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ["courses"] });
@@ -154,76 +156,83 @@ export function CoursesPage() {
       profile={profile}
       subtitle={profile.role === "admin" ? "MIOW Admin Console" : "MIOW Teacher Portal"}
     >
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold sm:text-3xl">Courses</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {courses?.length ?? 0} active courses
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => {
-              setEditingCourse(null);
-              setModal("course");
-            }}
-            className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
-          >
-            <BookOpen className="h-4 w-4" /> Course
-          </button>
-          <button
-            onClick={() => setModal("assignment")}
-            className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted"
-          >
-            <ClipboardList className="h-4 w-4" /> Assignment
-          </button>
-          <button
-            onClick={() => setModal("quiz")}
-            className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted"
-          >
-            <FileQuestion className="h-4 w-4" /> Worksheet
-          </button>
-        </div>
-      </div>
-
-      {(courses ?? []).length === 0 ? (
-        <EmptyState
-          title="No courses yet"
-          sub={
-            isAdmin
-              ? "Create your first course to begin."
-              : "An administrator will assign courses to you."
-          }
-        />
-      ) : (
-        <CourseCardGrid
-          courses={courses ?? []}
-          profile={profile}
-          isAdmin={isAdmin}
-          onEdit={openEdit}
-          onRemove={removeCourse}
-        />
-      )}
-
-      {(quizzes ?? []).length > 0 && (
-        <WorksheetsSection
+      {selectedCourse ? (
+        <StaffCourseWorkspace
+          course={selectedCourse}
           quizzes={quizzes ?? []}
-          courses={courses ?? []}
-          onPolicy={openPolicy}
-          onEdit={setEditQuiz}
-          onRemove={(q) => setRemoveTarget({ kind: "quiz", id: q.id, title: q.title })}
-          onRoster={setRosterQuiz}
-        />
-      )}
-
-      {(assignments ?? []).length > 0 && (
-        <AssignmentsSection
           assignments={assignments ?? []}
-          courses={courses ?? []}
-          onEdit={setEditAssign}
-          onRemove={(a) => setRemoveTarget({ kind: "assignment", id: a.id, title: a.title })}
+          onBack={() => selectCourse(null)}
+          onNewQuiz={() => setModal("quiz")}
+          onNewAssignment={() => setModal("assignment")}
+          onPolicy={openPolicy}
+          onEditQuiz={setEditQuiz}
+          onRemoveQuiz={(q) => setRemoveTarget({ kind: "quiz", id: q.id, title: q.title })}
+          onRoster={setRosterQuiz}
+          onEditAssignment={setEditAssign}
+          onRemoveAssignment={(a) =>
+            setRemoveTarget({ kind: "assignment", id: a.id, title: a.title })
+          }
           onSubmissions={setSubmissionsAssignment}
         />
+      ) : (
+        <>
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="font-display text-2xl font-bold sm:text-3xl">Courses</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {courses?.length ?? 0} active courses
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => {
+                  setEditingCourse(null);
+                  setModal("course");
+                }}
+                className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              >
+                <BookOpen className="h-4 w-4" /> Course
+              </button>
+              <button
+                onClick={() => setModal("assignment")}
+                className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted"
+              >
+                <ClipboardList className="h-4 w-4" /> Assignment
+              </button>
+              <button
+                onClick={() => setModal("quiz")}
+                className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted"
+              >
+                <FileQuestion className="h-4 w-4" /> Worksheet
+              </button>
+            </div>
+          </div>
+
+          {(courses ?? []).length === 0 ? (
+            <EmptyState
+              title="No courses yet"
+              sub={
+                isAdmin
+                  ? "Create your first course to begin."
+                  : "An administrator will assign courses to you."
+              }
+            />
+          ) : (
+            <>
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Select a course to open its worksheets, assignments and class record
+              </p>
+              <CourseCardGrid
+                courses={courses ?? []}
+                profile={profile}
+                isAdmin={isAdmin}
+                onOpen={(c) => selectCourse(c.id)}
+                onEdit={openEdit}
+                onRemove={removeCourse}
+              />
+            </>
+          )}
+        </>
       )}
 
       <CourseWizardModal
@@ -243,6 +252,7 @@ export function CoursesPage() {
         open={modal === "assignment"}
         onClose={() => setModal(null)}
         courses={courses ?? []}
+        {...(selectedCourse ? { defaultCourseId: selectedCourse.id } : {})}
         onSaved={invalidateAll}
       />
 
@@ -250,6 +260,7 @@ export function CoursesPage() {
         open={modal === "quiz"}
         onClose={() => setModal(null)}
         courses={courses ?? []}
+        {...(selectedCourse ? { defaultCourseId: selectedCourse.id } : {})}
         onSaved={invalidateAll}
       />
 
