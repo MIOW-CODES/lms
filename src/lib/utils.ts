@@ -7,6 +7,8 @@ export function cn(...inputs: ClassValue[]) {
 
 const ORDINAL_SUFFIX = ["th", "st", "nd", "rd"] as const;
 function ordinal(n: number): string {
+  // Standard English ordinal rules: 11/12/13 take "th" regardless of last digit
+  // (handled by the `v - 20` wrap), otherwise the last digit selects the suffix.
   const v = n % 100;
   return `${n}${ORDINAL_SUFFIX[(v - 20) % 10] ?? ORDINAL_SUFFIX[v] ?? ORDINAL_SUFFIX[0]}`;
 }

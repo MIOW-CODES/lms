@@ -27,7 +27,7 @@ if repo and pr_number:
             if not github_ok:
                 print(f"GitHub comment failed (exit {result.returncode}): {result.stderr[:300]}")
             else:
-                print(f"GitHub comment response: {result.stdout[:200]}")
+                print(f"GitHub comment posted: {result.stdout[:200]}")
         except Exception as e:
             print(f"GitHub comment error: {e}")
     else:

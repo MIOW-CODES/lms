@@ -116,6 +116,8 @@ export function ClassRecord({
   };
 
   const rows = useMemo(() => {
+    // cellScore closes over quizScores/assignmentScores, which are both in the
+    // dependency list below — so the memo recomputes whenever scores change.
     return roster.map((s) => {
       let obtained = 0;
       let possible = 0;
