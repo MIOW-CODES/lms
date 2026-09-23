@@ -25,3 +25,14 @@ export function gradeLevelLabel(level: number | null | undefined, short = false)
   const yr = level - 12;
   return short ? `${ordinal(yr)} Yr` : `${ordinal(yr)} Year`;
 }
+
+/**
+ * Sanitize free-typed decimal input: keep digits and at most one decimal point.
+ * Prevents inputs like "1.2.3" from reaching validation as NaN.
+ */
+export function sanitizeDecimal(input: string): string {
+  const cleaned = input.replace(/[^0-9.]/g, "");
+  const firstDot = cleaned.indexOf(".");
+  if (firstDot === -1) return cleaned;
+  return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, "");
+}

@@ -33,7 +33,7 @@ import {
   MotionCard,
   useProfile,
 } from "@/components/lms";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeDecimal } from "@/lib/utils";
 
 export const Route = createFileRoute("/dashboard/admin/grades")({
   head: () => ({
@@ -468,7 +468,7 @@ export function GradebookPage() {
                       (k: keyof CellState) => (e: React.ChangeEvent<HTMLInputElement>) =>
                         setCells((all) => ({
                           ...all,
-                          [s.id]: { ...c, [k]: e.target.value.replace(/[^0-9.]/g, "") },
+                          [s.id]: { ...c, [k]: sanitizeDecimal(e.target.value) },
                         }));
                     return (
                       <tr key={s.id}>

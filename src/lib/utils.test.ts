@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { cn, gradeLevelLabel } from "./utils";
+import { cn, gradeLevelLabel, sanitizeDecimal } from "./utils";
 
 describe("cn", () => {
   it("merges a single class", () => {
@@ -72,5 +72,22 @@ describe("gradeLevelLabel", () => {
   it("returns a dash for null/undefined", () => {
     expect(gradeLevelLabel(null)).toBe("—");
     expect(gradeLevelLabel(undefined)).toBe("—");
+  });
+});
+
+describe("sanitizeDecimal", () => {
+  it("keeps digits and a single decimal point", () => {
+    expect(sanitizeDecimal("95")).toBe("95");
+    expect(sanitizeDecimal("87.5")).toBe("87.5");
+  });
+
+  it("strips non-numeric characters", () => {
+    expect(sanitizeDecimal("9a5!")).toBe("95");
+    expect(sanitizeDecimal("abc")).toBe("");
+  });
+
+  it("collapses multiple decimal points", () => {
+    expect(sanitizeDecimal("1.2.3")).toBe("1.23");
+    expect(sanitizeDecimal("..5")).toBe(".5");
   });
 });

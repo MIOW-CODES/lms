@@ -12,6 +12,7 @@ import {
 } from "@/lib/lms";
 import { Badge, EmptyState } from "@/components/lms";
 import { UserAvatar } from "@/components/ui-elements";
+import { sanitizeDecimal } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -233,7 +234,7 @@ function SubmissionDetail({
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <input
             value={score}
-            onChange={(e) => setScore(e.target.value.replace(/[^0-9.]/g, ""))}
+            onChange={(e) => setScore(sanitizeDecimal(e.target.value))}
             inputMode="decimal"
             placeholder="Score"
             aria-label={`Score for ${submission.full_name}`}

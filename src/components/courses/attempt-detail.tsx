@@ -5,7 +5,7 @@ import { Check, EyeOff, Save, X } from "lucide-react";
 import { listStudentAttemptDetail, overrideQuizAttempt } from "@/lib/lms";
 import { Badge } from "@/components/lms";
 import { switchSeverity } from "@/lib/anti-cheat";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeDecimal } from "@/lib/utils";
 
 /**
  * Per-question inspection of one student's worksheet attempts, plus a teacher
@@ -155,7 +155,7 @@ export function AttemptDetail({
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <input
             value={score}
-            onChange={(e) => setScore(e.target.value.replace(/[^0-9.]/g, ""))}
+            onChange={(e) => setScore(sanitizeDecimal(e.target.value))}
             inputMode="decimal"
             placeholder="Score"
             aria-label="Override score"
@@ -164,7 +164,7 @@ export function AttemptDetail({
           <span className="text-muted-foreground">/</span>
           <input
             value={total}
-            onChange={(e) => setTotal(e.target.value.replace(/[^0-9.]/g, ""))}
+            onChange={(e) => setTotal(sanitizeDecimal(e.target.value))}
             inputMode="decimal"
             placeholder="Total"
             aria-label="Override total"
