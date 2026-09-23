@@ -27,11 +27,14 @@ payload = json.dumps({
     "stream": False
 })
 
+session_id = f"miow-pr-review-{os.environ.get('PR_NUMBER', 'na')}-{os.environ.get('GITHUB_RUN_ID', 'local')}"
+
 result = subprocess.run([
     "curl", "-s", "-X", "POST",
     "https://opencode.ai/zen/go/v1/chat/completions",
     "-H", "Content-Type: application/json",
     "-H", f"Authorization: Bearer {api_key}",
+    "-H", f"x-opencode-session: {session_id}",
     "-d", payload
 ], capture_output=True, text=True)
 
