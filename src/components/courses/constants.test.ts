@@ -21,6 +21,11 @@ describe("classmateBankSize", () => {
     expect(classmateBankSize(50)).toBe(100);
     expect(classmateBankSize(200)).toBe(100);
   });
+
+  it("treats non-finite input as unset", () => {
+    expect(classmateBankSize(NaN)).toBe(20);
+    expect(classmateBankSize(Infinity)).toBe(20);
+  });
 });
 
 describe("policyPayload", () => {

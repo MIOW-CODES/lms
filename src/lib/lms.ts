@@ -11,6 +11,7 @@ import {
   deleteCourseFn,
   deleteProfileFn,
   enrollStudentFn,
+  enrollStudentsFn,
   enrollmentsForCourseFn,
   enrollmentsForStudentFn,
   getProfileByRfidFn,
@@ -1158,6 +1159,14 @@ export async function enrollmentsForStudent(studentId: string): Promise<string[]
 
 export async function enrollStudent(student_id: string, course_id: string): Promise<void> {
   await enrollStudentFn({ data: { student_id, course_id, token: sessionToken() } });
+}
+
+/** Enroll many students into one course in a single batched server call. */
+export async function enrollStudents(
+  student_ids: string[],
+  course_id: string,
+): Promise<{ enrolled: number }> {
+  return enrollStudentsFn({ data: { student_ids, course_id, token: sessionToken() } });
 }
 
 /**

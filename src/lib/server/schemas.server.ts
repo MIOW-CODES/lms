@@ -67,6 +67,11 @@ export const schemas = {
   limit: z.object({ limit: z.number().int().min(1).max(500), ...token }),
   roleUpdate: z.object({ id: uuid, role: z.enum(["student", "teacher", "admin"]), ...token }),
   enrollment: z.object({ student_id: uuid, course_id: uuid, ...token }),
+  enrollmentBatch: z.object({
+    course_id: uuid,
+    student_ids: z.array(uuid).min(1).max(500),
+    ...token,
+  }),
   attendance: z.object({
     student_id: uuid,
     scan_type: z.enum(["in", "out"]),

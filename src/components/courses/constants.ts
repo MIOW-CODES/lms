@@ -109,6 +109,6 @@ export function isAcceptedFile(file: File): boolean {
  * receive a different subset of that size. Falls back to 20 when unset.
  */
 export function classmateBankSize(perStudent: number): number {
-  if (perStudent <= 0) return 20;
+  if (!Number.isFinite(perStudent) || perStudent <= 0) return 20;
   return Math.min(100, Math.max(perStudent + 10, perStudent * 3));
 }

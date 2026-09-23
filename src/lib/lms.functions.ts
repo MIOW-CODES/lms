@@ -265,6 +265,14 @@ export const enrollStudentFn = createServerFn({ method: "POST" })
     return server.enrollStudent(data.student_id, data.course_id);
   });
 
+// Batched enrollment (one SELECT + one INSERT server-side) for the roster modal.
+export const enrollStudentsFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.enrollmentBatch.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireCourseOwnerOrAdmin(data.token, data.course_id);
+    return server.enrollStudents(data.student_ids, data.course_id);
+  });
+
 // Create a new student OR reuse an existing one (matched by student number,
 // then email) and optionally enroll them into a course — one staff-only call.
 export const createOrEnrollStudentFn = createServerFn({ method: "POST" })

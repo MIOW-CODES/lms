@@ -59,6 +59,8 @@ export async function getQuizPublic(id: string, studentId?: string) {
   if (questionCount > 0 && questions.length > questionCount) {
     let usedIds: string[] = [];
     if (studentId) {
+      // A single indexed query for THIS student's prior attempts — not N+1.
+      // Covered by idx_quiz_attempts_quiz_student (quiz_id, student_id).
       const prior = await unwrap<Array<{ question_ids: string[] | null }>>(
         db
           .from("quiz_attempts")

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search, UserPlus } from "lucide-react";
 import { toast } from "sonner";
-import { enrollStudent, listStudents, type Profile } from "@/lib/lms";
+import { enrollStudents, listStudents, type Profile } from "@/lib/lms";
 import { Modal } from "@/components/lms";
 import { UserAvatar } from "@/components/ui-elements";
 import { cn } from "@/lib/utils";
@@ -69,20 +69,20 @@ export function EnrollStudentsModal({
     if (selected.size === 0) return;
     setSaving(true);
     const ids = [...selected];
-    const results = await Promise.allSettled(ids.map((id) => enrollStudent(id, courseId)));
-    const failed = results.filter((r) => r.status === "rejected").length;
-    setSaving(false);
-    if (failed === 0) {
-      toast.success(`Enrolled ${ids.length} student${ids.length !== 1 ? "s" : ""}.`);
-    } else if (failed === ids.length) {
-      toast.error("Could not enroll the selected students. Please try again.");
-    } else {
-      toast.warning(`Enrolled ${ids.length - failed} of ${ids.length}; ${failed} failed.`);
+    try {
+      // Single batched call (one SELECT + one INSERT server-side).
+      const { enrolled } = await enrollStudents(ids, courseId);
+      toast.success(`Enrolled ${enrolled} student${enrolled !== 1 ? "s" : ""}.`);
+      qc.invalidateQueries({ queryKey: ["enrollments", courseId] });
+      qc.invalidateQueries({ queryKey: ["students"] });
+      onEnrolled?.();
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not enroll the selected students.");
+    } finally {
+      setSaving(false);
+      setSelected(new Set());
     }
-    setSelected(new Set());
-    qc.invalidateQueries({ queryKey: ["enrollments", courseId] });
-    onEnrolled?.();
-    onClose();
   };
 
   const close = () => {

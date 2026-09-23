@@ -123,6 +123,27 @@ export async function enrollStudent(student_id: string, course_id: string) {
 }
 
 /**
+ * Enroll many students into one course with two queries instead of 2N:
+ * one SELECT for the already-enrolled ids and one INSERT for the missing ones.
+ * Idempotent — re-enrolling an existing student is a no-op.
+ */
+export async function enrollStudents(studentIds: string[], course_id: string) {
+  const ids = [...new Set(studentIds)].filter((id) => typeof id === "string" && id.length > 0);
+  if (!ids.length) return { enrolled: 0 };
+  const existing = await unwrap<Array<{ student_id: string }>>(
+    db.from("enrollments").select("student_id").eq("course_id", course_id).in("student_id", ids),
+  );
+  const have = new Set(existing.map((r) => r.student_id));
+  const missing = ids.filter((id) => !have.has(id));
+  if (missing.length) {
+    await unwrap(
+      db.from("enrollments").insert(missing.map((student_id) => ({ student_id, course_id }))),
+    );
+  }
+  return { enrolled: missing.length };
+}
+
+/**
  * Create a new student OR reuse an existing one, then (optionally) enroll them
  * into a course — all in one call. Identity is matched on `student_id` first,
  * then `email`, so re-submitting a student that already exists links them to the
@@ -131,6 +152,7 @@ export async function enrollStudent(student_id: string, course_id: string) {
  * Authorization mirrors `authorizeProfileUpdate`: only admins may change login
  * credentials (PIN/RFID/email) or edit non-student accounts; teachers may refresh
  * the non-credential roster fields (name/grade/section) of student records.
+ * `caller` is resolved server-side from the session token (never client-supplied).
  *
  * Returns `{ profile, created, enrolled }` so callers can show the right toast.
  */
@@ -175,7 +197,7 @@ export async function createOrEnrollStudent(
     // The roster form is for students only — never silently rewrite a staff
     // account that happens to share an identity.
     if (existing.role !== "student") {
-      throw new Error("That identity belongs to a non-student account.");
+      throw new Error(`That identity belongs to a ${existing.role} account, not a student.`);
     }
     // Reuse the record: refresh the editable roster fields, but never rewrite
     // the identity columns that were used to find them.

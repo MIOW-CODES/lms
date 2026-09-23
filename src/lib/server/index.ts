@@ -63,6 +63,7 @@ export {
   enrollmentsForCourse,
   enrollmentsForStudent,
   enrollStudent,
+  enrollStudents,
   createOrEnrollStudent,
   listSubmissionsForStudent,
   listSubmissionsForAssignment,
