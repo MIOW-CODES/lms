@@ -5,6 +5,9 @@ import { db } from "@/integrations/db/client.server";
 import { unwrap, withoutToken } from "@/lib/server/utils.server";
 import { requireStaff } from "@/lib/server/auth.server";
 import { schemas } from "@/lib/server/schemas.server";
+import { createProfile, getProfileById, updateProfile } from "@/lib/server/profiles.server";
+import { type ProfileRole } from "@/lib/server/db-types";
+import { ENROLLMENT_ERRORS } from "@/lib/enrollment";
 
 export async function listCourses() {
   const courses = await unwrap<any[]>(db.from("courses").select("*").order("code"));
@@ -118,6 +121,112 @@ export async function enrollStudent(student_id: string, course_id: string) {
       .maybeSingle(),
   );
   if (!existing) await unwrap(db.from("enrollments").insert({ student_id, course_id }));
+}
+
+/**
+ * Enroll many students into one course with two queries instead of 2N:
+ * one SELECT for the already-enrolled ids and one INSERT for the missing ones.
+ * Idempotent — re-enrolling an existing student is a no-op.
+ */
+export async function enrollStudents(studentIds: string[], course_id: string) {
+  const ids = [...new Set(studentIds)].filter((id) => typeof id === "string" && id.length > 0);
+  if (!ids.length) return { enrolled: 0 };
+  const existing = await unwrap<Array<{ student_id: string }>>(
+    db.from("enrollments").select("student_id").eq("course_id", course_id).in("student_id", ids),
+  );
+  const have = new Set(existing.map((r) => r.student_id));
+  const missing = ids.filter((id) => !have.has(id));
+  if (missing.length) {
+    await unwrap(
+      db.from("enrollments").insert(missing.map((student_id) => ({ student_id, course_id }))),
+    );
+  }
+  return { enrolled: missing.length };
+}
+
+/**
+ * Create a new student OR reuse an existing one, then (optionally) enroll them
+ * into a course — all in one call. Identity is matched on `student_id` first,
+ * then `email`, so re-submitting a student that already exists links them to the
+ * target course instead of failing with a duplicate-identity error.
+ *
+ * Authorization mirrors `authorizeProfileUpdate`: only admins may change login
+ * credentials (PIN/RFID/email) or edit non-student accounts; teachers may refresh
+ * the non-credential roster fields (name/grade/section) of student records.
+ * `caller` is resolved server-side from the session token (never client-supplied).
+ *
+ * Returns `{ profile, created, enrolled }` so callers can show the right toast.
+ */
+export async function createOrEnrollStudent(
+  input: z.infer<typeof schemas.studentEnroll>,
+  caller: { id: string; role: ProfileRole },
+) {
+  const { course_id, ...rest } = input;
+  const fields = withoutToken(rest) as Record<string, unknown>;
+  const isAdmin = caller.role === "admin";
+  const studentId = typeof fields["student_id"] === "string" ? fields["student_id"].trim() : null;
+  const email =
+    typeof fields["email"] === "string" && fields["email"].trim()
+      ? fields["email"].trim().toLowerCase()
+      : null;
+
+  // Resolve an existing student by student number, then by email.
+  let existingId: string | null = null;
+  if (studentId) {
+    const row = await unwrap<{ id: string } | null>(
+      db
+        .from("profiles")
+        .select("id")
+        .eq("student_id", studentId)
+        .is("deleted_at", null)
+        .maybeSingle(),
+    );
+    if (row) existingId = row.id;
+  }
+  if (!existingId && email) {
+    const row = await unwrap<{ id: string } | null>(
+      db.from("profiles").select("id").ilike("email", email).is("deleted_at", null).maybeSingle(),
+    );
+    if (row) existingId = row.id;
+  }
+
+  let profile;
+  let created: boolean;
+  if (existingId) {
+    const existing = await getProfileById(existingId);
+    if (!existing) throw new Error(ENROLLMENT_ERRORS.notFound);
+    // The roster form is for students only — never silently rewrite a staff
+    // account that happens to share an identity.
+    if (existing.role !== "student") {
+      throw new Error(ENROLLMENT_ERRORS.nonStudent(existing.role));
+    }
+    // Reuse the record: refresh the editable roster fields, but never rewrite
+    // the identity columns that were used to find them.
+    const patch: Record<string, unknown> = {};
+    if (fields["full_name"]) patch["full_name"] = fields["full_name"];
+    if (fields["grade_level"] != null) patch["grade_level"] = fields["grade_level"];
+    if (fields["section"] != null) patch["section"] = fields["section"];
+    // Credentials and email are admin-only (same rule as updateProfile).
+    if (isAdmin) {
+      if (email) patch["email"] = email;
+      if (fields["pin"]) patch["pin"] = fields["pin"];
+      if (fields["rfid_uid"]) patch["rfid_uid"] = fields["rfid_uid"];
+    }
+    // Deliberately do NOT touch avatar_url here: the roster form always sends a
+    // generated avatar, and re-enrolling an existing student must not replace
+    // the photo they may have uploaded.
+    if (Object.keys(patch).length) await updateProfile(existingId, patch);
+    const fresh = await getProfileById(existingId);
+    if (!fresh) throw new Error("Student not found");
+    profile = fresh;
+    created = false;
+  } else {
+    profile = await createProfile(fields as unknown as z.infer<typeof schemas.profileInput>);
+    created = true;
+  }
+
+  if (course_id) await enrollStudent(profile.id, course_id);
+  return { profile, created, enrolled: !!course_id };
 }
 
 export async function listSubmissionsForStudent(studentId: string) {

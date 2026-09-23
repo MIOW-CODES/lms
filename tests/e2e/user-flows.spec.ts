@@ -113,6 +113,12 @@ test.describe("Admin dashboard flow", () => {
     await expect(nav).toContainText("Settings");
   });
 
+  test("admin sees the ClassMate Assistant launcher (staff-only tool)", async ({ page }) => {
+    await page.goto("/dashboard/admin");
+    await page.waitForTimeout(2000);
+    await expect(page.getByRole("button", { name: /Open the ClassMate Assistant/ })).toBeVisible();
+  });
+
   test("admin can navigate to Students page", async ({ page }) => {
     await page.goto("/dashboard/admin");
     await page.waitForTimeout(1500);
@@ -289,6 +295,13 @@ test.describe("Student dashboard flow", () => {
     await expect(nav).toContainText("Activities");
     await expect(nav).toContainText("Attendance");
     await expect(nav).toContainText("Settings");
+  });
+
+  test("student never sees the ClassMate Assistant launcher", async ({ page }) => {
+    await page.goto("/dashboard/student");
+    await page.waitForTimeout(2000);
+    await expect(page.getByRole("button", { name: /Open the ClassMate Assistant/ })).toHaveCount(0);
+    await expect(page.getByText("ClassMate Assistant")).toHaveCount(0);
   });
 
   test("student can navigate to Activities page", async ({ page }) => {

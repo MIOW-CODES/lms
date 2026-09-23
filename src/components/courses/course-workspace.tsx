@@ -6,6 +6,7 @@ import {
   FileSpreadsheet,
   Plus,
   Search,
+  UserPlus,
   Users,
 } from "lucide-react";
 import { type Assignment, type Course, type Profile, type Quiz, formatSchedule } from "@/lib/lms";
@@ -15,6 +16,7 @@ import { UserAvatar } from "@/components/ui-elements";
 import { WorksheetsSection } from "@/components/courses/worksheets-section";
 import { AssignmentsSection } from "@/components/courses/assignments-section";
 import { ClassRecord } from "@/components/courses/class-record";
+import { EnrollStudentsModal } from "@/components/courses/enroll-students-modal";
 import { useCourseRoster } from "@/hooks/useCourseWorkspace";
 import { cn } from "@/lib/utils";
 
@@ -112,8 +114,19 @@ export function CourseWorkspaceShell({
 }
 
 /** Enrolled-student roster for one course, with search. */
-export function CourseRoster({ roster, loading }: { roster: Profile[]; loading?: boolean }) {
+export function CourseRoster({
+  courseId,
+  courseLabel,
+  roster,
+  loading,
+}: {
+  courseId: string;
+  courseLabel?: string;
+  roster: Profile[];
+  loading?: boolean;
+}) {
   const [search, setSearch] = useState("");
+  const [enrollOpen, setEnrollOpen] = useState(false);
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -135,15 +148,24 @@ export function CourseRoster({ roster, loading }: { roster: Profile[]; loading?:
             {roster.length} learner{roster.length !== 1 ? "s" : ""} in this course
           </p>
         </div>
-        <label className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name or ID"
-            className="h-9 w-56 rounded-lg border border-input bg-background pl-8 pr-3 text-xs outline-none focus:ring-2 focus:ring-ring"
-          />
-        </label>
+        <div className="flex items-center gap-2">
+          <label className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name or ID"
+              aria-label="Search enrolled students"
+              className="h-9 w-56 rounded-lg border border-input bg-background pl-8 pr-3 text-xs outline-none focus:ring-2 focus:ring-ring"
+            />
+          </label>
+          <button
+            onClick={() => setEnrollOpen(true)}
+            className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
+          >
+            <UserPlus className="h-3.5 w-3.5" /> Enroll students
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -154,7 +176,9 @@ export function CourseRoster({ roster, loading }: { roster: Profile[]; loading?:
         </div>
       ) : visible.length === 0 ? (
         <p className="mt-4 rounded-xl border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-          {roster.length === 0 ? "No students enrolled yet." : "No students match your search."}
+          {roster.length === 0
+            ? "No students enrolled yet — use “Enroll students” to add existing learners."
+            : "No students match your search."}
         </p>
       ) : (
         <ul className="mt-4 grid gap-1.5 sm:grid-cols-2">
@@ -175,6 +199,14 @@ export function CourseRoster({ roster, loading }: { roster: Profile[]; loading?:
           ))}
         </ul>
       )}
+
+      <EnrollStudentsModal
+        courseId={courseId}
+        {...(courseLabel ? { courseLabel } : {})}
+        open={enrollOpen}
+        onClose={() => setEnrollOpen(false)}
+        enrolledIds={roster.map((s) => s.id)}
+      />
     </Card>
   );
 }
@@ -310,7 +342,14 @@ export function StaffCourseWorkspace({
           <ClassRecord courseId={course.id} courseCode={course.code} roster={roster} />
         ))}
 
-      {tab === "roster" && <CourseRoster roster={roster} loading={rosterLoading} />}
+      {tab === "roster" && (
+        <CourseRoster
+          courseId={course.id}
+          courseLabel={`${course.code} · ${course.title}`}
+          roster={roster}
+          loading={rosterLoading}
+        />
+      )}
     </CourseWorkspaceShell>
   );
 }

@@ -4,12 +4,14 @@ import {
   createAssignmentFn,
   createCourseFn,
   createProfileFn,
+  createOrEnrollStudentFn,
   createQuizWithQuestionsFn,
   deleteAnnouncementFn,
   deleteAttendanceLogFn,
   deleteCourseFn,
   deleteProfileFn,
   enrollStudentFn,
+  enrollStudentsFn,
   enrollmentsForCourseFn,
   enrollmentsForStudentFn,
   getProfileByRfidFn,
@@ -67,6 +69,9 @@ import {
   overrideAttemptFn,
   listStudentAttemptDetailFn,
 } from "@/lib/lms.functions";
+import type { StudentEnrollInput } from "@/lib/enrollment";
+
+export type { StudentEnrollInput };
 
 /* ---------- Types ---------- */
 
@@ -1157,6 +1162,31 @@ export async function enrollmentsForStudent(studentId: string): Promise<string[]
 
 export async function enrollStudent(student_id: string, course_id: string): Promise<void> {
   await enrollStudentFn({ data: { student_id, course_id, token: sessionToken() } });
+}
+
+/** Enroll many students into one course in a single batched server call. */
+export async function enrollStudents(
+  student_ids: string[],
+  course_id: string,
+): Promise<{ enrolled: number }> {
+  return enrollStudentsFn({ data: { student_ids, course_id, token: sessionToken() } });
+}
+
+/**
+ * Create a new student OR reuse an existing one (matched by student number,
+ * then email) and optionally enroll them into a course. Staff-only.
+ */
+export async function createOrEnrollStudent(
+  input: StudentEnrollInput,
+  courseId?: string | null,
+): Promise<{ profile: Profile; created: boolean; enrolled: boolean }> {
+  return createOrEnrollStudentFn({
+    data: {
+      ...(input as object),
+      course_id: courseId ?? null,
+      token: sessionToken(),
+    } as Record<string, unknown>,
+  }) as Promise<{ profile: Profile; created: boolean; enrolled: boolean }>;
 }
 
 export async function countRows(table: string): Promise<number> {

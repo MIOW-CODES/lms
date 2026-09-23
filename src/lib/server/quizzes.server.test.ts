@@ -4,7 +4,78 @@ process.env["SUPABASE_URL"] ??= "https://test.supabase.co";
 process.env["SUPABASE_SERVICE_ROLE_KEY"] ??= "test-service-role-key-1234567890abcdef";
 process.env["SUPABASE_PUBLISHABLE_KEY"] ??= "test-publishable-key";
 
-import { parseKeywordCategories, gradeEssay } from "./quizzes.server";
+import { parseKeywordCategories, gradeEssay, selectQuestionBank } from "./quizzes.server";
+
+/* ---------- selectQuestionBank ---------- */
+
+describe("selectQuestionBank", () => {
+  const pool = Array.from({ length: 10 }, (_, i) => ({ id: `q${i}` }));
+
+  it("returns every question when count is 0 (bank disabled)", () => {
+    expect(selectQuestionBank(pool, 0, [])).toEqual(pool);
+  });
+
+  it("returns the whole pool when it is smaller than the requested count", () => {
+    expect(selectQuestionBank(pool, 25, [])).toHaveLength(10);
+  });
+
+  it("returns exactly the requested count", () => {
+    expect(selectQuestionBank(pool, 4, [])).toHaveLength(4);
+  });
+
+  it("prefers unseen questions when enough remain", () => {
+    const used = ["q0", "q1", "q2", "q3", "q4", "q5"];
+    const picked = selectQuestionBank(pool, 3, used).map((q) => q.id);
+    expect(picked).toHaveLength(3);
+    expect(picked.every((id) => !used.includes(id))).toBe(true);
+  });
+
+  it("fills the remainder from seen questions without duplicates when the bank runs low", () => {
+    const used = ["q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7"];
+    const picked = selectQuestionBank(pool, 5, used).map((q) => q.id);
+    expect(picked).toHaveLength(5);
+    expect(new Set(picked).size).toBe(5);
+    // The two unseen items must be included; the rest are recycled.
+    expect(picked).toContain("q8");
+    expect(picked).toContain("q9");
+  });
+
+  it("still returns the requested count when every question was already seen", () => {
+    const used = pool.map((q) => q.id);
+    const picked = selectQuestionBank(pool, 4, used);
+    expect(picked).toHaveLength(4);
+    expect(new Set(picked.map((q) => q.id)).size).toBe(4);
+  });
+
+  it("randomizes the selection across repeated calls", () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 30; i++) {
+      seen.add(
+        selectQuestionBank(pool, 3, [])
+          .map((q) => q.id)
+          .sort()
+          .join(","),
+      );
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it("always returns a unique subset of the pool, for many random inputs", () => {
+    const ids = new Set(pool.map((q) => q.id));
+    for (let count = 1; count <= 12; count++) {
+      for (let run = 0; run < 25; run++) {
+        const used = pool.slice(0, run % 11).map((q) => q.id);
+        const picked = selectQuestionBank(pool, count, used);
+        // Never longer than requested or the pool.
+        expect(picked.length).toBe(Math.min(count, pool.length));
+        // Every item comes from the pool.
+        expect(picked.every((q) => ids.has(q.id))).toBe(true);
+        // No duplicates.
+        expect(new Set(picked.map((q) => q.id)).size).toBe(picked.length);
+      }
+    }
+  });
+});
 
 /* ---------- parseKeywordCategories ---------- */
 

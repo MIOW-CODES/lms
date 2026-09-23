@@ -437,7 +437,9 @@ export function ChatWidget({ profile }: { profile: Profile }) {
     return () => window.removeEventListener(WORKSHEET_CHAT_EVENT, onAssist);
   }, []);
 
-  if (assessmentActive) return null;
+  // ClassMate is a staff tool: students never mount the widget. (The API route
+  // also rejects student sessions, so this is defense-in-depth.)
+  if (assessmentActive || profile.role === "student") return null;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-3 sm:bottom-6 sm:right-6">

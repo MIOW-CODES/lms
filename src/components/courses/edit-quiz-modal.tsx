@@ -66,12 +66,17 @@ export function EditQuizModal({ quiz, onClose, onSaved }: EditQuizModalProps) {
     }
     setSaving(true);
     try {
+      const requested = Math.max(0, parseInt(editQuizForm.question_count) || 0);
+      // If a replacement bank was pasted, never store a size equal to or larger
+      // than the new bank (otherwise every attempt would serve the whole set).
+      const questionCount =
+        questions && requested > 0 && requested >= questions.length ? 0 : requested;
       await updateQuiz(
         quiz.id,
         {
           title: editQuizForm.title.trim(),
           duration_minutes: Math.max(1, parseInt(editQuizForm.duration_minutes) || 15),
-          question_count: parseInt(editQuizForm.question_count) || 0,
+          question_count: questionCount,
           ...policyPayload(editQuizForm),
           score_released: !!editQuizForm.score_released,
           answer_key_released: !!editQuizForm.answer_key_released,
@@ -112,6 +117,24 @@ export function EditQuizModal({ quiz, onClose, onSaved }: EditQuizModalProps) {
           value={editQuizForm}
           onChange={(patch) => setEditQuizForm((f) => ({ ...f, ...patch }))}
         />
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2">
+            <span className="whitespace-nowrap text-xs font-semibold text-muted-foreground">
+              Questions per student
+            </span>
+            <input
+              value={editQuizForm.question_count}
+              onChange={(e) => setEditQuizForm((f) => ({ ...f, question_count: e.target.value }))}
+              aria-label="Questions per student"
+              placeholder="0"
+              inputMode="numeric"
+              className="h-9 w-20 rounded-lg border border-input bg-background px-3 text-center text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </label>
+          <span className="text-[11px] text-muted-foreground">
+            0 = all questions · e.g. 10 = a different random 10 per student/attempt
+          </span>
+        </div>
         <label className="text-xs font-semibold text-muted-foreground">
           Replace questions &amp; answer key (optional)
           <textarea
