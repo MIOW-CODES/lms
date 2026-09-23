@@ -70,6 +70,7 @@ import {
   listStudentAttemptDetailFn,
 } from "@/lib/lms.functions";
 import type { StudentEnrollInput } from "@/lib/enrollment";
+import type { IntegrityEventType } from "@/lib/integrity";
 
 export type { StudentEnrollInput };
 
@@ -942,7 +943,7 @@ export async function submitQuizAnswers(
   quizId: string,
   answers: Record<string, string>,
   questionIds?: string[],
-  tabSwitches?: Array<{ at: number; type: "blur" | "visibilitychange" }>,
+  tabSwitches?: Array<{ at: number; type: IntegrityEventType }>,
 ): Promise<SubmitQuizResult> {
   return submitQuizAttemptFn({
     data: {

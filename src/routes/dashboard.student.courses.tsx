@@ -30,6 +30,7 @@ import {
   useProfile,
 } from "@/components/lms";
 import { levelLabel } from "@/lib/course-levels";
+import { assignmentActionLabel, worksheetActionLabel } from "@/lib/assessment-actions";
 import { cn } from "@/lib/utils";
 import { LoadingSkeleton } from "@/components/ui-elements";
 import { CourseWorkspaceShell, type WorkspaceTab } from "@/components/courses/course-workspace";
@@ -420,6 +421,13 @@ function StudentWorksheetRow({
   summary?: QuizAttemptSummary | undefined;
 }) {
   const st = courseStyle(course?.color ?? "indigo");
+  const used = summary?.attempts_used ?? 0;
+  const started = used > 0;
+  // One primary action, derived from attempt state — never "Retake" on a first try.
+  const actionLabel = worksheetActionLabel({
+    attemptsUsed: used,
+    canRetake: summary?.can_retake ?? true,
+  });
   return (
     <MotionCard className="flex flex-wrap items-center gap-3 p-4">
       <span className={cn("rounded-md px-2 py-0.5 text-[11px] font-bold", st.soft)}>
@@ -434,6 +442,7 @@ function StudentWorksheetRow({
               ? " · Retakes allowed (unlimited)"
               : ` · Retakes allowed (up to ${quiz.max_attempts})`
             : " · Single attempt"}
+          {started ? ` · ${used} attempt${used === 1 ? "" : "s"} used` : ""}
         </p>
         <MaterialChips attachments={quiz.attachments} />
       </div>
@@ -441,6 +450,8 @@ function StudentWorksheetRow({
         <Badge tone="green">
           Score: {summary.effective_score}/{summary.effective_total}
         </Badge>
+      ) : started ? (
+        <Badge tone="slate">Submitted</Badge>
       ) : (
         <Badge tone="slate">Not started</Badge>
       )}
@@ -448,7 +459,7 @@ function StudentWorksheetRow({
         to="/dashboard/student/quizzes"
         className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/15"
       >
-        {summary ? "Retake" : "Start"} →
+        {actionLabel} →
       </Link>
     </MotionCard>
   );
@@ -466,6 +477,7 @@ function StudentAssignmentRow({
   const st = courseStyle(course?.color ?? "indigo");
   const due = daysUntil(assignment.due_date);
   const status = !submission || submission.status === "pending" ? "pending" : submission.status;
+  const actionLabel = assignmentActionLabel({ status });
   return (
     <MotionCard className="flex flex-wrap items-center gap-3 p-4">
       <span className={cn("rounded-md px-2 py-0.5 text-[11px] font-bold", st.soft)}>
@@ -502,7 +514,7 @@ function StudentAssignmentRow({
         to="/dashboard/student/assignments"
         className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/15"
       >
-        {status === "pending" ? "Submit" : "View"} →
+        {actionLabel} →
       </Link>
     </MotionCard>
   );

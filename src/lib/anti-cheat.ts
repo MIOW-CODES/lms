@@ -1,118 +1,186 @@
 /*
- * Anti-cheat: tab-switch detection for assessments.
+ * Anti-cheat / assessment integrity for timed worksheets, assignments, and exams.
  *
- * Detects when the student switches tabs/windows during an active assessment
- * using the Page Visibility API and window blur events. Logs each occurrence
- * with a timestamp for the teacher's review.
+ * Detects and timestamps integrity events during an active assessment:
+ * - `blur`              window loses focus
+ * - `visibilitychange`  tab/window hidden
+ * - `fullscreenchange`  leaving full-screen
+ * - `devtools`          devtools shortcuts or a suspicious window-size delta
+ * - `paste`             pasting into the assessment
+ * - `contextmenu`       right-click / long-press menu
  *
  * Design decisions:
  * - Uses both `blur` and `visibilitychange` for maximum coverage
- * - Stores timestamps in a ref (not state) to avoid re-renders
- * - Shows a persistent amber banner during assessment
- * - Flashes "Tab switch recorded" for 3s after each event
- * - Non-intrusive: never blocks the student or interrupts their flow
+ * - Stores timestamps in a ref (not state) to avoid re-renders; only aggregate
+ *   counts + the last event live in state so the banner can react
+ * - Never blocks the student or interrupts their flow — it only records + warns
+ * - `clear()` lets a caller reset between attempts
+ *
+ * The event union + display helpers live in `@/lib/integrity` so server modules
+ * can share them without importing React.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { type IntegrityEvent, type IntegrityEventType, type TabSwitch } from "@/lib/integrity";
 
-export interface TabSwitch {
-  /** Date.now() timestamp */
-  at: number;
-  /** Which event triggered this */
-  type: "blur" | "visibilitychange";
-}
+export type { IntegrityEvent, IntegrityEventType, TabSwitch };
+export {
+  INTEGRITY_EVENT_TYPES,
+  integrityLabel,
+  isSevereIntegrityEvent,
+  switchSeverity,
+} from "@/lib/integrity";
 
 export interface AntiCheatState {
-  /** All recorded tab switches */
-  tabSwitches: TabSwitch[];
-  /** Shorthand for tabSwitches.length */
+  /** All recorded integrity events */
+  events: IntegrityEvent[];
+  /** Backwards-compatible alias for `events` */
+  tabSwitches: IntegrityEvent[];
+  /** events.length */
+  count: number;
+  /** Backwards-compatible alias for `count` */
   switchCount: number;
-  /** True for 3s after each switch (for the flash banner) */
+  /** Per-type totals */
+  counts: Record<IntegrityEventType, number>;
+  /** Most recent event type, or null */
+  lastType: IntegrityEventType | null;
+  /** True for 3s after each event (for the flash banner) */
   showFlash: boolean;
+  /** Type of the event currently flashing */
+  flashType: IntegrityEventType | null;
+  /** Forget all recorded events (e.g. between attempts) */
+  clear: () => void;
 }
 
+const EMPTY_COUNTS: Record<IntegrityEventType, number> = {
+  blur: 0,
+  visibilitychange: 0,
+  fullscreenchange: 0,
+  devtools: 0,
+  paste: 0,
+  contextmenu: 0,
+};
+
+const FLASH_MS = 3000;
+const DEVTOOLS_SIZE_DELTA = 180;
+const DEVTOOLS_THROTTLE_MS = 2000;
+/** Client-side cap — the server schema also caps at 500; drop the oldest beyond this. */
+const MAX_EVENTS = 500;
+
 /**
- * Hook to detect and log tab switches during an assessment.
+ * Detect and log assessment-integrity events.
  *
- * @param active - Whether the assessment is currently active
- * @returns AntiCheatState with tabSwitches, switchCount, and showFlash
+ * @param active - Whether an assessment is currently in progress
  */
 export function useAntiCheat(active: boolean): AntiCheatState {
-  const switchesRef = useRef<TabSwitch[]>([]);
-  const [switchCount, setSwitchCount] = useState(0);
+  const eventsRef = useRef<IntegrityEvent[]>([]);
+  const [count, setCount] = useState(0);
+  const [counts, setCounts] = useState<Record<IntegrityEventType, number>>({ ...EMPTY_COUNTS });
+  const [lastType, setLastType] = useState<IntegrityEventType | null>(null);
   const [showFlash, setShowFlash] = useState(false);
+  const [flashType, setFlashType] = useState<IntegrityEventType | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const devtoolsAtRef = useRef(0);
 
-  const recordSwitch = useCallback((type: TabSwitch["type"]) => {
-    const entry: TabSwitch = { at: Date.now(), type };
-    switchesRef.current.push(entry);
-    setSwitchCount(switchesRef.current.length);
+  const record = useCallback((type: IntegrityEventType) => {
+    const entry: IntegrityEvent = { at: Date.now(), type };
+    // Bound memory: drop the oldest events once the cap is reached.
+    if (eventsRef.current.length >= MAX_EVENTS) eventsRef.current.shift();
+    eventsRef.current.push(entry);
+    setCount(eventsRef.current.length);
+    setCounts((prev) => ({ ...prev, [type]: prev[type] + 1 }));
+    setLastType(type);
 
-    // Show flash for 3 seconds
+    // Flash for 3 seconds
+    setFlashType(type);
     setShowFlash(true);
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-    flashTimerRef.current = setTimeout(() => setShowFlash(false), 3000);
+    flashTimerRef.current = setTimeout(() => setShowFlash(false), FLASH_MS);
+  }, []);
+
+  const clear = useCallback(() => {
+    eventsRef.current = [];
+    setCount(0);
+    setCounts({ ...EMPTY_COUNTS });
+    setLastType(null);
+    setShowFlash(false);
+    setFlashType(null);
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
   }, []);
 
   useEffect(() => {
     if (!active) return;
 
-    const handleBlur = () => recordSwitch("blur");
+    const handleBlur = () => record("blur");
     const handleVisibility = () => {
-      if (document.visibilityState === "hidden") {
-        recordSwitch("visibilitychange");
+      if (document.visibilityState === "hidden") record("visibilitychange");
+    };
+    const handleFullscreen = () => {
+      // Only flag when we actually leave full-screen while assessing.
+      if (!document.fullscreenElement) record("fullscreenchange");
+    };
+    const handlePaste = () => record("paste");
+    const handleContextMenu = () => record("contextmenu");
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      const devtoolsCombo =
+        key === "f12" ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && ["i", "j", "c"].includes(key)) ||
+        ((e.ctrlKey || e.metaKey) && key === "u");
+      if (devtoolsCombo) {
+        e.preventDefault();
+        record("devtools");
+      }
+    };
+
+    // Window-size heuristic: docked devtools shrink the viewport well below the
+    // outer window. Throttled so a single open only records once.
+    const handleResize = () => {
+      const widthDelta = window.outerWidth - window.innerWidth;
+      const heightDelta = window.outerHeight - window.innerHeight;
+      if (widthDelta > DEVTOOLS_SIZE_DELTA || heightDelta > DEVTOOLS_SIZE_DELTA) {
+        const now = Date.now();
+        if (now - devtoolsAtRef.current > DEVTOOLS_THROTTLE_MS) {
+          devtoolsAtRef.current = now;
+          record("devtools");
+        }
       }
     };
 
     window.addEventListener("blur", handleBlur);
     document.addEventListener("visibilitychange", handleVisibility);
+    document.addEventListener("fullscreenchange", handleFullscreen);
+    document.addEventListener("paste", handlePaste, true);
+    document.addEventListener("contextmenu", handleContextMenu);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", handleResize);
 
     return () => {
       window.removeEventListener("blur", handleBlur);
       document.removeEventListener("visibilitychange", handleVisibility);
+      document.removeEventListener("fullscreenchange", handleFullscreen);
+      document.removeEventListener("paste", handlePaste, true);
+      document.removeEventListener("contextmenu", handleContextMenu);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", handleResize);
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     };
-  }, [active, recordSwitch]);
+  }, [active, record]);
 
   // Reset when assessment ends
   useEffect(() => {
-    if (!active) {
-      switchesRef.current = [];
-      setSwitchCount(0);
-      setShowFlash(false);
-    }
-  }, [active]);
+    if (!active) clear();
+  }, [active, clear]);
 
   return {
-    tabSwitches: switchesRef.current,
-    switchCount,
+    events: eventsRef.current,
+    tabSwitches: eventsRef.current,
+    count,
+    switchCount: count,
+    counts,
+    lastType,
     showFlash,
-  };
-}
-
-/**
- * Get severity color for a switch count.
- * Returns a Tailwind-compatible class string.
- */
-export function switchSeverity(count: number): {
-  bg: string;
-  text: string;
-  label: string;
-} {
-  if (count === 0)
-    return {
-      bg: "bg-emerald-500/15",
-      text: "text-emerald-600 dark:text-emerald-400",
-      label: "No switches",
-    };
-  if (count <= 2)
-    return {
-      bg: "bg-amber-500/15",
-      text: "text-amber-600 dark:text-amber-400",
-      label: `${count} switch${count > 1 ? "es" : ""}`,
-    };
-  return {
-    bg: "bg-rose-500/15",
-    text: "text-rose-600 dark:text-rose-400",
-    label: `${count} switches`,
+    flashType,
+    clear,
   };
 }

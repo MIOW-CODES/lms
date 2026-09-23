@@ -202,7 +202,7 @@ function ChatPanel({
       }),
     [profile.session_token, assistCtx],
   );
-  const { messages, sendMessage, setMessages, status, error } = useChat({
+  const { messages, sendMessage, setMessages, status, error, stop, regenerate } = useChat({
     id: storageKey,
     messages: initialMessages,
     transport,
@@ -222,6 +222,15 @@ function ChatPanel({
   });
 
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+
+  // Abort any in-flight generation when the panel unmounts (widget closed).
+  useEffect(
+    () => () => {
+      void stop();
+    },
+    [stop],
+  );
 
   // Persist the single conversation whenever a run settles.
   useEffect(() => {
@@ -251,6 +260,17 @@ function ChatPanel({
   }, [assistCtx?.autoMessage, status, sendMessage]);
 
   const busy = status === "submitted" || status === "streaming";
+  // Elapsed timer so long generations show progress instead of a frozen "Thinking…".
+  useEffect(() => {
+    if (!busy) {
+      setElapsed(0);
+      return;
+    }
+    const start = Date.now();
+    setElapsed(0);
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [busy]);
   const prompts = profile.role === "student" ? STUDENT_PROMPTS : STAFF_PROMPTS;
   const firstName = profile.full_name.split(" ")[0] ?? profile.full_name;
 
@@ -344,6 +364,19 @@ function ChatPanel({
                   if (part.type === "text") {
                     return <MessageResponse key={i}>{part.text}</MessageResponse>;
                   }
+                  if (part.type === "reasoning") {
+                    return (
+                      <details
+                        key={i}
+                        className="rounded-lg border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+                      >
+                        <summary className="cursor-pointer select-none font-medium">
+                          {part.state === "streaming" ? "Thinking…" : "Thought process"}
+                        </summary>
+                        <p className="mt-1.5 whitespace-pre-wrap">{part.text}</p>
+                      </details>
+                    );
+                  }
                   if (isToolPart(part)) {
                     return <ToolCall key={i} part={part} />;
                   }
@@ -362,7 +395,13 @@ function ChatPanel({
           {status === "submitted" && (
             <Message from="assistant">
               <MessageContent>
-                <Shimmer className="text-sm">Thinking…</Shimmer>
+                <Shimmer className="text-sm">
+                  {elapsed < 3
+                    ? "Thinking…"
+                    : elapsed < 20
+                      ? `Thinking… ${elapsed}s`
+                      : `Still working… ${elapsed}s — large worksheets can take up to a minute`}
+                </Shimmer>
               </MessageContent>
             </Message>
           )}
@@ -371,14 +410,22 @@ function ChatPanel({
       </Conversation>
 
       {error && (
-        <p
+        <div
           role="alert"
-          className="border-t border-border bg-destructive/10 px-4 py-2 text-xs text-destructive"
+          className="flex items-center justify-between gap-3 border-t border-border bg-destructive/10 px-4 py-2 text-xs text-destructive"
         >
-          {error.message?.includes("502")
-            ? "AI service is temporarily unavailable. Please try again in a moment."
-            : "The assistant couldn't answer that. Please try again."}
-        </p>
+          <span>
+            {error.message?.includes("502")
+              ? "AI service is temporarily unavailable. Please try again in a moment."
+              : "The assistant couldn't answer that. Please try again."}
+          </span>
+          <button
+            onClick={() => void regenerate()}
+            className="shrink-0 rounded-lg border border-destructive/40 px-2 py-1 font-semibold hover:bg-destructive/10"
+          >
+            Retry
+          </button>
+        </div>
       )}
 
       <div className="border-t border-border p-3">
@@ -393,7 +440,7 @@ function ChatPanel({
             }
           />
           <PromptInputFooter className="justify-end">
-            <PromptInputSubmit status={status} disabled={busy} />
+            <PromptInputSubmit status={status} onStop={() => void stop()} />
           </PromptInputFooter>
         </PromptInput>
       </div>

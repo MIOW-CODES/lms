@@ -3,6 +3,7 @@ import { ClipboardCheck, Pencil, Trash2 } from "lucide-react";
 import { type Assignment, type Course, COMPONENT_LABELS } from "@/lib/lms";
 import { MotionCard, courseStyle } from "@/components/lms";
 import { MaterialManager } from "@/components/courses/material-manager";
+import { RowActionsMenu } from "@/components/courses/row-actions";
 import { cn } from "@/lib/utils";
 
 interface AssignmentsSectionProps {
@@ -51,20 +52,24 @@ export const AssignmentsSection = React.memo(function AssignmentsSection({
               >
                 <ClipboardCheck className="h-3.5 w-3.5" /> Submissions
               </button>
-              <button
-                onClick={() => onEdit(a)}
-                aria-label={`Edit assignment ${a.title}`}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted"
-              >
-                <Pencil className="h-3.5 w-3.5" /> Edit
-              </button>
-              <button
-                onClick={() => onRemove(a)}
-                aria-label={`Remove assignment ${a.title}`}
-                className="flex h-9 items-center rounded-lg p-2 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              <RowActionsMenu
+                label={`Actions for assignment ${a.title}`}
+                actions={[
+                  {
+                    label: "Edit",
+                    icon: <Pencil className="h-3.5 w-3.5" />,
+                    onSelect: () => onEdit(a),
+                    ariaLabel: `Edit assignment ${a.title}`,
+                  },
+                  {
+                    label: "Delete",
+                    icon: <Trash2 className="h-3.5 w-3.5" />,
+                    onSelect: () => onRemove(a),
+                    destructive: true,
+                    ariaLabel: `Remove assignment ${a.title}`,
+                  },
+                ]}
+              />
               <div className="w-full">
                 <MaterialManager
                   target="assignment"

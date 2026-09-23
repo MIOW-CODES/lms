@@ -327,9 +327,17 @@ export const schemas = {
       .array(
         z.object({
           at: z.number(),
-          type: z.enum(["blur", "visibilitychange"]),
+          type: z.enum([
+            "blur",
+            "visibilitychange",
+            "fullscreenchange",
+            "devtools",
+            "paste",
+            "contextmenu",
+          ]),
         }),
       )
+      .max(500)
       .optional(),
     ...token,
   }),

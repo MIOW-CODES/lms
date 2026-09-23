@@ -5,6 +5,7 @@ import { db } from "@/integrations/db/client.server";
 import { unwrap, withoutToken } from "@/lib/server/utils.server";
 import { requireSession, requireStaff } from "@/lib/server/auth.server";
 import { schemas } from "@/lib/server/schemas.server";
+import type { IntegrityEventType } from "@/lib/integrity";
 
 export async function listQuizzes() {
   return unwrap<any[]>(db.from("quizzes").select("*").is("deleted_at", null));
@@ -279,7 +280,7 @@ export async function submitQuizAttempt(
   answers: Record<string, string>,
   token: string,
   questionIds?: string[],
-  tabSwitches?: Array<{ at: number; type: "blur" | "visibilitychange" }>,
+  tabSwitches?: Array<{ at: number; type: IntegrityEventType }>,
 ) {
   const caller = await requireSession(token);
   const quiz = await getQuizConfig(quiz_id);
