@@ -14,6 +14,15 @@ prompt = f"""You are a senior code reviewer. Review this pull request and provid
 
 Be concise and actionable.
 
+IMPORTANT: The diff below may be truncated for length. Only report issues that
+are directly visible in the provided diff. Do NOT claim that an import,
+function, or line is "missing" or "broken" merely because it is absent from the
+diff — absent code may simply be outside the truncated window. If you cannot see
+enough to judge, say so instead of guessing.
+
+Prefer substance over volume: if there are no material bugs or security issues,
+say so and rate LGTM rather than inventing minor nits.
+
 PR: {title}
 Author: {author}
 URL: {url}
