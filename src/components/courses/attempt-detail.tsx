@@ -25,7 +25,7 @@ export function AttemptDetail({
 }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
-    queryKey: ["attempt-detail", quizId, studentId],
+    queryKey: ["quiz-attempt-detail", quizId, studentId],
     queryFn: () => listStudentAttemptDetail(quizId, studentId),
   });
 
@@ -44,7 +44,7 @@ export function AttemptDetail({
   }, [data, studentId]);
 
   const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["attempt-detail", quizId, studentId] });
+    qc.invalidateQueries({ queryKey: ["quiz-attempt-detail", quizId, studentId] });
     qc.invalidateQueries({ queryKey: ["quiz-attempts", quizId] });
     qc.invalidateQueries({ queryKey: ["quiz-scores"] });
     onChanged?.();

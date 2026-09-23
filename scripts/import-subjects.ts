@@ -34,8 +34,17 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { Pool } from "pg";
 
-const DATABASE_URL =
-  process.env["DATABASE_URL"] ?? "postgres://miow:miow_dev_password@localhost:5432/miow";
+const DEV_DATABASE_URL = "postgres://miow:miow_dev_password@localhost:5432/miow";
+
+/** Resolve the connection string; refuse the local dev default in production. */
+function resolveDatabaseUrl(): string {
+  const url = process.env["DATABASE_URL"];
+  if (url) return url;
+  if (process.env["NODE_ENV"] === "production") {
+    throw new Error("DATABASE_URL must be set when NODE_ENV=production.");
+  }
+  return DEV_DATABASE_URL;
+}
 
 type SubjectInput = {
   code: string;
@@ -195,7 +204,7 @@ async function main() {
   }
   console.log(`[import-subjects] Parsed ${subjects.length} subject(s) from ${file}`);
 
-  const pool = new Pool({ connectionString: DATABASE_URL });
+  const pool = new Pool({ connectionString: resolveDatabaseUrl() });
   const client = await pool.connect();
   try {
     // Single transaction: either the whole import lands or none of it does,
