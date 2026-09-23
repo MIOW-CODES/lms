@@ -60,12 +60,14 @@ export function CreatableSelect({
     };
   }, [open]);
 
-  // Focus search input when opened
+  // Focus the search input after the popover has mounted. requestAnimationFrame
+  // reliably runs after the browser paints the newly-rendered input, avoiding a
+  // brittle timeout and keeping focus consistent across browsers.
   React.useEffect(() => {
-    if (open) {
-      setSearch("");
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
+    if (!open) return;
+    setSearch("");
+    const raf = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(raf);
   }, [open]);
 
   // Unique sorted list of options
