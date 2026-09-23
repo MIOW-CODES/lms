@@ -20,6 +20,7 @@ import { staffNav, AppShell, EmptyState, Modal, useProfile } from "@/components/
 import { EMPTY_POLICY, policyPayload } from "@/components/courses/constants";
 import { PolicyFields } from "@/components/courses/policy-fields";
 import { AttemptRoster } from "@/components/courses/attempt-roster";
+import { SubmissionInspector } from "@/components/courses/submission-inspector";
 import { CourseCardGrid } from "@/components/courses/course-card-grid";
 import { WorksheetsSection } from "@/components/courses/worksheets-section";
 import { AssignmentsSection } from "@/components/courses/assignments-section";
@@ -71,6 +72,7 @@ export function CoursesPage() {
   const [policyQuiz, setPolicyQuiz] = useState<Quiz | null>(null);
   const [policyForm, setPolicyForm] = useState(EMPTY_POLICY);
   const [rosterQuiz, setRosterQuiz] = useState<Quiz | null>(null);
+  const [submissionsAssignment, setSubmissionsAssignment] = useState<Assignment | null>(null);
   const [editQuiz, setEditQuiz] = useState<Quiz | null>(null);
   const [editAssign, setEditAssign] = useState<Assignment | null>(null);
   const [removeTarget, setRemoveTarget] = useState<{
@@ -160,17 +162,15 @@ export function CoursesPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {isAdmin && (
-            <button
-              onClick={() => {
-                setEditingCourse(null);
-                setModal("course");
-              }}
-              className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
-            >
-              <BookOpen className="h-4 w-4" /> Course
-            </button>
-          )}
+          <button
+            onClick={() => {
+              setEditingCourse(null);
+              setModal("course");
+            }}
+            className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+          >
+            <BookOpen className="h-4 w-4" /> Course
+          </button>
           <button
             onClick={() => setModal("assignment")}
             className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted"
@@ -222,6 +222,7 @@ export function CoursesPage() {
           courses={courses ?? []}
           onEdit={setEditAssign}
           onRemove={(a) => setRemoveTarget({ kind: "assignment", id: a.id, title: a.title })}
+          onSubmissions={setSubmissionsAssignment}
         />
       )}
 
@@ -234,6 +235,7 @@ export function CoursesPage() {
         editing={editingCourse}
         teachers={teachers ?? []}
         isAdmin={isAdmin}
+        currentUserId={profile.id}
         onSaved={invalidateAll}
       />
 
@@ -291,6 +293,15 @@ export function CoursesPage() {
         wide
       >
         {rosterQuiz && <AttemptRoster quizId={rosterQuiz.id} />}
+      </Modal>
+
+      <Modal
+        open={!!submissionsAssignment}
+        onClose={() => setSubmissionsAssignment(null)}
+        title={`Submissions — ${submissionsAssignment?.title ?? ""}`}
+        wide
+      >
+        {submissionsAssignment && <SubmissionInspector assignmentId={submissionsAssignment.id} />}
       </Modal>
     </AppShell>
   );

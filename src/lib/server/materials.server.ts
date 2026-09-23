@@ -179,6 +179,121 @@ export async function attachCourseMaterial(
   return next;
 }
 
+/* ---------- Student submission files ---------- */
+
+/**
+ * Upload a file attached to a student's assignment submission.
+ * Students may upload to their OWN submissions only; staff may upload on behalf.
+ * Reuses the course-materials bucket under a `submissions/` prefix, records a
+ * row in `submission_files`, and mirrors the metadata into
+ * `submissions.file_urls` for fast reads.
+ */
+export async function uploadSubmissionFile(
+  tokenStr: string,
+  submissionId: string,
+  name: string,
+  base64: string,
+  content_type: string,
+): Promise<Attachment> {
+  const { requireSelfOrStaff } = await import("@/lib/server/auth.server");
+  const submission = await unwrap<{ id: string; student_id: string } | null>(
+    db.from("submissions").select("id, student_id").eq("id", submissionId).maybeSingle(),
+  );
+  if (!submission) throw new Error("Submission not found");
+  await requireSelfOrStaff(tokenStr, submission.student_id);
+
+  if (!content_type || !MATERIAL_EXT[content_type]) {
+    const fileExt = extname(name).toLowerCase();
+    const inferred = EXT_TO_MIME[fileExt];
+    if (inferred) content_type = inferred;
+  }
+  const ext = MATERIAL_EXT[content_type];
+  if (!ext) throw new Error("Unsupported file type — use PDF, DOCX, PNG, JPG, or ZIP");
+  const buffer = Buffer.from(base64, "base64");
+  if (buffer.byteLength === 0) throw new Error("Empty file");
+  if (buffer.byteLength > MAX_MATERIAL_BYTES) throw new Error("File must be under 25 MB");
+  const sniffed = await sniffMime(buffer);
+  if (!sniffed || !MATERIAL_ALLOWED_MIMES.has(sniffed)) {
+    throw new Error(
+      `Unsupported file content (${sniffed ?? "unknown"}) — use PDF, DOCX, PNG, JPG, or ZIP`,
+    );
+  }
+  const zipFamily = new Set([
+    "application/zip",
+    "application/x-zip-compressed",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ]);
+  const isZipSniff = sniffed === "application/zip";
+  const isZipDeclared = zipFamily.has(content_type);
+  if (sniffed !== content_type && !(isZipSniff && isZipDeclared)) {
+    throw new Error(`MIME mismatch: declared ${content_type} but file is ${sniffed}`);
+  }
+  const rand = createHmac("sha256", sessionSecret())
+    .update(`${submission.student_id}:${name}:${Date.now()}`)
+    .digest("hex")
+    .slice(0, 8);
+  const path = `submissions/${submissionId}/file_${Date.now()}_${rand}.${ext}`;
+  const { error } = await supabaseAdmin.storage
+    .from(MATERIAL_BUCKET)
+    .upload(path, buffer, { contentType: content_type, upsert: false });
+  if (error) throw new Error(`Storage upload failed (${error.message})`);
+
+  const attachment: Attachment = {
+    name: name.slice(0, 200),
+    url: materialUrlForPath(path),
+    size: buffer.byteLength,
+    type: content_type,
+    path,
+  };
+  await unwrap(
+    db.from("submission_files").insert({
+      submission_id: submissionId,
+      file_url: attachment.url,
+      file_name: attachment.name,
+      mime: attachment.type,
+    }),
+  );
+  // Mirror into submissions.file_urls (best-effort; tolerate missing column).
+  try {
+    const current = await unwrap<{ file_urls: unknown } | null>(
+      db.from("submissions").select("file_urls").eq("id", submissionId).maybeSingle(),
+    );
+    const list = Array.isArray(current?.file_urls) ? (current!.file_urls as unknown[]) : [];
+    await unwrap(
+      db
+        .from("submissions")
+        .update({ file_urls: [...list, attachment] })
+        .eq("id", submissionId),
+    );
+  } catch (e) {
+    // The mirror into submissions.file_urls is best-effort (the canonical
+    // record lives in submission_files), but log it so persistent failures
+    // don't go unnoticed.
+    console.error("[materials] failed to mirror submission file_urls:", e);
+  }
+  return attachment;
+}
+
+/** List file rows attached to a submission, oldest first. */
+export async function listSubmissionFiles(submissionId: string) {
+  return unwrap<
+    Array<{
+      id: string;
+      submission_id: string;
+      file_url: string;
+      file_name: string;
+      mime: string | null;
+      created_at: string;
+    }>
+  >(
+    db
+      .from("submission_files")
+      .select("id, submission_id, file_url, file_name, mime, created_at")
+      .eq("submission_id", submissionId)
+      .order("created_at"),
+  );
+}
+
 export async function requireAssignmentOwnerOrAdmin(token: string, assignmentId: string) {
   const row = await unwrap<any>(
     db

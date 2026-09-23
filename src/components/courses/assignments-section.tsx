@@ -1,5 +1,5 @@
 import React from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { ClipboardCheck, Pencil, Trash2 } from "lucide-react";
 import { type Assignment, type Course, COMPONENT_LABELS } from "@/lib/lms";
 import { MotionCard, courseStyle } from "@/components/lms";
 import { MaterialManager } from "@/components/courses/material-manager";
@@ -10,6 +10,7 @@ interface AssignmentsSectionProps {
   courses: Course[];
   onEdit: (assignment: Assignment) => void;
   onRemove: (assignment: Assignment) => void;
+  onSubmissions: (assignment: Assignment) => void;
 }
 
 export const AssignmentsSection = React.memo(function AssignmentsSection({
@@ -17,6 +18,7 @@ export const AssignmentsSection = React.memo(function AssignmentsSection({
   courses,
   onEdit,
   onRemove,
+  onSubmissions,
 }: AssignmentsSectionProps) {
   return (
     <section className="mt-10">
@@ -42,6 +44,13 @@ export const AssignmentsSection = React.memo(function AssignmentsSection({
                     : " · no due date"}
                 </p>
               </div>
+              <button
+                onClick={() => onSubmissions(a)}
+                aria-label={`View submissions for ${a.title}`}
+                className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/15"
+              >
+                <ClipboardCheck className="h-3.5 w-3.5" /> Submissions
+              </button>
               <button
                 onClick={() => onEdit(a)}
                 aria-label={`Edit assignment ${a.title}`}

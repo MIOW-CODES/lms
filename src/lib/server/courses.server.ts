@@ -65,6 +65,7 @@ const ALLOWED_COURSE_COLUMNS = new Set([
   "college_year",
   "strand",
   "program",
+  "grading_system",
   "days_of_week",
   "start_time",
   "end_time",
@@ -123,6 +124,71 @@ export async function listSubmissionsForStudent(studentId: string) {
   return unwrap<any[]>(db.from("submissions").select("*").eq("student_id", studentId));
 }
 
+/** All submissions for one assignment joined with student identity — staff view. */
+export async function listSubmissionsForAssignment(assignmentId: string, token: string) {
+  await requireStaff(token);
+  const rows = await unwrap<any[]>(
+    db
+      .from("submissions")
+      // Explicit columns — never expose future/internal columns via SELECT *.
+      .select(
+        "id, assignment_id, student_id, content, file_urls, score, feedback, status, submitted_at",
+      )
+      .eq("assignment_id", assignmentId),
+  );
+  if (!rows.length) return [];
+  const studentIds = [...new Set(rows.map((r) => r.student_id as string))];
+  const profiles = await unwrap<any[]>(
+    db.from("profiles").select("id, full_name, student_id, section").in("id", studentIds),
+  );
+  const byId = new Map(profiles.map((p) => [p.id as string, p]));
+  return rows.map((r) => {
+    const p = byId.get(r.student_id as string);
+    return {
+      id: r.id,
+      student_id: r.student_id,
+      full_name: p?.full_name ?? "Unknown student",
+      student_no: p?.student_id ?? null,
+      section: p?.section ?? null,
+      content: r.content ?? null,
+      file_urls: Array.isArray(r.file_urls) ? r.file_urls : [],
+      score: r.score ?? null,
+      feedback: r.feedback ?? null,
+      status: r.status,
+      submitted_at: r.submitted_at ?? null,
+    };
+  });
+}
+
+/** Teacher manually grades a submission (score/feedback/status). */
+export async function gradeSubmission(
+  token: string,
+  submissionId: string,
+  patch: {
+    score: number | null;
+    feedback: string | null;
+    status?: "pending" | "submitted" | "graded" | undefined;
+  },
+) {
+  const submission = await unwrap<any>(
+    db.from("submissions").select("id, assignment_id, status").eq("id", submissionId).maybeSingle(),
+  );
+  if (!submission) throw new Error("Submission not found");
+  // Reuse the assignment-ownership guard so teachers only grade their own courses.
+  const { requireAssignmentOwnerOrAdmin } = await import("@/lib/server/materials.server");
+  await requireAssignmentOwnerOrAdmin(token, submission.assignment_id as string);
+  const row: Record<string, unknown> = {
+    score: patch.score,
+    feedback: patch.feedback,
+  };
+  // Status: an explicit status wins; otherwise setting a score marks it graded,
+  // while clearing the score (score == null) PRESERVES the existing status so a
+  // previously graded submission is never silently downgraded to "submitted".
+  if (patch.status) row["status"] = patch.status;
+  else if (patch.score != null) row["status"] = "graded";
+  await unwrap(db.from("submissions").update(row).eq("id", submissionId));
+}
+
 export async function submitAssignment(input: z.infer<typeof schemas.submissionInput>) {
   const existing = await unwrap<{ id: string } | null>(
     db
@@ -133,8 +199,14 @@ export async function submitAssignment(input: z.infer<typeof schemas.submissionI
       .maybeSingle(),
   );
   const row = withoutToken(input);
-  if (existing) await unwrap(db.from("submissions").update(row).eq("id", existing.id));
-  else await unwrap(db.from("submissions").insert(row));
+  if (existing) {
+    await unwrap(db.from("submissions").update(row).eq("id", existing.id));
+    return { id: existing.id };
+  }
+  const created = await unwrap<{ id: string }>(
+    db.from("submissions").insert(row).select("id").single(),
+  );
+  return { id: created.id };
 }
 
 export async function requireCourseOwnerOrAdmin(token: string, courseId: string) {

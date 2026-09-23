@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Eraser, EyeOff, RotateCcw, Search } from "lucide-react";
+import { Eraser, Eye, EyeOff, RotateCcw, Search } from "lucide-react";
 import { listQuizAttempts, grantQuizRetake, resetQuizAttempts } from "@/lib/lms";
 import { Badge, EmptyState } from "@/components/lms";
 import { switchSeverity } from "@/lib/anti-cheat";
 import { cn } from "@/lib/utils";
+import { AttemptDetail } from "@/components/courses/attempt-detail";
 import {
   Select,
   SelectContent,
@@ -23,6 +24,7 @@ export function AttemptRoster({ quizId }: { quizId: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [sectionFilter, setSectionFilter] = useState("all");
+  const [inspectId, setInspectId] = useState<string | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ["quiz-attempts", quizId] });
 
   const sections = useMemo(() => {
@@ -131,6 +133,11 @@ export function AttemptRoster({ quizId }: { quizId: string }) {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                {s.override_score != null && (
+                  <Badge tone="amber">
+                    Teacher: {s.override_score}/{s.override_total ?? "—"}
+                  </Badge>
+                )}
                 {s.effective_score != null && (
                   <Badge tone="green">
                     Effective: {s.effective_score}/{s.effective_total}
@@ -166,6 +173,21 @@ export function AttemptRoster({ quizId }: { quizId: string }) {
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
+                onClick={() => setInspectId(inspectId === s.student_id ? null : s.student_id)}
+                aria-label={`Inspect answers for ${s.full_name}`}
+                className="flex h-9 items-center gap-1.5 rounded-lg bg-muted px-3 text-xs font-semibold hover:bg-muted/70"
+              >
+                {inspectId === s.student_id ? (
+                  <>
+                    <EyeOff className="h-3.5 w-3.5" /> Hide answers
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-3.5 w-3.5" /> Inspect answers
+                  </>
+                )}
+              </button>
+              <button
                 onClick={() => grant(s.student_id)}
                 disabled={busy === s.student_id}
                 aria-label={`Grant extra retake to ${s.full_name}`}
@@ -182,6 +204,15 @@ export function AttemptRoster({ quizId }: { quizId: string }) {
                 <Eraser className="h-3.5 w-3.5" /> Reset attempts
               </button>
             </div>
+
+            {inspectId === s.student_id && (
+              <AttemptDetail
+                quizId={quizId}
+                studentId={s.student_id}
+                studentName={s.full_name}
+                onChanged={refresh}
+              />
+            )}
           </div>
         ))
       )}

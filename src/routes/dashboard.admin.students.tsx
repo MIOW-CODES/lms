@@ -34,6 +34,7 @@ import {
   staffNav,
   useProfile,
 } from "@/components/lms";
+import { gradeLevelLabel } from "@/lib/utils";
 
 export const Route = createFileRoute("/dashboard/admin/students")({
   head: () => ({
@@ -199,7 +200,7 @@ function StudentsPage() {
             <SelectItem value="all">All grades</SelectItem>
             {GRADE_LEVELS.map((g) => (
               <SelectItem key={g} value={String(g)}>
-                {g <= 12 ? `Grade ${g}` : `College Yr${g - 12}`}
+                {gradeLevelLabel(g)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -269,7 +270,7 @@ function StudentsPage() {
                   <td className="p-4">{s.student_id}</td>
                   <td className="p-4">
                     <Badge tone="indigo">
-                      G{s.grade_level} · {s.section}
+                      {gradeLevelLabel(s.grade_level, true)} · {s.section}
                     </Badge>
                   </td>
                   <td className="p-4 font-mono text-xs">{s.has_rfid ? "••••••••" : "—"}</td>
@@ -326,9 +327,9 @@ function StudentsPage() {
               <SelectValue placeholder="Grade level" />
             </SelectTrigger>
             <SelectContent>
-              {[7, 8, 9, 10, 11, 12].map((g) => (
+              {GRADE_LEVELS.map((g) => (
                 <SelectItem key={g} value={String(g)}>
-                  Grade {g}
+                  {gradeLevelLabel(g)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -444,7 +445,7 @@ function StudentProfileModal({
           <p className="text-sm font-semibold">{student.student_id}</p>
           <p className="text-xs text-muted-foreground">{student.email ?? "No email"}</p>
           <Badge tone="indigo">
-            Grade {student.grade_level} · {student.section ?? "—"}
+            {gradeLevelLabel(student.grade_level)} · {student.section ?? "—"}
           </Badge>
         </div>
       </div>

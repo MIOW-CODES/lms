@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import {
   attendancePercent,
+  enrollmentsForCourse,
   gradeRemarks,
   listAllAttendance,
   listAttendance,
@@ -33,6 +34,7 @@ import {
   TEACHER_NAV,
   useProfile,
 } from "@/components/lms";
+import { gradeLevelLabel } from "@/lib/utils";
 
 export const Route = createFileRoute("/dashboard/teacher/students")({
   head: () => ({
@@ -79,35 +81,10 @@ function TeacherStudentsPage() {
     return map;
   }, [allAttendance]);
 
-  // Batch-fetch grades for all visible students (parallel, single render)
-  const studentIds = useMemo(() => (students ?? []).map((s) => s.id), [students]);
-  const [gradesMap, setGradesMap] = useState<Map<string, Grade[]>>(new Map());
-
-  useEffect(() => {
-    if (!studentIds.length) return;
-    let cancelled = false;
-    Promise.all(studentIds.map((id) => listGradesForStudent(id).catch(() => []))).then(
-      (results) => {
-        if (cancelled) return;
-        const map = new Map<string, Grade[]>();
-        studentIds.forEach((id, i) => map.set(id, results[i]!));
-        setGradesMap(map);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [studentIds]);
-
   const [search, setSearch] = useState("");
   const [gradeFilter, setGradeFilter] = useState("all");
   const [sectionFilter, setSectionFilter] = useState("all");
   const [selected, setSelected] = useState<Profile | null>(null);
-
-  const sections = useMemo(() => {
-    const set = new Set((students ?? []).map((s) => s.section).filter(Boolean));
-    return Array.from(set).sort();
-  }, [students]);
 
   // Teacher's own courses; admin sees all
   const teacherCourses = useMemo(() => {
@@ -116,12 +93,61 @@ function TeacherStudentsPage() {
     return courses.filter((c) => c.teacher_id === profile.id);
   }, [profile, courses]);
 
-  // For now Students Info is not enrollment-filtered (enrollments table is separate) —
-  // teacher sees all students but with a hint about their course count.
-  // Future: fetch enrollmentsForCourse per teacherCourses and filter studentIds.
+  const teacherCourseIds = useMemo(() => {
+    if (!profile || !courses) return [];
+    if (profile.role === "admin") return (courses ?? []).map((c) => c.id);
+    return (courses ?? []).filter((c) => c.teacher_id === profile.id).map((c) => c.id);
+  }, [profile, courses]);
+
+  // Fetch enrollments for teacher's courses (parallel, single query per course)
+  const { data: enrolledStudentIds } = useQuery({
+    queryKey: ["teacher-enrolled-students", teacherCourseIds],
+    queryFn: async () => {
+      if (!teacherCourseIds.length) return [];
+      const results = await Promise.all(teacherCourseIds.map((id) => enrollmentsForCourse(id)));
+      return [...new Set(results.flat())];
+    },
+    enabled: !!profile && teacherCourseIds.length > 0,
+  });
+
+  // Filter students to only those enrolled in teacher's courses
+  const enrolledStudents = useMemo(() => {
+    if (!students || !enrolledStudentIds) return [];
+    if (profile?.role === "admin") return students;
+    const idSet = new Set(enrolledStudentIds);
+    return students.filter((s) => idSet.has(s.id));
+  }, [students, enrolledStudentIds, profile]);
+
+  const sections = useMemo(() => {
+    const set = new Set(enrolledStudents.map((s) => s.section).filter(Boolean));
+    return Array.from(set).sort();
+  }, [enrolledStudents]);
+
+  // Only batch-fetch grades when student list is manageable (≤ 100)
+  const { data: batchGrades } = useQuery({
+    queryKey: [
+      "batch-grades",
+      enrolledStudents
+        .map((s) => s.id)
+        .sort()
+        .join(","),
+    ],
+    queryFn: async () => {
+      const ids = enrolledStudents.map((s) => s.id);
+      const results = await Promise.all(ids.map((id) => listGradesForStudent(id).catch(() => [])));
+      const map = new Map<string, Grade[]>();
+      ids.forEach((id, i) => map.set(id, results[i]!));
+      return map;
+    },
+    enabled: enrolledStudents.length > 0 && enrolledStudents.length <= 100,
+    staleTime: 60_000,
+  });
+
+  const gradesMap = batchGrades ?? new Map<string, Grade[]>();
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (students ?? []).filter((s) => {
+    return enrolledStudents.filter((s) => {
       if (gradeFilter !== "all" && s.grade_level !== parseInt(gradeFilter)) return false;
       if (sectionFilter !== "all" && s.section !== sectionFilter) return false;
       if (!q) return true;
@@ -132,9 +158,9 @@ function TeacherStudentsPage() {
         (s.section ?? "").toLowerCase().includes(q)
       );
     });
-  }, [students, search, gradeFilter, sectionFilter]);
+  }, [enrolledStudents, search, gradeFilter, sectionFilter]);
 
-  const isLoading = !students || !courses || !allAttendance;
+  const isLoading = !students || !courses;
 
   if (!profile) return null;
 
@@ -152,8 +178,8 @@ function TeacherStudentsPage() {
           <h1 className="font-display text-2xl font-bold sm:text-3xl">Students Info</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {profile.role === "admin"
-              ? `${filtered.length} of ${students?.length ?? 0} enrolled learners`
-              : `${filtered.length} of ${students?.length ?? 0} learners · ${teacherCourses.length} courses you lead`}
+              ? `${filtered.length} of ${enrolledStudents.length} enrolled learners`
+              : `${filtered.length} of ${enrolledStudents.length} learners · ${teacherCourses.length} courses you lead`}
           </p>
         </div>
       </div>
@@ -176,7 +202,7 @@ function TeacherStudentsPage() {
             <SelectItem value="all">All grades</SelectItem>
             {GRADE_LEVELS.map((g) => (
               <SelectItem key={g} value={String(g)}>
-                {g <= 12 ? `Grade ${g}` : `College Yr${g - 12}`}
+                {gradeLevelLabel(g)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -198,9 +224,9 @@ function TeacherStudentsPage() {
 
       {filtered.length === 0 ? (
         <EmptyState
-          title={students?.length ? "No matches" : "No students yet"}
+          title={enrolledStudents.length ? "No matches" : "No students yet"}
           sub={
-            students?.length
+            enrolledStudents.length
               ? "Try a different search or filter."
               : teacherCourses.length === 0
                 ? "You are not leading any courses yet."
@@ -239,7 +265,7 @@ function TeacherStudentsPage() {
                   <td className="p-4">{s.student_id}</td>
                   <td className="p-4">
                     <Badge tone="indigo">
-                      G{s.grade_level} · {s.section ?? "—"}
+                      {gradeLevelLabel(s.grade_level, true)} · {s.section ?? "—"}
                     </Badge>
                   </td>
                   <td className="p-4 font-mono text-xs">{s.has_rfid ? "••••••••" : "—"}</td>
@@ -314,7 +340,7 @@ function StudentInfoModal({ student, onClose }: { student: Profile | null; onClo
           <p className="text-sm font-semibold">{student.student_id}</p>
           <p className="text-xs text-muted-foreground">{student.email ?? "No email"}</p>
           <Badge tone="indigo">
-            Grade {student.grade_level} · {student.section ?? "—"}
+            {gradeLevelLabel(student.grade_level)} · {student.section ?? "—"}
           </Badge>
         </div>
       </div>

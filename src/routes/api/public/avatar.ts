@@ -1,10 +1,12 @@
 // Streams avatar images from the private "avatars" storage bucket. The kiosk
-// sign-in screen shows profile photos to unauthenticated viewers, so this
-// endpoint is public — but it only ever serves objects matching the strict
-// avatar path shape, never arbitrary bucket contents. Entropy hardened: new
-// uploads use 16-hex (64-bit) random; legacy 8-hex accepted during migration.
-// Optional Authorization: Bearer <session_token> is validated if present (helps
-// private previews) but unauthenticated fetches remain allowed with the hard-to-guess path.
+// sign-in screen shows profile photos to unauthenticated viewers, and avatars
+// are rendered via plain <img src> tags, so this endpoint is public — but it
+// only ever serves objects matching the strict avatar path shape, never
+// arbitrary bucket contents. Entropy hardened: new uploads use 16-hex (64-bit)
+// random; legacy 8-hex accepted during migration. The unguessable path is the
+// capability: user enumeration via probing is infeasible at 64-bit entropy.
+// Optional Authorization: Bearer <session_token> is validated if present (kept
+// for callers that pass it) but is not required.
 import { createFileRoute } from "@tanstack/react-router";
 
 const PATH_RE = /^[0-9a-f-]{36}\/avatar_\d+_[0-9a-f]{16}\.(png|jpe?g|webp|gif)$/;
@@ -27,16 +29,16 @@ export const Route = createFileRoute("/api/public/avatar")({
         // Accept new 16-hex and legacy 8-hex during migration.
         const validPath = PATH_RE.test(p) || PATH_RE_LEGACY.test(p);
         if (!validPath) return new Response("Not found", { status: 404 });
-        // Require Authorization header — prevents user enumeration via avatar
-        // URL probing. Without a valid session, return 404 (not 401) to avoid
-        // leaking whether the resource exists.
+        // If a token is supplied, validate it (defensive); absence is allowed
+        // because the high-entropy path itself is the access capability.
         const auth = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-        if (!auth) return new Response("Not found", { status: 404 });
-        try {
-          const { requireSession } = await import("@/lib/server");
-          await requireSession(auth);
-        } catch {
-          return new Response("Unauthorized", { status: 401 });
+        if (auth) {
+          try {
+            const { requireSession } = await import("@/lib/server");
+            await requireSession(auth);
+          } catch {
+            return new Response("Unauthorized", { status: 401 });
+          }
         }
         const { supabaseAdmin } = await import("@/integrations/db/client.server");
         const { data, error } = await supabaseAdmin.storage.from("avatars").download(p);

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CloudUpload, FileText, Paperclip, Send, ShieldCheck, X } from "lucide-react";
+import { FileText, Paperclip, Send, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { ASSIGNMENT_MAX_BYTES } from "@/components/courses/constants";
 import { setAssessmentMode } from "@/lib/assessment-mode";
+import { Dropzone } from "@/components/dropzone";
 import {
   COMPONENT_LABELS,
   daysUntil,
@@ -15,7 +16,9 @@ import {
   listSubmissionsForStudent,
   materialHref,
   submitAssignment,
+  uploadSubmissionFile,
   type Assignment,
+  type Attachment,
 } from "@/lib/lms";
 import {
   AppShell,
@@ -56,11 +59,9 @@ function AssignmentsPage() {
   const [tab, setTab] = useState<Tab>("all");
   const [target, setTarget] = useState<Assignment | null>(null);
   const [content, setContent] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [dragging, setDragging] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
   const [progress, setProgress] = useState(0);
   const [saving, setSaving] = useState(false);
-  const fileInput = useRef<HTMLInputElement | null>(null);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const maxMB = Math.round(ASSIGNMENT_MAX_BYTES / (1024 * 1024));
 
@@ -130,47 +131,41 @@ function AssignmentsPage() {
   const openSubmit = (a: Assignment) => {
     setTarget(a);
     setContent(subByAssignment.get(a.id)?.content ?? "");
-    setFile(null);
+    setFiles([]);
     setProgress(0);
-  };
-
-  const pickFile = (f: File | undefined | null) => {
-    if (!f) return;
-    if (f.size > ASSIGNMENT_MAX_BYTES) {
-      toast.error(`File is too large (max ${maxMB} MB).`);
-      return;
-    }
-    setFile(f);
   };
 
   const submit = async () => {
-    if (!target || (!content.trim() && !file)) return;
-    if (file) {
-      toast.error("File upload is not yet supported — please submit without attachment");
-      setFile(null);
-      return;
-    }
+    if (!target || (!content.trim() && files.length === 0)) return;
     setSaving(true);
     setProgress(0);
-    // Simulated upload progress while the RPC is in flight
-    progressTimer.current = setInterval(() => setProgress((p) => Math.min(90, p + 15)), 140);
+    // Simulated upload progress while the RPC(s) are in flight.
+    progressTimer.current = setInterval(() => setProgress((p) => Math.min(90, p + 10)), 160);
     try {
-      await submitAssignment({
+      // 1. Create/update the submission row first to obtain its id.
+      const { id } = await submitAssignment({
         assignment_id: target.id,
         student_id: profile.id,
         content: content.trim() || null,
-        file_url: null,
         status: "submitted",
         submitted_at: new Date().toISOString(),
       });
+      // 2. Upload each attached file against the submission.
+      for (const f of files) {
+        if (f.size > ASSIGNMENT_MAX_BYTES) {
+          toast.error(`${f.name} is too large (max ${maxMB} MB) — skipped.`);
+          continue;
+        }
+        await uploadSubmissionFile(id, f);
+      }
       setProgress(100);
       toast.success("Assignment submitted!");
       setTarget(null);
       setContent("");
-      setFile(null);
+      setFiles([]);
       qc.invalidateQueries({ queryKey: ["submissions", profile.id] });
-    } catch {
-      toast.error("Submission failed — please try again.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Submission failed — please try again.");
     } finally {
       if (progressTimer.current) {
         clearInterval(progressTimer.current);
@@ -280,63 +275,17 @@ function AssignmentsPage() {
           Assessment integrity: the ClassMate Assistant is disabled while this workspace is open.
         </p>
 
-        {/* Drag-and-drop file dropzone */}
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label="Attach a file"
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragging(false);
-            pickFile(e.dataTransfer.files?.[0]);
-          }}
-          onClick={() => fileInput.current?.click()}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") fileInput.current?.click();
-          }}
-          className={cn(
-            "mb-3 flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed p-5 text-center transition-colors",
-            dragging
-              ? "border-primary bg-primary/10"
-              : "border-border hover:border-primary/50 hover:bg-muted/60",
-          )}
-        >
-          <input
-            ref={fileInput}
-            type="file"
-            className="hidden"
-            onChange={(e) => pickFile(e.target.files?.[0])}
-          />
-          {file ? (
-            <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm font-medium">
-              <FileText className="h-4 w-4 text-primary" />
-              <span className="max-w-56 truncate">{file.name}</span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setFile(null);
-                }}
-                aria-label="Remove file"
-                className="rounded p-0.5 text-muted-foreground hover:text-rose-600"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ) : (
-            <>
-              <CloudUpload className="h-7 w-7 text-muted-foreground" />
-              <p className="text-sm font-semibold">Drop a file here, or click to browse</p>
-              <p className="text-xs text-muted-foreground">
-                PDF, DOCX, images — up to {maxMB} MB · multiple files allowed
-              </p>
-            </>
-          )}
-        </div>
+        {/* Multi-file dropzone */}
+        <Dropzone
+          files={files}
+          onChange={setFiles}
+          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.zip"
+          maxBytes={ASSIGNMENT_MAX_BYTES}
+          className="mb-3"
+        />
+
+        {/* Already-submitted files (when reopening a submitted assignment) */}
+        <SubmittedFiles files={subByAssignment.get(target?.id ?? "")?.file_urls ?? []} />
 
         <MaterialsCard attachments={target?.attachments ?? []} />
 
@@ -359,13 +308,44 @@ function AssignmentsPage() {
 
         <button
           onClick={submit}
-          disabled={saving || (!content.trim() && !file)}
+          disabled={saving || (!content.trim() && files.length === 0)}
           className="mt-3 h-11 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
         >
           {saving ? "Submitting…" : "Submit assignment"}
         </button>
       </Modal>
     </AppShell>
+  );
+}
+
+/** Read-only list of files already attached to a submission. */
+function SubmittedFiles({ files }: { files: Attachment[] }) {
+  if (!files.length) return null;
+  return (
+    <div className="mb-3 rounded-xl border border-border/60 bg-muted/40 p-3">
+      <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+        <Paperclip className="h-3.5 w-3.5" /> Your submitted files
+      </p>
+      <ul className="mt-2 grid gap-1.5">
+        {files.map((a) => (
+          <li
+            key={a.path ?? a.url}
+            className="flex items-center gap-2 rounded-lg bg-background/70 px-2.5 py-1.5"
+          >
+            <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <a
+              href={materialHref(a as never)}
+              target="_blank"
+              rel="noreferrer"
+              className="min-w-0 flex-1 truncate text-xs font-medium text-primary hover:underline"
+            >
+              {a.name}
+            </a>
+            <span className="text-[11px] text-muted-foreground">{formatFileSize(a.size)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
