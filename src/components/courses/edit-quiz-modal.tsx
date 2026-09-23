@@ -67,7 +67,8 @@ export function EditQuizModal({ quiz, onClose, onSaved }: EditQuizModalProps) {
     setSaving(true);
     try {
       const requested = Math.max(0, parseInt(editQuizForm.question_count) || 0);
-      // If a replacement bank was pasted, never store a size ≥ the new bank.
+      // If a replacement bank was pasted, never store a size equal to or larger
+      // than the new bank (otherwise every attempt would serve the whole set).
       const questionCount =
         questions && requested > 0 && requested >= questions.length ? 0 : requested;
       await updateQuiz(

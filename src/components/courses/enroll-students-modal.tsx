@@ -32,6 +32,9 @@ export function EnrollStudentsModal({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
 
+  // Reuses the shared ["students"] roster cache (same queryFn as the students
+  // pages / course roster). Filtering is client-side; if a school ever exceeds a
+  // few thousand learners this should move to a paginated server search.
   const { data: students, isPending } = useQuery({
     queryKey: ["students"],
     queryFn: listStudents,
