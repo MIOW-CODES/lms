@@ -17,6 +17,7 @@ import {
   logAudit,
   toCsv,
   resetLocalPreferences,
+  clearLegacyPreferences,
   DEFAULT_USER_SETTINGS,
   DEFAULT_TEACHER_SETTINGS,
   DEFAULT_ADMIN_CONFIG,
@@ -453,5 +454,28 @@ describe("resetLocalPreferences", () => {
     mockLocalStorage.setItem("unrelated", "value");
     resetLocalPreferences();
     expect(mockLocalStorage.getItem("unrelated")).toBe("value");
+  });
+});
+
+// ── clearLegacyPreferences ──────────────────────────────────────────
+describe("clearLegacyPreferences", () => {
+  it("removes legacy northview-* keys", () => {
+    mockLocalStorage.setItem("northview-theme", "dark");
+    mockLocalStorage.setItem("northview-lms-session", '{"user":"old"}');
+    mockLocalStorage.setItem("miow-theme", "light");
+    mockLocalStorage.setItem("other-key", "keep");
+
+    clearLegacyPreferences();
+
+    expect(mockLocalStorage.getItem("northview-theme")).toBeNull();
+    expect(mockLocalStorage.getItem("northview-lms-session")).toBeNull();
+    expect(mockLocalStorage.getItem("miow-theme")).toBe("light");
+    expect(mockLocalStorage.getItem("other-key")).toBe("keep");
+  });
+
+  it("is a no-op when there is nothing to clear", () => {
+    mockLocalStorage.setItem("miow-theme", "dark");
+    clearLegacyPreferences();
+    expect(mockLocalStorage.getItem("miow-theme")).toBe("dark");
   });
 });

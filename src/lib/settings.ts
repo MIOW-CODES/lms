@@ -332,3 +332,23 @@ export function resetLocalPreferences() {
     /* ignore */
   }
 }
+
+/**
+ * Legacy key prefix from before the MIOW rename. These entries are dead — the
+ * app only reads `miow-*` — so remove them once on startup to avoid leaking
+ * stale preferences and to keep storage tidy.
+ */
+const LEGACY_PREFIX = "northview-";
+
+export function clearLegacyPreferences() {
+  try {
+    const doomed: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(LEGACY_PREFIX)) doomed.push(k);
+    }
+    doomed.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    /* ignore */
+  }
+}
