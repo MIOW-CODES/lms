@@ -16,6 +16,7 @@ import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as DashboardAdminRouteImport } from './routes/dashboard.admin'
 import { Route as DashboardStudentRouteImport } from './routes/dashboard.student'
 import { Route as DashboardTeacherRouteImport } from './routes/dashboard.teacher'
+import { Route as ApiMaintenanceRepairRosterRouteImport } from './routes/api/maintenance/repair-roster'
 import { Route as ApiPublicAvatarRouteImport } from './routes/api/public/avatar'
 import { Route as ApiPublicMaterialRouteImport } from './routes/api/public/material'
 import { Route as ApiTeacherSettingsRouteImport } from './routes/api/teacher/settings'
@@ -79,6 +80,12 @@ const DashboardTeacherRoute = DashboardTeacherRouteImport.update({
   path: '/dashboard/teacher',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiMaintenanceRepairRosterRoute =
+  ApiMaintenanceRepairRosterRouteImport.update({
+    id: '/api/maintenance/repair-roster',
+    path: '/api/maintenance/repair-roster',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicAvatarRoute = ApiPublicAvatarRouteImport.update({
   id: '/api/public/avatar',
   path: '/api/public/avatar',
@@ -234,6 +241,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/admin': typeof DashboardAdminRouteWithChildren
   '/dashboard/student': typeof DashboardStudentRouteWithChildren
   '/dashboard/teacher': typeof DashboardTeacherRouteWithChildren
+  '/api/maintenance/repair-roster': typeof ApiMaintenanceRepairRosterRoute
   '/api/public/avatar': typeof ApiPublicAvatarRoute
   '/api/public/material': typeof ApiPublicMaterialRoute
   '/api/teacher/settings': typeof ApiTeacherSettingsRoute
@@ -267,6 +275,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/maintenance/repair-roster': typeof ApiMaintenanceRepairRosterRoute
   '/api/public/avatar': typeof ApiPublicAvatarRoute
   '/api/public/material': typeof ApiPublicMaterialRoute
   '/api/teacher/settings': typeof ApiTeacherSettingsRoute
@@ -304,6 +313,7 @@ export interface FileRoutesById {
   '/dashboard/admin': typeof DashboardAdminRouteWithChildren
   '/dashboard/student': typeof DashboardStudentRouteWithChildren
   '/dashboard/teacher': typeof DashboardTeacherRouteWithChildren
+  '/api/maintenance/repair-roster': typeof ApiMaintenanceRepairRosterRoute
   '/api/public/avatar': typeof ApiPublicAvatarRoute
   '/api/public/material': typeof ApiPublicMaterialRoute
   '/api/teacher/settings': typeof ApiTeacherSettingsRoute
@@ -342,6 +352,7 @@ export interface FileRouteTypes {
     | '/dashboard/admin'
     | '/dashboard/student'
     | '/dashboard/teacher'
+    | '/api/maintenance/repair-roster'
     | '/api/public/avatar'
     | '/api/public/material'
     | '/api/teacher/settings'
@@ -375,6 +386,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/sitemap.xml'
     | '/api/chat'
+    | '/api/maintenance/repair-roster'
     | '/api/public/avatar'
     | '/api/public/material'
     | '/api/teacher/settings'
@@ -411,6 +423,7 @@ export interface FileRouteTypes {
     | '/dashboard/admin'
     | '/dashboard/student'
     | '/dashboard/teacher'
+    | '/api/maintenance/repair-roster'
     | '/api/public/avatar'
     | '/api/public/material'
     | '/api/teacher/settings'
@@ -448,6 +461,7 @@ export interface RootRouteChildren {
   DashboardAdminRoute: typeof DashboardAdminRouteWithChildren
   DashboardStudentRoute: typeof DashboardStudentRouteWithChildren
   DashboardTeacherRoute: typeof DashboardTeacherRouteWithChildren
+  ApiMaintenanceRepairRosterRoute: typeof ApiMaintenanceRepairRosterRoute
   ApiPublicAvatarRoute: typeof ApiPublicAvatarRoute
   ApiPublicMaterialRoute: typeof ApiPublicMaterialRoute
   ApiTeacherSettingsRoute: typeof ApiTeacherSettingsRoute
@@ -504,6 +518,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard/teacher'
       fullPath: '/dashboard/teacher'
       preLoaderRoute: typeof DashboardTeacherRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/maintenance/repair-roster': {
+      id: '/api/maintenance/repair-roster'
+      path: '/api/maintenance/repair-roster'
+      fullPath: '/api/maintenance/repair-roster'
+      preLoaderRoute: typeof ApiMaintenanceRepairRosterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/avatar': {
@@ -778,6 +799,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardAdminRoute: DashboardAdminRouteWithChildren,
   DashboardStudentRoute: DashboardStudentRouteWithChildren,
   DashboardTeacherRoute: DashboardTeacherRouteWithChildren,
+  ApiMaintenanceRepairRosterRoute: ApiMaintenanceRepairRosterRoute,
   ApiPublicAvatarRoute: ApiPublicAvatarRoute,
   ApiPublicMaterialRoute: ApiPublicMaterialRoute,
   ApiTeacherSettingsRoute: ApiTeacherSettingsRoute,
