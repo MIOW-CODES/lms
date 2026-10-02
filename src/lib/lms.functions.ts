@@ -444,8 +444,8 @@ export const listGradesForCourseFn = createServerFn({ method: "POST" })
 export const upsertGradeFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.gradeInput.parse(data))
   .handler(async ({ data }) => {
-    await server.requireTeacher(data.token);
-    return server.upsertGrade(data);
+    const caller = await server.requireTeacher(data.token);
+    return server.upsertGrade(data, caller.id);
   });
 
 /* ---------- Attendance ---------- */
@@ -551,3 +551,71 @@ export const deleteAssignmentFn = createServerFn({ method: "POST" })
 export const listQuizScoresForCourseFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.courseScoped.parse(data))
   .handler(async ({ data }) => server.listQuizScoresForCourse(data.courseId, data.token));
+
+/* ---------- Course Meetings ---------- */
+
+export const listCourseMeetingsFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.courseScoped.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireSession(data.token);
+    return server.listCourseMeetings(data.courseId);
+  });
+
+// Course meetings: teachers lead their own course meetings; admins may manage any.
+export const upsertCourseMeetingFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.courseMeeting.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireCourseOwnerOrAdmin(data.token, data.course_id);
+    return server.upsertCourseMeeting(data);
+  });
+
+export const deleteCourseMeetingFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.id.parse(data))
+  .handler(async ({ data }) => {
+    return server.deleteCourseMeeting(data.id, data.token);
+  });
+
+// Meeting membership: teachers lead their own course meetings; admins may manage any.
+export const setMeetingMembersFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.meetingMembers.parse(data))
+  .handler(async ({ data }) => {
+    return server.setMeetingMembers(data.meeting_id, data.student_ids, data.token);
+  });
+
+export const listMeetingMembersFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.id.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireStaff(data.token);
+    return server.listMeetingMembers(data.id);
+  });
+
+/* ---------- Sections & Course Sections ---------- */
+
+export const listSectionsFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.session.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireStaff(data.token);
+    return server.listSections();
+  });
+
+export const createSectionFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.sectionCreate.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireStaff(data.token);
+    return server.createSection(data);
+  });
+
+export const listCourseSectionsFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.courseScoped.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireStaff(data.token);
+    return server.listCourseSections(data.courseId);
+  });
+
+// Course sections: teachers lead their own courses; admins may manage any.
+export const setCourseSectionsFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.courseSectionsLink.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireCourseOwnerOrAdmin(data.token, data.course_id);
+    return server.setCourseSections(data.course_id, data.section_ids);
+  });

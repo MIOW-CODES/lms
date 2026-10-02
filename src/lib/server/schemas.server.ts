@@ -72,6 +72,33 @@ export const schemas = {
     student_ids: z.array(uuid).min(1).max(500),
     ...token,
   }),
+  courseMeeting: z.object({
+    id: uuid.optional(),
+    course_id: uuid,
+    kind: z.enum(["lecture", "lab"]),
+    label: z.string().min(1).max(120),
+    days_of_week: z.array(z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"])).max(7),
+    start_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
+    end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
+    capacity: z.number().int().min(1).max(500).nullable().optional(),
+    sort_order: z.number().int().optional(),
+    ...token,
+  }),
+  meetingMembers: z.object({
+    meeting_id: uuid,
+    student_ids: z.array(uuid).max(500),
+    ...token,
+  }),
+  sectionCreate: z.object({
+    name: z.string().min(1).max(60),
+    education_level: z.enum(["jhs", "shs", "college"]),
+    ...token,
+  }),
+  courseSectionsLink: z.object({
+    course_id: uuid,
+    section_ids: z.array(uuid).max(50),
+    ...token,
+  }),
   attendance: z.object({
     student_id: uuid,
     scan_type: z.enum(["in", "out"]),
@@ -294,6 +321,7 @@ export const schemas = {
     transmuted_final_grade: z.number().min(0).max(100).nullable().optional(),
     overridden_by_teacher: z.boolean().optional(),
     override_notes: z.string().max(2000).nullable().optional(),
+    override_flags: z.record(z.string(), z.any()).optional(),
     ...token,
   }),
   quizBundle: z.object({

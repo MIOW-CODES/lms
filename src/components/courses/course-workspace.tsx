@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
+  Calendar,
   ClipboardList,
   FileQuestion,
   FileSpreadsheet,
@@ -17,6 +18,8 @@ import { WorksheetsSection } from "@/components/courses/worksheets-section";
 import { AssignmentsSection } from "@/components/courses/assignments-section";
 import { ClassRecord } from "@/components/courses/class-record";
 import { EnrollStudentsModal } from "@/components/courses/enroll-students-modal";
+import { MeetingsPanel } from "@/components/courses/meetings-panel";
+import { SectionsPanel } from "@/components/courses/sections-panel";
 import { useCourseRoster } from "@/hooks/useCourseWorkspace";
 import { cn } from "@/lib/utils";
 
@@ -276,6 +279,11 @@ export function StaffCourseWorkspace({
       icon: <Users className="h-4 w-4" />,
       count: roster.length,
     },
+    {
+      id: "schedule",
+      label: "Schedule & Sections",
+      icon: <Calendar className="h-4 w-4" />,
+    },
   ];
 
   return (
@@ -349,6 +357,13 @@ export function StaffCourseWorkspace({
           roster={roster}
           loading={rosterLoading}
         />
+      )}
+
+      {tab === "schedule" && (
+        <div className="space-y-6">
+          <SectionsPanel courseId={course.id} />
+          <MeetingsPanel courseId={course.id} />
+        </div>
       )}
     </CourseWorkspaceShell>
   );

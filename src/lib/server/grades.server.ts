@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/integrations/db/client.server";
 import { unwrap, withoutToken } from "@/lib/server/utils.server";
 import { schemas } from "@/lib/server/schemas.server";
+import { verifySessionToken } from "@/lib/server/sessions.server";
 
 export async function listGradesForStudent(studentId: string) {
   return unwrap<any[]>(db.from("grades").select("*").eq("student_id", studentId));
@@ -15,7 +16,16 @@ export async function listGradesForCourse(courseId: string, quarter: number) {
   );
 }
 
-export async function upsertGrade(input: z.infer<typeof schemas.gradeInput>) {
+export async function upsertGrade(input: z.infer<typeof schemas.gradeInput>, callerId?: string) {
+  let resolvedCallerId = callerId;
+  if (!resolvedCallerId && input.token) {
+    try {
+      resolvedCallerId = verifySessionToken(input.token);
+    } catch {
+      // leave unset rather than guessing
+    }
+  }
+
   const existing = await unwrap<{ id: string } | null>(
     db
       .from("grades")
@@ -25,7 +35,32 @@ export async function upsertGrade(input: z.infer<typeof schemas.gradeInput>) {
       .eq("quarter", input.quarter)
       .maybeSingle(),
   );
-  const row = withoutToken(input);
+
+  const row: Record<string, any> = withoutToken(input);
+
+  if (input.override_flags !== undefined) {
+    const rawFlags =
+      input.override_flags && typeof input.override_flags === "object" ? input.override_flags : {};
+    const flags: Record<string, any> = {};
+    const nowIso = new Date().toISOString();
+    for (const [key, val] of Object.entries(rawFlags)) {
+      if (val && typeof val === "object") {
+        flags[key] = {
+          ...val,
+          at: (val as any).at ?? nowIso,
+          ...(resolvedCallerId && !(val as any).by ? { by: resolvedCallerId } : {}),
+        };
+      } else {
+        flags[key] = val;
+      }
+    }
+    const hasOverride = ["ww", "pt", "ex"].some(
+      (k) => k in flags && flags[k] !== null && flags[k] !== undefined,
+    );
+    row["override_flags"] = flags;
+    row["overridden_by_teacher"] = hasOverride;
+  }
+
   if (existing) await unwrap(db.from("grades").update(row).eq("id", existing.id));
   else await unwrap(db.from("grades").insert(row));
 }

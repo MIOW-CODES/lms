@@ -79,7 +79,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      {
+        name: "viewport",
+        content: "width=device-width, initial-scale=1, viewport-fit=cover",
+      },
       { title: "MIOW - Integrated Developmental School" },
       {
         name: "description",
@@ -87,6 +90,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "Integrated Developmental School (MIOW): RFID kiosk attendance, courses, timed worksheets, and DepEd-compliant grading for junior and senior high school.",
       },
       { name: "author", content: "Joseph Vergara" },
+      { name: "theme-color", content: "#800000" },
+      // iOS / WebKit home-screen (PWA) metadata — Safari ignores manifest icons.
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "MIOW LMS" },
       { property: "og:title", content: "MIOW - Integrated Developmental School" },
       {
         property: "og:description",
@@ -98,6 +106,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon-180x180.png" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
@@ -138,6 +148,30 @@ function RootComponent() {
   // One-time cleanup of dead pre-rename keys (see clearLegacyPreferences).
   useEffect(() => {
     clearLegacyPreferences();
+
+    // PWA service worker: production-only and browser-only (this code also runs
+    // during SSR, where navigator/window do not exist).
+    if (import.meta.env.PROD && typeof window !== "undefined" && "serviceWorker" in navigator) {
+      import("virtual:pwa-register")
+        .then(({ registerSW }) => {
+          registerSW({
+            immediate: true,
+            onRegisteredSW(_swUrl, registration) {
+              // Long-running kiosk displays stay open for days — poll hourly
+              // so a redeploy is picked up without a manual refresh.
+              if (registration) {
+                window.setInterval(() => registration.update(), 60 * 60 * 1000);
+              }
+            },
+            onRegisterError(error) {
+              reportError(error, { boundary: "pwa_service_worker_registration" });
+            },
+          });
+        })
+        .catch((error) => {
+          reportError(error, { boundary: "pwa_register_module_load" });
+        });
+    }
   }, []);
 
   return (

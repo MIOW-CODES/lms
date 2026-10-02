@@ -6,9 +6,11 @@ import {
   createProfileFn,
   createOrEnrollStudentFn,
   createQuizWithQuestionsFn,
+  createSectionFn,
   deleteAnnouncementFn,
   deleteAttendanceLogFn,
   deleteCourseFn,
+  deleteCourseMeetingFn,
   deleteProfileFn,
   enrollStudentFn,
   enrollStudentsFn,
@@ -22,12 +24,16 @@ import {
   listAnnouncementsFn,
   listAssignmentsFn,
   listAttendanceFn,
+  listCourseMeetingsFn,
+  listCourseSectionsFn,
   listCoursesFn,
   listGradesForCourseFn,
   listGradesForStudentFn,
+  listMeetingMembersFn,
   listQuizAttemptsFn,
   listQuizScoresForCourseFn,
   listQuizzesFn,
+  listSectionsFn,
   listStaffFn,
   listStudentsFn,
   listSubmissionsForStudentFn,
@@ -62,6 +68,9 @@ import {
   updateUserRoleFn,
   uploadAvatarFn,
   upsertGradeFn,
+  upsertCourseMeetingFn,
+  setMeetingMembersFn,
+  setCourseSectionsFn,
   pinLoginFn,
   uploadSubmissionFileFn,
   listSubmissionsForAssignmentFn,
@@ -347,6 +356,37 @@ export interface QuizQuestion {
 /** Quiz question as served to students — the answer key stays on the server. */
 export type QuizQuestionPublic = Omit<QuizQuestion, "correct_answer">;
 
+export interface CourseMeeting {
+  id: string;
+  course_id: string;
+  kind: "lecture" | "lab";
+  label: string;
+  days_of_week: string[];
+  start_time: string;
+  end_time: string;
+  capacity: number | null;
+  sort_order: number;
+}
+
+export interface Section {
+  id: string;
+  name: string;
+  education_level: "jhs" | "shs" | "college";
+  program?: string | null;
+  college_year?: number | null;
+  adviser_id?: string | null;
+}
+
+export interface CourseSection extends Section {
+  student_count?: number;
+}
+
+export interface GradeOverrideFlag {
+  note?: string | null;
+  by?: string;
+  at?: string;
+}
+
 export interface Grade {
   id: string;
   student_id: string;
@@ -360,6 +400,7 @@ export interface Grade {
   override_notes?: string | null;
   overridden_at?: string | null;
   overridden_by?: string | null;
+  override_flags?: Record<string, GradeOverrideFlag>;
 }
 
 export type AttendanceStatus = "on-time" | "late" | "excused";
@@ -1352,4 +1393,91 @@ export async function updateAssignment(
 
 export async function deleteAssignment(id: string, mode: "soft" | "hard" = "soft"): Promise<void> {
   await deleteAssignmentFn({ data: { id, mode, token: sessionToken() } });
+}
+
+/* ---------- Course Meetings & Timetable ---------- */
+
+export async function listCourseMeetings(courseId: string): Promise<CourseMeeting[]> {
+  return (await listCourseMeetingsFn({
+    data: { courseId, token: sessionToken() },
+  })) as CourseMeeting[];
+}
+
+export async function upsertCourseMeeting(input: {
+  id?: string;
+  course_id: string;
+  kind: "lecture" | "lab";
+  label: string;
+  days_of_week: string[];
+  start_time: string;
+  end_time: string;
+  capacity?: number | null;
+  sort_order?: number;
+}): Promise<CourseMeeting> {
+  const res = (await upsertCourseMeetingFn({
+    data: { ...(input as object), token: sessionToken() } as Record<string, unknown>,
+  })) as CourseMeeting;
+  logAudit(
+    input.id ? "Course meeting updated" : "Course meeting created",
+    `${input.label} (${input.kind})`,
+  );
+  return res;
+}
+
+export async function deleteCourseMeeting(id: string): Promise<void> {
+  await deleteCourseMeetingFn({
+    data: { id, token: sessionToken() },
+  });
+  logAudit("Course meeting deleted", `Meeting ${id}`);
+}
+
+export async function setMeetingMembers(meetingId: string, studentIds: string[]): Promise<void> {
+  await setMeetingMembersFn({
+    data: { meeting_id: meetingId, student_ids: studentIds, token: sessionToken() } as Record<
+      string,
+      unknown
+    >,
+  });
+  logAudit("Meeting members updated", `Meeting ${meetingId} · ${studentIds.length} members`);
+}
+
+export async function listMeetingMembers(meetingId: string): Promise<string[]> {
+  return (await listMeetingMembersFn({
+    data: { id: meetingId, token: sessionToken() },
+  })) as string[];
+}
+
+/* ---------- Sections & Course Sections ---------- */
+
+export async function listSections(): Promise<Section[]> {
+  return (await listSectionsFn({
+    data: { token: sessionToken() },
+  })) as Section[];
+}
+
+export async function createSection(input: {
+  name: string;
+  education_level: "jhs" | "shs" | "college";
+}): Promise<Section> {
+  const res = (await createSectionFn({
+    data: { ...(input as object), token: sessionToken() } as Record<string, unknown>,
+  })) as Section;
+  logAudit("Section created", `${input.name} (${input.education_level})`);
+  return res;
+}
+
+export async function listCourseSections(courseId: string): Promise<CourseSection[]> {
+  return (await listCourseSectionsFn({
+    data: { courseId, token: sessionToken() },
+  })) as CourseSection[];
+}
+
+export async function setCourseSections(courseId: string, sectionIds: string[]): Promise<void> {
+  await setCourseSectionsFn({
+    data: { course_id: courseId, section_ids: sectionIds, token: sessionToken() } as Record<
+      string,
+      unknown
+    >,
+  });
+  logAudit("Course sections updated", `Course ${courseId} · ${sectionIds.length} sections`);
 }

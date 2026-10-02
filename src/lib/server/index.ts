@@ -96,6 +96,21 @@ export {
 export { listGradesForStudent, listGradesForCourse, upsertGrade } from "./grades.server";
 
 export {
+  listCourseMeetings,
+  upsertCourseMeeting,
+  deleteCourseMeeting,
+  setMeetingMembers,
+  listMeetingMembers,
+} from "./meetings.server";
+
+export {
+  listSections,
+  createSection,
+  listCourseSections,
+  setCourseSections,
+} from "./sections.server";
+
+export {
   listAttendance,
   listAllAttendance,
   logAttendance,

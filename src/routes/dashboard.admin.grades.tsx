@@ -21,9 +21,22 @@ import {
   type AttendanceLog,
   listQuizScoresForCourse,
   type QuizCourseScore,
+  type GradeOverrideFlag,
 } from "@/lib/lms";
 import { buildXlsx, downloadBlob, type XlsxCell } from "@/lib/xlsx";
 import { ClassRecord } from "@/components/courses/class-record";
+import {
+  OverrideFlagToggle,
+  BulkColumnMenu,
+  BulkFillModal,
+  COLUMN_CONFIG,
+  applyBulkColumnFill,
+  clearColumnOverridesForRoster,
+  extractOverrideFlagsPayload,
+  formatOverridesSummary,
+  type ColumnKey,
+  type OverridesState,
+} from "@/components/courses/grade-overrides";
 import {
   TEACHER_NAV,
   AppShell,
@@ -83,6 +96,8 @@ export function GradebookPage() {
   const [quarter, setQuarter] = useState(1);
   const [section, setSection] = useState("all");
   const [cells, setCells] = useState<Record<string, CellState>>({});
+  const [overrides, setOverrides] = useState<OverridesState>({});
+  const [bulkFillColumn, setBulkFillColumn] = useState<ColumnKey | null>(null);
   const [saving, setSaving] = useState(false);
   const [published, setPublished] = useState(false);
   const [gradeTab, setGradeTab] = useState<"grades" | "quizzes" | "class">("grades");
@@ -130,14 +145,32 @@ export function GradebookPage() {
 
   useEffect(() => {
     const next: Record<string, CellState> = {};
+    const nextOverrides: OverridesState = {};
     (existing ?? []).forEach((g) => {
       next[g.student_id] = {
         ww: g.written_work_score?.toString() ?? "",
         pt: g.performance_task_score?.toString() ?? "",
         ex: g.exam_score?.toString() ?? "",
       };
+      if (g.override_flags && typeof g.override_flags === "object") {
+        const studentFlags: Partial<Record<ColumnKey, GradeOverrideFlag>> = {};
+        (["ww", "pt", "ex"] as const).forEach((col) => {
+          const flag = g.override_flags?.[col];
+          if (flag) {
+            studentFlags[col] = {
+              note: flag.note ?? null,
+              ...(flag.by ? { by: flag.by } : {}),
+              ...(flag.at ? { at: flag.at } : {}),
+            };
+          }
+        });
+        if (Object.keys(studentFlags).length > 0) {
+          nextOverrides[g.student_id] = studentFlags;
+        }
+      }
     });
     setCells(next);
+    setOverrides(nextOverrides);
     setPublished((existing ?? []).length > 0);
   }, [existing]);
 
@@ -192,12 +225,16 @@ export function GradebookPage() {
       let n = 0;
       const valid = roster.filter((s) => {
         const c = cells[s.id];
-        return c && (c.ww !== "" || c.pt !== "" || c.ex !== "");
+        const ovr = overrides[s.id];
+        const hasScores = c && (c.ww !== "" || c.pt !== "" || c.ex !== "");
+        const hasOverrides = ovr && (ovr.ww || ovr.pt || ovr.ex);
+        return hasScores || hasOverrides;
       });
       await Promise.all(
         valid.map((s) => {
-          const c = cells[s.id]!;
+          const c = cells[s.id] ?? { ww: "", pt: "", ex: "" };
           const initial = weightedInitial(num(c.ww), num(c.pt), num(c.ex), attOf(s.id));
+          const override_flags = extractOverrideFlagsPayload(overrides[s.id]);
           return upsertGrade({
             student_id: s.id,
             course_id: courseId,
@@ -206,6 +243,7 @@ export function GradebookPage() {
             performance_task_score: num(c.pt),
             exam_score: num(c.ex),
             transmuted_final_grade: initial != null ? transmute(initial) : null,
+            override_flags,
           });
         }),
       );
@@ -221,6 +259,50 @@ export function GradebookPage() {
     }
   };
 
+  const handleToggleOverride = (studentId: string, col: ColumnKey) => {
+    setOverrides((prev) => {
+      const studentOvr = { ...(prev[studentId] ?? {}) };
+      if (studentOvr[col]) {
+        delete studentOvr[col];
+      } else {
+        studentOvr[col] = { note: null };
+      }
+      return { ...prev, [studentId]: studentOvr };
+    });
+  };
+
+  const handleUpdateOverrideNote = (studentId: string, col: ColumnKey, note: string) => {
+    setOverrides((prev) => {
+      const studentOvr = { ...(prev[studentId] ?? {}) };
+      const existingFlag = studentOvr[col] ?? {};
+      const trimmed = note.trim();
+      studentOvr[col] = {
+        ...existingFlag,
+        note: trimmed ? trimmed.slice(0, 500) : null,
+      };
+      return { ...prev, [studentId]: studentOvr };
+    });
+  };
+
+  const handleBulkFill = (col: ColumnKey, score: string, note: string) => {
+    const visibleIds = visibleRoster.map((s) => s.id);
+    const res = applyBulkColumnFill(cells, overrides, visibleIds, col, score, note);
+    setCells(res.cells);
+    setOverrides(res.overrides);
+    toast.success(
+      `Filled ${COLUMN_CONFIG[col].short} for ${visibleIds.length} visible student${visibleIds.length === 1 ? "" : "s"}.`,
+    );
+  };
+
+  const handleClearColumnOverrides = (col: ColumnKey) => {
+    const visibleIds = visibleRoster.map((s) => s.id);
+    const nextOverrides = clearColumnOverridesForRoster(overrides, visibleIds, col);
+    setOverrides(nextOverrides);
+    toast.success(
+      `Cleared ${COLUMN_CONFIG[col].short} overrides for ${visibleIds.length} visible student${visibleIds.length === 1 ? "" : "s"}.`,
+    );
+  };
+
   const exportCsv = () => {
     const header = [
       "Student No",
@@ -233,10 +315,12 @@ export function GradebookPage() {
       "Initial",
       "Transmuted",
       "Remarks",
+      "Overrides",
     ];
     const rows = visibleRoster.map((s) => {
       const c = cells[s.id] ?? { ww: "", pt: "", ex: "" };
       const p = preview(s.id);
+      const ovr = formatOverridesSummary(overrides[s.id]);
       return [
         s.student_id ?? "",
         s.full_name,
@@ -248,6 +332,7 @@ export function GradebookPage() {
         p ? p.initial.toFixed(1) : "",
         p ? String(p.t) : "",
         p ? gradeRemarks(p.t) : "",
+        ovr,
       ];
     });
     const csv = [header, ...rows]
@@ -275,10 +360,12 @@ export function GradebookPage() {
       "Initial",
       "Transmuted",
       "Remarks",
+      "Overrides",
     ];
     const body: XlsxCell[][] = visibleRoster.map((s) => {
       const c = cells[s.id] ?? { ww: "", pt: "", ex: "" };
       const p = preview(s.id);
+      const ovr = formatOverridesSummary(overrides[s.id]);
       return [
         s.student_id ?? "",
         s.full_name,
@@ -290,6 +377,7 @@ export function GradebookPage() {
         p ? Number(p.initial.toFixed(1)) : "",
         p ? p.t : "",
         p ? gradeRemarks(p.t) : "",
+        ovr,
       ];
     });
     const termTag = termLabel(quarter, course).replace(/[^A-Za-z0-9]+/g, "-");
@@ -310,7 +398,7 @@ export function GradebookPage() {
       <p className="mb-6 mt-1 text-sm text-muted-foreground">
         Enter component scores (0–100). The final grade is weighted Attendance 10% · WW 20% ·
         Periodical Exam 30% · PT 40% and transmuted automatically. Attendance is pulled from gate
-        logs.
+        logs. Component cells can be flagged as teacher overrides with optional notes.
       </p>
 
       <div className="mb-5 flex flex-wrap gap-3">
@@ -452,9 +540,42 @@ export function GradebookPage() {
                   <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                     <th className="p-4">Student</th>
                     <th className="p-4 text-center">Att (10%)</th>
-                    <th className="p-4 text-center">WW (20%)</th>
-                    <th className="p-4 text-center">PT (40%)</th>
-                    <th className="p-4 text-center">Exam (30%)</th>
+                    <th className="p-4 text-center">
+                      <div className="inline-flex items-center justify-center gap-1.5">
+                        <span>WW (20%)</span>
+                        <BulkColumnMenu
+                          columnKey="ww"
+                          columnTitle="WW"
+                          visibleCount={visibleRoster.length}
+                          onOpenFill={() => setBulkFillColumn("ww")}
+                          onClear={() => handleClearColumnOverrides("ww")}
+                        />
+                      </div>
+                    </th>
+                    <th className="p-4 text-center">
+                      <div className="inline-flex items-center justify-center gap-1.5">
+                        <span>PT (40%)</span>
+                        <BulkColumnMenu
+                          columnKey="pt"
+                          columnTitle="PT"
+                          visibleCount={visibleRoster.length}
+                          onOpenFill={() => setBulkFillColumn("pt")}
+                          onClear={() => handleClearColumnOverrides("pt")}
+                        />
+                      </div>
+                    </th>
+                    <th className="p-4 text-center">
+                      <div className="inline-flex items-center justify-center gap-1.5">
+                        <span>Exam (30%)</span>
+                        <BulkColumnMenu
+                          columnKey="ex"
+                          columnTitle="Exam"
+                          visibleCount={visibleRoster.length}
+                          onOpenFill={() => setBulkFillColumn("ex")}
+                          onClear={() => handleClearColumnOverrides("ex")}
+                        />
+                      </div>
+                    </th>
                     <th className="p-4 text-center">Initial</th>
                     <th className="p-4 text-center">Transmuted</th>
                     <th className="p-4">Remarks</th>
@@ -486,18 +607,35 @@ export function GradebookPage() {
                         <td className="p-4 text-center text-muted-foreground">
                           {attOf(s.id) ?? "—"}
                         </td>
-                        {(["ww", "pt", "ex"] as const).map((k) => (
-                          <td key={k} className="p-4 text-center">
-                            <input
-                              value={c[k]}
-                              onChange={setCell(k)}
-                              inputMode="decimal"
-                              placeholder="—"
-                              aria-label={`${k === "ww" ? "Written work" : k === "pt" ? "Performance task" : "Exam"} score for ${s.full_name}`}
-                              className="h-9 w-20 rounded-lg border border-input bg-background text-center text-sm outline-none focus:ring-2 focus:ring-ring"
-                            />
-                          </td>
-                        ))}
+                        {(["ww", "pt", "ex"] as const).map((k) => {
+                          const isOverridden = !!overrides[s.id]?.[k];
+                          const overrideFlag = overrides[s.id]?.[k] ?? null;
+                          return (
+                            <td key={k} className="p-4 text-center">
+                              <div className="inline-flex items-center justify-center gap-1">
+                                <input
+                                  value={c[k]}
+                                  onChange={setCell(k)}
+                                  inputMode="decimal"
+                                  placeholder="—"
+                                  aria-label={`${k === "ww" ? "Written work" : k === "pt" ? "Performance task" : "Exam"} score for ${s.full_name}`}
+                                  className={cn(
+                                    "h-9 w-20 rounded-lg border border-input bg-background text-center text-sm outline-none transition-colors focus:ring-2 focus:ring-ring",
+                                    isOverridden &&
+                                      "border-amber-500/70 border-l-[3px] border-l-amber-500 bg-amber-500/5 font-medium dark:border-amber-400/60 dark:border-l-amber-400 dark:bg-amber-400/10",
+                                  )}
+                                />
+                                <OverrideFlagToggle
+                                  studentName={s.full_name}
+                                  columnKey={k}
+                                  override={overrideFlag}
+                                  onToggle={() => handleToggleOverride(s.id, k)}
+                                  onUpdateNote={(note) => handleUpdateOverrideNote(s.id, k, note)}
+                                />
+                              </div>
+                            </td>
+                          );
+                        })}
                         <td className="p-4 text-center">{p ? p.initial.toFixed(1) : "—"}</td>
                         <td className="p-4 text-center">
                           <span
@@ -620,6 +758,20 @@ export function GradebookPage() {
       {gradeTab === "class" && courseId && (
         <ClassRecord courseId={courseId} courseCode={course?.code ?? ""} roster={visibleRoster} />
       )}
+
+      <BulkFillModal
+        open={bulkFillColumn !== null}
+        onClose={() => setBulkFillColumn(null)}
+        columnKey={bulkFillColumn}
+        columnTitle={bulkFillColumn ? COLUMN_CONFIG[bulkFillColumn].label : ""}
+        visibleCount={visibleRoster.length}
+        activeSection={section}
+        onApply={(score, note) => {
+          if (bulkFillColumn) {
+            handleBulkFill(bulkFillColumn, score, note);
+          }
+        }}
+      />
     </AppShell>
   );
 }
