@@ -21,25 +21,11 @@ export const DEFAULT_DEPARTMENTS = [
 ];
 
 /**
- * Curated baseline options for the creatable student-section dropdowns.
- *
- * Merged with the distinct `profiles.section` values already in the database so
- * admins can pick an existing section or type a brand-new one inline.
+ * Section dropdowns are built solely from distinct `profiles.section` values
+ * already in the database (see the admin students route / enroll modal), so a
+ * section only appears once a student actually belongs to it. A brand-new
+ * section can still be typed inline via `CreatableSelect`.
  */
-export const DEFAULT_STUDENT_SECTIONS = [
-  "Rizal",
-  "Bonifacio",
-  "Mabini",
-  "Luna",
-  "Del Pilar",
-  "Aguinaldo",
-  "Silang",
-  "Jacinto",
-  "Gomez",
-  "Burgos",
-  "Zamora",
-  "Lapu-Lapu",
-];
 
 /** Sentinel used in component state to mean "no section filter applied". */
 export const ALL_SECTIONS_VALUE = "all";

@@ -3,7 +3,6 @@ import {
   ALL_SECTIONS_LABEL,
   ALL_SECTIONS_VALUE,
   DEFAULT_DEPARTMENTS,
-  DEFAULT_STUDENT_SECTIONS,
   resolveSectionFilter,
 } from "./constants";
 
@@ -15,14 +14,6 @@ describe("constants", () => {
     expect(DEFAULT_DEPARTMENTS).toContain("Science");
     expect(DEFAULT_DEPARTMENTS).toContain("English");
     expect(DEFAULT_DEPARTMENTS).toContain("Computer Studies");
-  });
-
-  it("exports non-empty DEFAULT_STUDENT_SECTIONS containing typical section names", () => {
-    expect(Array.isArray(DEFAULT_STUDENT_SECTIONS)).toBe(true);
-    expect(DEFAULT_STUDENT_SECTIONS.length).toBeGreaterThan(0);
-    expect(DEFAULT_STUDENT_SECTIONS).toContain("Rizal");
-    expect(DEFAULT_STUDENT_SECTIONS).toContain("Bonifacio");
-    expect(DEFAULT_STUDENT_SECTIONS).toContain("Mabini");
   });
 
   it("resolveSectionFilter maps the reset label and empty value to the all sentinel", () => {

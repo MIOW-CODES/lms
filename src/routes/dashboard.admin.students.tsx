@@ -38,7 +38,6 @@ import {
 } from "@/components/lms";
 import { gradeLevelLabel } from "@/lib/utils";
 import { CreatableSelect } from "@/components/ui/creatable-select";
-import { DEFAULT_STUDENT_SECTIONS } from "@/lib/constants";
 
 export const Route = createFileRoute("/dashboard/admin/students")({
   head: () => ({
@@ -92,7 +91,7 @@ function StudentsPage() {
   const [selected, setSelected] = useState<Profile | null>(null);
 
   const sections = useMemo(() => {
-    const set = new Set(DEFAULT_STUDENT_SECTIONS);
+    const set = new Set<string>();
     (students ?? []).forEach((s) => {
       if (s.section?.trim()) set.add(s.section.trim());
     });
@@ -362,7 +361,7 @@ function StudentsPage() {
             value={form.section}
             onChange={(val) => setForm((f) => ({ ...f, section: val }))}
             options={sections}
-            placeholder="Section (e.g. Rizal)"
+            placeholder="Section (e.g. Omega)"
             searchPlaceholder="Search or type new section..."
             createPlaceholder="Add"
             emptyText="No sections found."
@@ -525,7 +524,7 @@ function StudentProfileModal({
               value={editSection}
               onChange={setEditSection}
               options={sections}
-              placeholder="Assign section (e.g. Rizal)"
+              placeholder="Assign section (e.g. Omega)"
               searchPlaceholder="Search or type section..."
               createPlaceholder="Assign"
               label="Student section"

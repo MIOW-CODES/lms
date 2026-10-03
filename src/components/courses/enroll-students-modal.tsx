@@ -6,12 +6,7 @@ import { enrollStudents, listStudents, type Profile } from "@/lib/lms";
 import { Modal } from "@/components/lms";
 import { UserAvatar } from "@/components/ui-elements";
 import { CreatableSelect } from "@/components/ui/creatable-select";
-import {
-  ALL_SECTIONS_LABEL,
-  ALL_SECTIONS_VALUE,
-  DEFAULT_STUDENT_SECTIONS,
-  resolveSectionFilter,
-} from "@/lib/constants";
+import { ALL_SECTIONS_LABEL, ALL_SECTIONS_VALUE, resolveSectionFilter } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 /**
@@ -52,7 +47,7 @@ export function EnrollStudentsModal({
   const enrolled = useMemo(() => new Set(enrolledIds), [enrolledIds]);
 
   const availableSections = useMemo(() => {
-    const set = new Set(DEFAULT_STUDENT_SECTIONS);
+    const set = new Set<string>();
     (students ?? []).forEach((s) => {
       if (s.section?.trim()) set.add(s.section.trim());
     });

@@ -24,7 +24,7 @@ export default defineConfig({
       // and on Vercel /sw.js 404 while manifest.webmanifest 200s). Pin it to
       // the real client outDir per environment:
       //   local Nitro → .output/public · Vercel Build Output API → .vercel/output/static
-      outDir: process.env.VERCEL ? ".vercel/output/static" : ".output/public",
+      outDir: process.env["VERCEL"] ? ".vercel/output/static" : ".output/public",
       registerType: "autoUpdate",
       // Registration is done manually in src/routes/__root.tsx (SSR-safe, prod-only).
       injectRegister: null,
