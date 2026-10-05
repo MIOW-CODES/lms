@@ -58,3 +58,4 @@ supabase/.temp/
 *.heapsnapshot
 .vercel
 .env*
+.pglite-data/
