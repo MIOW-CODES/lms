@@ -21,6 +21,7 @@
     "ci": "bun run typecheck && bun run lint && bun run test:e2e",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
+    "db:pglite": "bun run scripts/dev-pg.mts",
     "db:migrate": "bun run scripts/migrate.ts",
     "db:seed": "bun run scripts/seed.ts",
     "db:import-subjects": "bun run scripts/import-subjects.ts",
@@ -103,6 +104,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-socket": "^0.2.11",
     "@eslint/js": "^9.32.0",
     "@playwright/test": "^1.62.1",
     "@types/bcryptjs": "^3.0.0",
