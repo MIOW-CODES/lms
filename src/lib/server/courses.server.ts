@@ -6,8 +6,9 @@ import { unwrap, withoutToken, isUniqueViolation } from "@/lib/server/utils.serv
 import { requireStaff } from "@/lib/server/auth.server";
 import { schemas } from "@/lib/server/schemas.server";
 import { createProfile, getProfileById, updateProfile } from "@/lib/server/profiles.server";
+import { addMeetingMembers } from "@/lib/server/meetings.server";
 import { type ProfileRole } from "@/lib/server/db-types";
-import { ENROLLMENT_ERRORS } from "@/lib/enrollment";
+import { ENROLLMENT_ERRORS, type BulkAddResult, type BulkAddRowOutcome } from "@/lib/enrollment";
 
 export async function listCourses() {
   const courses = await unwrap<any[]>(db.from("courses").select("*").order("code"));
@@ -227,6 +228,72 @@ export async function createOrEnrollStudent(
 
   if (course_id) await enrollStudent(profile.id, course_id);
   return { profile, created, enrolled: !!course_id };
+}
+
+/**
+ * Bulk roster import: create-or-enroll every row of a pasted class list in one
+ * call, optionally into a course and one of its meetings (lecture/lab).
+ *
+ * Reuses {@link createOrEnrollStudent} per row, so identity matching and the
+ * student-only safety rules stay identical to the one-by-one form. Each row is
+ * independent — one bad row reports a failure without sinking the batch — and
+ * meeting membership is APPENDED (never replaced) so a running import cannot
+ * clobber memberships another staff member is editing.
+ */
+export async function bulkAddStudents(
+  input: z.infer<typeof schemas.bulkStudentEnroll>,
+  caller: { id: string; role: ProfileRole },
+): Promise<BulkAddResult> {
+  const { students, course_id, meeting_id, token } = input;
+
+  if (meeting_id) {
+    if (!course_id) throw new Error("Pick a course before assigning a meeting.");
+    const meeting = await unwrap<{ course_id: string } | null>(
+      db.from("course_meetings").select("course_id").eq("id", meeting_id).maybeSingle(),
+    );
+    if (!meeting) throw new Error("Course meeting not found");
+    if (meeting.course_id !== course_id) throw new Error("That meeting belongs to another course.");
+  }
+
+  const rows: BulkAddRowOutcome[] = [];
+  const savedIds: string[] = [];
+  for (let index = 0; index < students.length; index++) {
+    const row = students[index]!;
+    try {
+      const { profile, created } = await createOrEnrollStudent(
+        { ...row, role: "student", course_id: course_id ?? null, token },
+        caller,
+      );
+      rows.push({
+        index,
+        full_name: profile.full_name || row.full_name,
+        status: created ? "created" : "existing",
+        profile_id: profile.id,
+      });
+      savedIds.push(profile.id);
+    } catch (e) {
+      rows.push({
+        index,
+        full_name: row.full_name,
+        status: "failed",
+        profile_id: null,
+        error: e instanceof Error ? e.message : "Could not save student",
+      });
+    }
+  }
+
+  let meeting_added: number | null = null;
+  if (meeting_id && savedIds.length) {
+    meeting_added = (await addMeetingMembers(meeting_id, savedIds)).added;
+  }
+
+  return {
+    added: rows.filter((r) => r.status === "created").length,
+    linked: rows.filter((r) => r.status === "existing").length,
+    enrolled: course_id ? savedIds.length : 0,
+    meeting_added,
+    rows,
+  };
 }
 
 export async function listSubmissionsForStudent(studentId: string) {

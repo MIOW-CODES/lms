@@ -1,18 +1,20 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Search, UserPlus } from "lucide-react";
+import { ClipboardPaste, Search, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { enrollStudents, listStudents, type Profile } from "@/lib/lms";
 import { Modal } from "@/components/lms";
 import { UserAvatar } from "@/components/ui-elements";
 import { CreatableSelect } from "@/components/ui/creatable-select";
+import { BulkAddStudentsContent } from "@/components/courses/bulk-add-students";
 import { ALL_SECTIONS_LABEL, ALL_SECTIONS_VALUE, resolveSectionFilter } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 /**
- * Enroll existing students into one course. Shows every student not already
- * enrolled in the course, with search + multi-select. Enrolling is idempotent
- * server-side, so double-clicks / repeats are safe.
+ * Enroll students into one course. Two modes:
+ *  - "pick": every student not already enrolled, with search + multi-select;
+ *  - "paste": the bulk-add flow for pasting a whole class list at once.
+ * Enrolling is idempotent server-side, so double-clicks / repeats are safe.
  */
 export function EnrollStudentsModal({
   courseId,
@@ -30,6 +32,7 @@ export function EnrollStudentsModal({
   onEnrolled?: () => void;
 }) {
   const qc = useQueryClient();
+  const [mode, setMode] = useState<"pick" | "paste">("pick");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sectionFilter, setSectionFilter] = useState(ALL_SECTIONS_VALUE);
@@ -101,6 +104,7 @@ export function EnrollStudentsModal({
     if (saving) return;
     setSelected(new Set());
     setSearch("");
+    setMode("pick");
     onClose();
   };
 
@@ -118,95 +122,139 @@ export function EnrollStudentsModal({
       title={courseLabel ? `Enroll students — ${courseLabel}` : "Enroll students"}
       wide
     >
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-        <label className="relative flex-1 block">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Search students to enroll"
-            placeholder="Search name, student no., email or section…"
-            className="h-11 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
-        </label>
-        <div className="w-full sm:w-48">
-          <CreatableSelect
-            value={sectionFilter === ALL_SECTIONS_VALUE ? "" : sectionFilter}
-            onChange={(val) => setSectionFilter(resolveSectionFilter(val))}
-            options={[ALL_SECTIONS_LABEL, ...availableSections]}
-            placeholder={ALL_SECTIONS_LABEL}
-            searchPlaceholder="Filter section..."
-            createPlaceholder="Filter"
-            emptyText="No sections found."
-            label="Filter students by section"
-          />
-        </div>
+      {/* Mode switch: pick from the roster, or paste a whole class list. */}
+      <div className="mb-4 flex flex-wrap gap-1 rounded-xl bg-muted/80 p-1 backdrop-blur-sm">
+        <button
+          type="button"
+          onClick={() => setMode("pick")}
+          className={cn(
+            "flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors",
+            mode === "pick"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <UserPlus className="h-3.5 w-3.5" /> Choose from roster
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("paste")}
+          className={cn(
+            "flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors",
+            mode === "paste"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <ClipboardPaste className="h-3.5 w-3.5" /> Paste a class list
+        </button>
       </div>
 
-      {isPending ? (
-        <div className="grid gap-1.5 sm:grid-cols-2">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-14 animate-pulse rounded-xl bg-muted" />
-          ))}
-        </div>
-      ) : candidates.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-          {(students ?? []).length === 0
-            ? "No students exist yet — add a student first."
-            : "Every matching student is already enrolled in this course."}
-        </p>
+      {mode === "paste" ? (
+        <BulkAddStudentsContent
+          onClose={close}
+          courseId={courseId}
+          {...(courseLabel ? { courseLabel } : {})}
+          courseLocked
+          onDone={() => {
+            qc.invalidateQueries({ queryKey: ["enrollments", courseId] });
+            qc.invalidateQueries({ queryKey: ["students"] });
+            onEnrolled?.();
+          }}
+        />
       ) : (
-        <ul className="grid gap-1.5 sm:grid-cols-2">
-          {candidates.map((s: Profile) => {
-            const checked = selected.has(s.id);
-            return (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  onClick={() => toggle(s.id)}
-                  aria-pressed={checked}
-                  aria-label={`${checked ? "Deselect" : "Select"} ${s.full_name}`}
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition",
-                    checked
-                      ? "border-primary bg-primary/5 ring-1 ring-primary"
-                      : "border-border/70 bg-background/50 hover:bg-muted",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold",
-                      checked
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-muted-foreground/40",
-                    )}
-                    aria-hidden
-                  >
-                    {checked ? "✓" : ""}
-                  </span>
-                  <UserAvatar name={s.full_name} src={s.avatar_url} className="h-8 w-8" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold">{s.full_name}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
-                      {s.student_id ?? "—"}
-                      {s.section ? ` · ${s.section}` : ""}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+        <>
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <label className="relative flex-1 block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search students to enroll"
+                placeholder="Search name, student no., email or section…"
+                className="h-11 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+            </label>
+            <div className="w-full sm:w-48">
+              <CreatableSelect
+                value={sectionFilter === ALL_SECTIONS_VALUE ? "" : sectionFilter}
+                onChange={(val) => setSectionFilter(resolveSectionFilter(val))}
+                options={[ALL_SECTIONS_LABEL, ...availableSections]}
+                placeholder={ALL_SECTIONS_LABEL}
+                searchPlaceholder="Filter section..."
+                createPlaceholder="Filter"
+                emptyText="No sections found."
+                label="Filter students by section"
+              />
+            </div>
+          </div>
 
-      <button
-        onClick={submit}
-        disabled={saving || selected.size === 0}
-        className="mt-4 flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-      >
-        <UserPlus className="h-4 w-4" />
-        {submitLabel}
-      </button>
+          {isPending ? (
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-14 animate-pulse rounded-xl bg-muted" />
+              ))}
+            </div>
+          ) : candidates.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+              {(students ?? []).length === 0
+                ? "No students exist yet — add a student first."
+                : "Every matching student is already enrolled in this course."}
+            </p>
+          ) : (
+            <ul className="grid gap-1.5 sm:grid-cols-2">
+              {candidates.map((s: Profile) => {
+                const checked = selected.has(s.id);
+                return (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      onClick={() => toggle(s.id)}
+                      aria-pressed={checked}
+                      aria-label={`${checked ? "Deselect" : "Select"} ${s.full_name}`}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition",
+                        checked
+                          ? "border-primary bg-primary/5 ring-1 ring-primary"
+                          : "border-border/70 bg-background/50 hover:bg-muted",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold",
+                          checked
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-muted-foreground/40",
+                        )}
+                        aria-hidden
+                      >
+                        {checked ? "✓" : ""}
+                      </span>
+                      <UserAvatar name={s.full_name} src={s.avatar_url} className="h-8 w-8" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold">{s.full_name}</span>
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {s.student_id ?? "—"}
+                          {s.section ? ` · ${s.section}` : ""}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          <button
+            onClick={submit}
+            disabled={saving || selected.size === 0}
+            className="mt-4 flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            <UserPlus className="h-4 w-4" />
+            {submitLabel}
+          </button>
+        </>
+      )}
     </Modal>
   );
 }

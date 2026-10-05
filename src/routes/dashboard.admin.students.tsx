@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Nfc, Plus, Search, Trash2 } from "lucide-react";
+import { ClipboardPaste, KeyRound, Nfc, Plus, Search, Trash2 } from "lucide-react";
 import { GRADE_LEVELS } from "@/components/courses/constants";
 import {
   Select,
@@ -36,6 +36,7 @@ import {
   staffNav,
   useProfile,
 } from "@/components/lms";
+import { BulkAddStudentsModal } from "@/components/courses/bulk-add-students";
 import { gradeLevelLabel } from "@/lib/utils";
 import { CreatableSelect } from "@/components/ui/creatable-select";
 
@@ -83,6 +84,7 @@ function StudentsPage() {
     enabled: !!profile,
   });
   const [open, setOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [search, setSearch] = useState("");
@@ -195,12 +197,20 @@ function StudentsPage() {
             {filtered.length} of {students?.length ?? 0} enrolled learners
           </p>
         </div>
-        <button
-          onClick={() => setOpen(true)}
-          className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
-        >
-          <Plus className="h-4 w-4" /> Add student
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setBulkOpen(true)}
+            className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted"
+          >
+            <ClipboardPaste className="h-4 w-4" /> Bulk add
+          </button>
+          <button
+            onClick={() => setOpen(true)}
+            className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+          >
+            <Plus className="h-4 w-4" /> Add student
+          </button>
+        </div>
       </div>
 
       {/* Search + grade filter */}
@@ -413,6 +423,16 @@ function StudentsPage() {
           {saving ? "Saving…" : "Enroll student"}
         </button>
       </Modal>
+
+      {/* Bulk add — paste a whole class list */}
+      <BulkAddStudentsModal
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        onDone={() => {
+          qc.invalidateQueries({ queryKey: ["students"] });
+          qc.invalidateQueries({ queryKey: ["enrollments"] });
+        }}
+      />
 
       {/* Student profile + rebind */}
       <StudentProfileModal

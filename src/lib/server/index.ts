@@ -65,6 +65,7 @@ export {
   enrollStudent,
   enrollStudents,
   createOrEnrollStudent,
+  bulkAddStudents,
   listSubmissionsForStudent,
   listSubmissionsForAssignment,
   gradeSubmission,
@@ -100,6 +101,7 @@ export {
   upsertCourseMeeting,
   deleteCourseMeeting,
   setMeetingMembers,
+  addMeetingMembers,
   listMeetingMembers,
 } from "./meetings.server";
 

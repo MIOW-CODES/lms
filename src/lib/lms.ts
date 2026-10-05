@@ -1,4 +1,5 @@
 import {
+  bulkAddStudentsFn,
   countRowsFn,
   createAnnouncementFn,
   createAssignmentFn,
@@ -78,10 +79,15 @@ import {
   overrideAttemptFn,
   listStudentAttemptDetailFn,
 } from "@/lib/lms.functions";
-import type { StudentEnrollInput } from "@/lib/enrollment";
+import type {
+  BulkAddResult,
+  BulkAddRowOutcome,
+  BulkStudentRow,
+  StudentEnrollInput,
+} from "@/lib/enrollment";
 import type { IntegrityEventType } from "@/lib/integrity";
 
-export type { StudentEnrollInput };
+export type { StudentEnrollInput, BulkStudentRow, BulkAddResult, BulkAddRowOutcome };
 
 /* ---------- Types ---------- */
 
@@ -1231,6 +1237,31 @@ export async function createOrEnrollStudent(
       token: sessionToken(),
     } as Record<string, unknown>,
   }) as Promise<{ profile: Profile; created: boolean; enrolled: boolean }>;
+}
+
+/**
+ * Bulk roster import: create-or-enroll a whole pasted class list in one call,
+ * optionally into a course and one of its meetings (lecture/lab). Per-row
+ * outcomes come back so the UI can report added / linked / failed clearly.
+ */
+export async function bulkAddStudents(
+  students: BulkStudentRow[],
+  options: { courseId?: string | null; meetingId?: string | null } = {},
+): Promise<BulkAddResult> {
+  const result = (await bulkAddStudentsFn({
+    data: {
+      students,
+      course_id: options.courseId ?? null,
+      meeting_id: options.meetingId ?? null,
+      token: sessionToken(),
+    },
+  })) as BulkAddResult;
+  logAudit(
+    "Bulk students added",
+    `${result.added} new · ${result.linked} linked` +
+      (options.courseId ? ` · ${result.enrolled} enrolled` : ""),
+  );
+  return result;
 }
 
 export async function countRows(table: string): Promise<number> {

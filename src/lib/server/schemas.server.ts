@@ -89,6 +89,27 @@ export const schemas = {
     student_ids: z.array(uuid).max(500),
     ...token,
   }),
+  // Bulk roster import: create-or-enroll a batch of class-list rows, optionally
+  // into a course and one of its meetings (lecture/lab). Roster fields only —
+  // bulk import can never set credentials (PIN / RFID / email login).
+  bulkStudentEnroll: z.object({
+    students: z
+      .array(
+        z.object({
+          full_name: z.string().min(1).max(200),
+          student_id: z.string().max(50).nullable().optional(),
+          email: z.string().max(320).nullable().optional(),
+          grade_level: z.number().int().min(7).max(16).nullable().optional(),
+          section: z.string().max(50).nullable().optional(),
+          avatar_url: avatarUrl.nullable().optional(),
+        }),
+      )
+      .min(1)
+      .max(300),
+    course_id: uuid.nullable().optional(),
+    meeting_id: uuid.nullable().optional(),
+    ...token,
+  }),
   sectionCreate: z.object({
     name: z.string().min(1).max(60),
     education_level: z.enum(["jhs", "shs", "college"]),

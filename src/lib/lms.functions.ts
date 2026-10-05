@@ -284,6 +284,18 @@ export const createOrEnrollStudentFn = createServerFn({ method: "POST" })
     return server.createOrEnrollStudent(data, caller);
   });
 
+// Bulk roster import (bulk-add): create-or-enroll a whole class list in one
+// call, optionally into a course and one of its meetings. Same identity rules
+// as createOrEnrollStudent; one bad row fails alone without sinking the batch.
+export const bulkAddStudentsFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.bulkStudentEnroll.parse(data))
+  .handler(async ({ data }) => {
+    const caller = data.course_id
+      ? await server.requireCourseOwnerOrAdmin(data.token, data.course_id)
+      : await server.requireStaff(data.token);
+    return server.bulkAddStudents(data, caller);
+  });
+
 /* ---------- Submissions ---------- */
 
 export const listSubmissionsForStudentFn = createServerFn({ method: "POST" })

@@ -107,3 +107,34 @@ export async function listMeetingMembers(meetingId: string): Promise<string[]> {
   );
   return rows.map((r) => r.student_id);
 }
+
+/**
+ * Append students to a meeting WITHOUT touching the existing roster — the
+ * bulk-add flow uses this so importing a class list can never clobber a
+ * membership list somebody else is editing at the same time. Authorization is
+ * the caller's job (bulk import authorizes on the meeting's course first).
+ */
+export async function addMeetingMembers(
+  meetingId: string,
+  studentIds: string[],
+): Promise<{ added: number }> {
+  const ids = [...new Set(studentIds)].filter((id) => typeof id === "string" && id.length > 0);
+  if (!ids.length) return { added: 0 };
+  const existing = await unwrap<Array<{ student_id: string }>>(
+    db
+      .from("course_meeting_members")
+      .select("student_id")
+      .eq("meeting_id", meetingId)
+      .in("student_id", ids),
+  );
+  const have = new Set(existing.map((r) => r.student_id));
+  const missing = ids.filter((id) => !have.has(id));
+  if (missing.length) {
+    await unwrap(
+      db
+        .from("course_meeting_members")
+        .insert(missing.map((student_id) => ({ meeting_id: meetingId, student_id }))),
+    );
+  }
+  return { added: missing.length };
+}
