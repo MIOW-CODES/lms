@@ -12,8 +12,11 @@ import {
   Sparkles,
   Copy,
   Check,
+  LayoutGrid,
+  Layers,
 } from "lucide-react";
 import { ArduinoSimulator, type ArduinoBoardState } from "@/lib/arduino-simulator";
+import { InteractiveBreadboardCanvas } from "@/components/arduino-breadboard-canvas";
 import { cn } from "@/lib/utils";
 
 const STARTER_SKETCHES = [
@@ -139,6 +142,8 @@ export function ArduinoLab() {
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // View mode: 'board' (PCB view) or 'canvas' (Wokwi / TinkerCAD style interactive drag & drop breadboard)
+  const [activeTab, setActiveTab] = useState<"canvas" | "board">("canvas");
 
   // Sliders for Analog Inputs A0-A5
   const [analogValues, setAnalogValues] = useState<number[]>([512, 0, 0, 0, 0, 0]);
@@ -416,182 +421,239 @@ export function ArduinoLab() {
           </div>
         </div>
 
-        {/* Right Column: Interactive Arduino Hardware Board (5 cols) */}
+        {/* Right Column: Interactive Hardware Simulation (5 cols) */}
         <div className="space-y-4 lg:col-span-5">
-          {/* Virtual Board Card */}
-          <div className="rounded-2xl border border-border/80 bg-card/80 p-5 shadow-sm backdrop-blur-md">
-            <div className="mb-4 flex items-center justify-between border-b border-border/60 pb-3">
-              <div className="flex items-center gap-2">
-                <Zap className="h-4 w-4 text-amber-500" />
-                <span className="font-bold text-foreground">Arduino Uno Board</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={cn(
-                    "inline-block h-2 w-2 rounded-full",
-                    isRunning ? "bg-emerald-500 animate-pulse" : "bg-zinc-600",
-                  )}
-                />
-                <span className="text-xs font-mono text-muted-foreground">
-                  {isRunning ? "POWER ON" : "STANDBY"}
-                </span>
-              </div>
+          {/* View Mode Toggle: Interactive Canvas vs Compact PCB */}
+          <div className="flex items-center justify-between rounded-2xl border border-border/80 bg-card/80 p-2 shadow-sm backdrop-blur-md">
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setActiveTab("canvas")}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition",
+                  activeTab === "canvas"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                Breadboard (Wokwi Style)
+              </button>
+              <button
+                onClick={() => setActiveTab("board")}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition",
+                  activeTab === "board"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <Layers className="h-3.5 w-3.5" />
+                Uno PCB
+              </button>
             </div>
 
-            {/* Board Surface */}
-            <div className="relative rounded-2xl border-2 border-teal-700/60 bg-teal-950/70 p-4 text-teal-100 shadow-inner">
-              {/* Header Label on PCB */}
-              <div className="flex items-center justify-between border-b border-teal-800/80 pb-2 font-mono text-[11px] text-teal-300">
-                <span>MADE FOR MIOW-LMS</span>
-                <span className="font-bold text-teal-200">UNO R3</span>
-              </div>
-
-              {/* Status LEDs Area: Built-in LED (13) and Power LED */}
-              <div className="my-4 grid grid-cols-2 gap-3 rounded-xl border border-teal-800/80 bg-teal-900/40 p-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={cn(
-                      "h-4 w-4 rounded-full border border-amber-300 transition-all duration-75 shadow-md",
-                      boardState?.builtinLed === 1
-                        ? "bg-amber-400 shadow-amber-400/80 ring-4 ring-amber-400/30"
-                        : "bg-amber-950/60 border-amber-900",
-                    )}
-                  />
-                  <div className="text-xs font-mono">
-                    <p className="font-bold text-amber-300">PIN 13 (L)</p>
-                    <p className="text-[10px] text-teal-400">
-                      {boardState?.builtinLed === 1 ? "HIGH (ON)" : "LOW (OFF)"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div
-                    className={cn(
-                      "h-4 w-4 rounded-full border border-emerald-300 transition-all shadow-md",
-                      isRunning
-                        ? "bg-emerald-400 shadow-emerald-400/80 ring-4 ring-emerald-400/30"
-                        : "bg-emerald-950/60 border-emerald-900",
-                    )}
-                  />
-                  <div className="text-xs font-mono">
-                    <p className="font-bold text-emerald-300">ON (PWR)</p>
-                    <p className="text-[10px] text-teal-400">{isRunning ? "5.0V Active" : "No Power"}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Buzzer Tone indicator */}
-              <div className="mb-4 flex items-center justify-between rounded-xl border border-teal-800/80 bg-teal-900/30 p-2.5 font-mono text-xs">
-                <div className="flex items-center gap-2 text-teal-200">
-                  <Volume2 className="h-4 w-4 text-sky-400" />
-                  <span>Piezo Buzzer</span>
-                </div>
-                <div className="font-bold text-sky-300">
-                  {boardState?.buzzerTone ? (
-                    <span className="animate-pulse">{boardState.buzzerTone} Hz</span>
-                  ) : (
-                    <span className="text-teal-600">Muted</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Digital Pins (0 to 13) */}
-              <div className="space-y-1.5">
-                <p className="font-mono text-[11px] font-semibold text-teal-300">DIGITAL PINS (0–13)</p>
-                <div className="grid grid-cols-7 gap-1.5 text-center font-mono text-[10px]">
-                  {[13, 12, 11, 10, 9, 8, 7].map((pin) => {
-                    const st = boardState?.digital[pin];
-                    const isHigh = st?.digitalValue === 1;
-                    return (
-                      <button
-                        key={pin}
-                        onClick={() => handleDigitalToggle(pin)}
-                        className={cn(
-                          "flex flex-col items-center justify-center rounded-lg border p-1.5 transition",
-                          isHigh
-                            ? "border-amber-400 bg-amber-500/20 text-amber-200"
-                            : "border-teal-800 bg-teal-900/40 text-teal-400 hover:border-teal-700",
-                        )}
-                        title={`Pin ${pin} (${st?.mode || "INPUT"}): ${isHigh ? "HIGH" : "LOW"}. Click to toggle input.`}
-                      >
-                        <span className="font-bold">{pin}</span>
-                        <span
-                          className={cn(
-                            "mt-1 h-2 w-2 rounded-full",
-                            isHigh ? "bg-amber-400 shadow-sm" : "bg-zinc-700",
-                          )}
-                        />
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="grid grid-cols-7 gap-1.5 text-center font-mono text-[10px]">
-                  {[6, 5, 4, 3, 2, 1, 0].map((pin) => {
-                    const st = boardState?.digital[pin];
-                    const isHigh = st?.digitalValue === 1;
-                    return (
-                      <button
-                        key={pin}
-                        onClick={() => handleDigitalToggle(pin)}
-                        className={cn(
-                          "flex flex-col items-center justify-center rounded-lg border p-1.5 transition",
-                          isHigh
-                            ? "border-amber-400 bg-amber-500/20 text-amber-200"
-                            : "border-teal-800 bg-teal-900/40 text-teal-400 hover:border-teal-700",
-                        )}
-                        title={`Pin ${pin} (${st?.mode || "INPUT"}): ${isHigh ? "HIGH" : "LOW"}. Click to toggle input.`}
-                      >
-                        <span className="font-bold">{pin}</span>
-                        <span
-                          className={cn(
-                            "mt-1 h-2 w-2 rounded-full",
-                            isHigh ? "bg-amber-400 shadow-sm" : "bg-zinc-700",
-                          )}
-                        />
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+            <div className="flex items-center gap-1.5 pr-2">
+              <span
+                className={cn(
+                  "inline-block h-2 w-2 rounded-full",
+                  isRunning ? "bg-emerald-500 animate-pulse" : "bg-zinc-600",
+                )}
+              />
+              <span className="text-[11px] font-mono text-muted-foreground">
+                {isRunning ? "ACTIVE" : "STANDBY"}
+              </span>
             </div>
           </div>
 
-          {/* Analog Inputs Control (A0–A5) */}
-          <div className="rounded-2xl border border-border/80 bg-card/80 p-5 shadow-sm backdrop-blur-md">
-            <div className="mb-3 flex items-center justify-between border-b border-border/60 pb-2">
-              <div className="flex items-center gap-2">
-                <Sliders className="h-4 w-4 text-primary" />
-                <span className="font-semibold text-foreground text-sm">Analog Inputs (A0–A5 Potentiometers)</span>
-              </div>
-              <span className="text-[11px] font-mono text-muted-foreground">0–1023 ADC</span>
-            </div>
-
-            <div className="space-y-3">
-              {[0, 1, 2].map((pinIndex) => {
-                const val = analogValues[pinIndex] ?? 0;
-                return (
-                  <div key={pinIndex} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs font-mono">
-                      <span className="font-bold text-foreground">Pin A{pinIndex}</span>
-                      <span className="text-muted-foreground">
-                        {val} / 1023 (
-                        {((val / 1023) * 5.0).toFixed(2)}V)
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1023"
-                      value={val}
-                      onChange={(e) => handleAnalogChange(pinIndex, Number(e.target.value))}
-                      className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
+          {activeTab === "canvas" ? (
+            <InteractiveBreadboardCanvas
+              boardState={boardState}
+              isRunning={isRunning}
+              onDigitalPinChange={(pin, val) => {
+                if (simRef.current) simRef.current.setDigitalInput(pin, val);
+              }}
+              onAnalogPinChange={(pinIndex, val) => {
+                handleAnalogChange(pinIndex, val);
+              }}
+            />
+          ) : (
+            <>
+              {/* Virtual Board Card */}
+              <div className="rounded-2xl border border-border/80 bg-card/80 p-5 shadow-sm backdrop-blur-md">
+                <div className="mb-4 flex items-center justify-between border-b border-border/60 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-amber-500" />
+                    <span className="font-bold text-foreground">Arduino Uno Board</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={cn(
+                        "inline-block h-2 w-2 rounded-full",
+                        isRunning ? "bg-emerald-500 animate-pulse" : "bg-zinc-600",
+                      )}
                     />
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {isRunning ? "POWER ON" : "STANDBY"}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                </div>
+
+                {/* Board Surface */}
+                <div className="relative rounded-2xl border-2 border-teal-700/60 bg-teal-950/70 p-4 text-teal-100 shadow-inner">
+                  {/* Header Label on PCB */}
+                  <div className="flex items-center justify-between border-b border-teal-800/80 pb-2 font-mono text-[11px] text-teal-300">
+                    <span>MADE FOR MIOW-LMS</span>
+                    <span className="font-bold text-teal-200">UNO R3</span>
+                  </div>
+
+                  {/* Status LEDs Area: Built-in LED (13) and Power LED */}
+                  <div className="my-4 grid grid-cols-2 gap-3 rounded-xl border border-teal-800/80 bg-teal-900/40 p-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={cn(
+                          "h-4 w-4 rounded-full border border-amber-300 transition-all duration-75 shadow-md",
+                          boardState?.builtinLed === 1
+                            ? "bg-amber-400 shadow-amber-400/80 ring-4 ring-amber-400/30"
+                            : "bg-amber-950/60 border-amber-900",
+                        )}
+                      />
+                      <div className="text-xs font-mono">
+                        <p className="font-bold text-amber-300">PIN 13 (L)</p>
+                        <p className="text-[10px] text-teal-400">
+                          {boardState?.builtinLed === 1 ? "HIGH (ON)" : "LOW (OFF)"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={cn(
+                          "h-4 w-4 rounded-full border border-emerald-300 transition-all shadow-md",
+                          isRunning
+                            ? "bg-emerald-400 shadow-emerald-400/80 ring-4 ring-emerald-400/30"
+                            : "bg-emerald-950/60 border-emerald-900",
+                        )}
+                      />
+                      <div className="text-xs font-mono">
+                        <p className="font-bold text-emerald-300">ON (PWR)</p>
+                        <p className="text-[10px] text-teal-400">{isRunning ? "5.0V Active" : "No Power"}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Buzzer Tone indicator */}
+                  <div className="mb-4 flex items-center justify-between rounded-xl border border-teal-800/80 bg-teal-900/30 p-2.5 font-mono text-xs">
+                    <div className="flex items-center gap-2 text-teal-200">
+                      <Volume2 className="h-4 w-4 text-sky-400" />
+                      <span>Piezo Buzzer</span>
+                    </div>
+                    <div className="font-bold text-sky-300">
+                      {boardState?.buzzerTone ? (
+                        <span className="animate-pulse">{boardState.buzzerTone} Hz</span>
+                      ) : (
+                        <span className="text-teal-600">Muted</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Digital Pins (0 to 13) */}
+                  <div className="space-y-1.5">
+                    <p className="font-mono text-[11px] font-semibold text-teal-300">DIGITAL PINS (0–13)</p>
+                    <div className="grid grid-cols-7 gap-1.5 text-center font-mono text-[10px]">
+                      {[13, 12, 11, 10, 9, 8, 7].map((pin) => {
+                        const st = boardState?.digital[pin];
+                        const isHigh = st?.digitalValue === 1;
+                        return (
+                          <button
+                            key={pin}
+                            onClick={() => handleDigitalToggle(pin)}
+                            className={cn(
+                              "flex flex-col items-center justify-center rounded-lg border p-1.5 transition",
+                              isHigh
+                                ? "border-amber-400 bg-amber-500/20 text-amber-200"
+                                : "border-teal-800 bg-teal-900/40 text-teal-400 hover:border-teal-700",
+                            )}
+                            title={`Pin ${pin} (${st?.mode || "INPUT"}): ${isHigh ? "HIGH" : "LOW"}. Click to toggle input.`}
+                          >
+                            <span className="font-bold">{pin}</span>
+                            <span
+                              className={cn(
+                                "mt-1 h-2 w-2 rounded-full",
+                                isHigh ? "bg-amber-400 shadow-sm" : "bg-zinc-700",
+                              )}
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="grid grid-cols-7 gap-1.5 text-center font-mono text-[10px]">
+                      {[6, 5, 4, 3, 2, 1, 0].map((pin) => {
+                        const st = boardState?.digital[pin];
+                        const isHigh = st?.digitalValue === 1;
+                        return (
+                          <button
+                            key={pin}
+                            onClick={() => handleDigitalToggle(pin)}
+                            className={cn(
+                              "flex flex-col items-center justify-center rounded-lg border p-1.5 transition",
+                              isHigh
+                                ? "border-amber-400 bg-amber-500/20 text-amber-200"
+                                : "border-teal-800 bg-teal-900/40 text-teal-400 hover:border-teal-700",
+                            )}
+                            title={`Pin ${pin} (${st?.mode || "INPUT"}): ${isHigh ? "HIGH" : "LOW"}. Click to toggle input.`}
+                          >
+                            <span className="font-bold">{pin}</span>
+                            <span
+                              className={cn(
+                                "mt-1 h-2 w-2 rounded-full",
+                                isHigh ? "bg-amber-400 shadow-sm" : "bg-zinc-700",
+                              )}
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Analog Inputs Control (A0–A5) */}
+              <div className="rounded-2xl border border-border/80 bg-card/80 p-5 shadow-sm backdrop-blur-md">
+                <div className="mb-3 flex items-center justify-between border-b border-border/60 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Sliders className="h-4 w-4 text-primary" />
+                    <span className="font-semibold text-foreground text-sm">Analog Inputs (A0–A5 Potentiometers)</span>
+                  </div>
+                  <span className="text-[11px] font-mono text-muted-foreground">0–1023 ADC</span>
+                </div>
+
+                <div className="space-y-3">
+                  {[0, 1, 2].map((pinIndex) => {
+                    const val = analogValues[pinIndex] ?? 0;
+                    return (
+                      <div key={pinIndex} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs font-mono">
+                          <span className="font-bold text-foreground">Pin A{pinIndex}</span>
+                          <span className="text-muted-foreground">
+                            {val} / 1023 (
+                            {((val / 1023) * 5.0).toFixed(2)}V)
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1023"
+                          value={val}
+                          onChange={(e) => handleAnalogChange(pinIndex, Number(e.target.value))}
+                          className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
