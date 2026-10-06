@@ -10,6 +10,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   ClipboardList,
+  Cpu,
   GraduationCap,
   Layers,
   LayoutDashboard,
@@ -41,6 +42,11 @@ export const STUDENT_NAV: NavItem[] = [
     icon: <ClipboardList className="h-4 w-4" />,
   },
   {
+    to: "/dashboard/student/arduino",
+    label: "Arduino Lab",
+    icon: <Cpu className="h-4 w-4" />,
+  },
+  {
     to: "/dashboard/student/attendance",
     label: "Attendance",
     icon: <CalendarCheck className="h-4 w-4" />,
@@ -62,6 +68,11 @@ export const ADMIN_NAV: NavItem[] = [
     label: "Announcements",
     icon: <Megaphone className="h-4 w-4" />,
   },
+  {
+    to: "/dashboard/admin/arduino",
+    label: "Arduino Lab",
+    icon: <Cpu className="h-4 w-4" />,
+  },
   { to: "/dashboard/admin/settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
 ];
 
@@ -75,6 +86,11 @@ export const TEACHER_NAV: NavItem[] = [
     icon: <Megaphone className="h-4 w-4" />,
   },
   { to: "/dashboard/teacher/grades", label: "Gradebook", icon: <Layers className="h-4 w-4" /> },
+  {
+    to: "/dashboard/teacher/arduino",
+    label: "Arduino Lab",
+    icon: <Cpu className="h-4 w-4" />,
+  },
   {
     to: "/dashboard/teacher/attendance",
     label: "Attendance",
