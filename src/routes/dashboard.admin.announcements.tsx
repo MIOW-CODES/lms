@@ -316,7 +316,7 @@ export function AnnouncementsPage() {
               delay={Math.min(i * 0.04, 0.3)}
               className={cn("p-5", a.pinned && "border-primary/40 bg-primary/5")}
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     {a.pinned && (
@@ -336,30 +336,35 @@ export function AnnouncementsPage() {
                       {a.category}
                     </Badge>
                     <Badge tone="slate">{a.target_audience}</Badge>
-                    <p className="text-xs text-muted-foreground">{fmtDate(a.created_at)}</p>
+                    <span className="text-xs text-muted-foreground">{fmtDate(a.created_at)}</span>
                   </div>
-                  <p className="mt-2 font-semibold">{a.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{a.content}</p>
+                  <h3 className="mt-2 text-base font-semibold text-foreground">{a.title}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{a.content}</p>
                   <AnnouncementAttachmentsSmall announcementId={a.id} />
                 </div>
-                <div className="flex shrink-0 gap-1">
+                <div className="flex shrink-0 items-center gap-1">
                   <button
                     onClick={() => togglePin(a)}
-                    className="rounded-lg p-2 text-muted-foreground hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-500/10"
+                    className={cn(
+                      "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+                      a.pinned
+                        ? "bg-amber-500/15 text-amber-500 hover:bg-amber-500/25"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
                     title={a.pinned ? "Unpin" : "Pin to top"}
                   >
                     {a.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
                   </button>
                   <button
                     onClick={() => openEdit(a)}
-                    className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     title="Edit"
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => remove(a.id)}
-                    className="rounded-lg p-2 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-rose-500/15 hover:text-rose-400"
                     title="Delete"
                   >
                     <Trash2 className="h-4 w-4" />

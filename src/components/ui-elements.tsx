@@ -255,26 +255,36 @@ export function FilterTabs<T extends string>({
   counts?: Partial<Record<T, number>>;
 }) {
   return (
-    <div className="flex flex-wrap gap-1 rounded-xl bg-muted/80 p-1 backdrop-blur-sm">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          onClick={() => onChange(o.value)}
-          className={cn(
-            "rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors",
-            value === o.value
-              ? "bg-card text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {o.label}
-          {counts && counts[o.value] != null && (
-            <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 text-[11px] text-primary">
-              {counts[o.value]}
-            </span>
-          )}
-        </button>
-      ))}
+    <div className="inline-flex flex-wrap items-center gap-1.5 rounded-2xl border border-border/60 bg-muted/40 p-1.5 backdrop-blur-md">
+      {options.map((o) => {
+        const active = value === o.value;
+        return (
+          <button
+            key={o.value}
+            onClick={() => onChange(o.value)}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-150",
+              active
+                ? "bg-card text-foreground shadow-sm ring-1 ring-border/50"
+                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+            )}
+          >
+            <span>{o.label}</span>
+            {counts && counts[o.value] != null && (
+              <span
+                className={cn(
+                  "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold transition-colors",
+                  active
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted-foreground/15 text-muted-foreground",
+                )}
+              >
+                {counts[o.value]}
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
