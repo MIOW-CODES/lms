@@ -25,6 +25,7 @@ export const Route = createFileRoute("/dashboard/admin/arduino")({
 
 function AdminArduinoPage() {
   const profile = useProfile(["admin"]);
+  if (!profile) return null;
 
   return (
     <AppShell

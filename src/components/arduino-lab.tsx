@@ -133,7 +133,7 @@ void loop() {
 
 export function ArduinoLab() {
   const [selectedSketch, setSelectedSketch] = useState(0);
-  const [code, setCode] = useState(STARTER_SKETCHES[0].code);
+  const [code, setCode] = useState(STARTER_SKETCHES[0]?.code ?? "");
   const [logs, setLogs] = useState<string[]>([]);
   const [boardState, setBoardState] = useState<ArduinoBoardState | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -145,6 +145,51 @@ export function ArduinoLab() {
 
   const simRef = useRef<ArduinoSimulator | null>(null);
   const serialEndRef = useRef<HTMLDivElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const oscRef = useRef<OscillatorNode | null>(null);
+
+  // Web Audio sound generator for Piezo buzzer
+  useEffect(() => {
+    const freq = boardState?.buzzerTone;
+    if (isRunning && freq && freq > 20) {
+      try {
+        if (!audioCtxRef.current) {
+          const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+          audioCtxRef.current = new AudioCtx();
+        }
+        const ctx = audioCtxRef.current;
+        if (ctx.state === "suspended") {
+          ctx.resume();
+        }
+
+        if (!oscRef.current) {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          gain.gain.value = 0.05; // safe, comfortable listening level
+          osc.type = "square"; // typical piezo buzzer timbre
+          osc.frequency.setValueAtTime(freq, ctx.currentTime);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          oscRef.current = osc;
+        } else {
+          oscRef.current.frequency.setValueAtTime(freq, ctx.currentTime);
+        }
+      } catch {
+        // audio context blocked or unsupported
+      }
+    } else {
+      if (oscRef.current) {
+        try {
+          oscRef.current.stop();
+          oscRef.current.disconnect();
+        } catch {
+          // ignore
+        }
+        oscRef.current = null;
+      }
+    }
+  }, [boardState?.buzzerTone, isRunning]);
 
   useEffect(() => {
     const sim = new ArduinoSimulator();
@@ -159,6 +204,16 @@ export function ArduinoLab() {
 
     return () => {
       sim.stop();
+      if (oscRef.current) {
+        try {
+          oscRef.current.stop();
+        } catch {
+          // ignore
+        }
+      }
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+      }
     };
   }, []);
 
@@ -215,7 +270,7 @@ export function ArduinoLab() {
   const handleSelectExample = (index: number) => {
     handleStop();
     setSelectedSketch(index);
-    setCode(STARTER_SKETCHES[index].code);
+    setCode(STARTER_SKETCHES[index]?.code ?? "");
     setLogs([]);
     setError(null);
   };
@@ -513,25 +568,28 @@ export function ArduinoLab() {
             </div>
 
             <div className="space-y-3">
-              {[0, 1, 2].map((pinIndex) => (
-                <div key={pinIndex} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs font-mono">
-                    <span className="font-bold text-foreground">Pin A{pinIndex}</span>
-                    <span className="text-muted-foreground">
-                      {analogValues[pinIndex]} / 1023 (
-                      {((analogValues[pinIndex] / 1023) * 5.0).toFixed(2)}V)
-                    </span>
+              {[0, 1, 2].map((pinIndex) => {
+                const val = analogValues[pinIndex] ?? 0;
+                return (
+                  <div key={pinIndex} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span className="font-bold text-foreground">Pin A{pinIndex}</span>
+                      <span className="text-muted-foreground">
+                        {val} / 1023 (
+                        {((val / 1023) * 5.0).toFixed(2)}V)
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1023"
+                      value={val}
+                      onChange={(e) => handleAnalogChange(pinIndex, Number(e.target.value))}
+                      className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
+                    />
                   </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1023"
-                    value={analogValues[pinIndex]}
-                    onChange={(e) => handleAnalogChange(pinIndex, Number(e.target.value))}
-                    className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
-                  />
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

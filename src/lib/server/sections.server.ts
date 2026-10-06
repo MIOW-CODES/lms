@@ -63,7 +63,9 @@ export async function listCourseSections(courseId: string) {
     db.from("enrollments").select("student_id").eq("course_id", courseId),
   );
 
-  const countsByName = new Map<string, number>();
+  // Count student enrollments for sections.
+  // We match by student profile section string (either name or id)
+  const countsBySection = new Map<string, number>();
   if (enrollments.length > 0) {
     const studentIds = enrollments.map((e) => e.student_id);
     const profiles = await unwrap<Array<{ section: string | null }>>(
@@ -71,14 +73,14 @@ export async function listCourseSections(courseId: string) {
     );
     for (const p of profiles) {
       if (p.section) {
-        countsByName.set(p.section, (countsByName.get(p.section) ?? 0) + 1);
+        countsBySection.set(p.section, (countsBySection.get(p.section) ?? 0) + 1);
       }
     }
   }
 
   return sections.map((sec) => ({
     ...sec,
-    student_count: countsByName.get(sec.name) ?? 0,
+    student_count: (countsBySection.get(sec.id) ?? countsBySection.get(sec.name)) ?? 0,
   }));
 }
 

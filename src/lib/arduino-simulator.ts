@@ -115,8 +115,8 @@ export class ArduinoSimulator {
     const setupMatch = clean.match(/void\s+setup\s*\(\s*\)\s*\{([\s\S]*?)\}/);
     const loopMatch = clean.match(/void\s+loop\s*\(\s*\)\s*\{([\s\S]*?)\}/);
 
-    const setupBody = setupMatch ? setupMatch[1] : "";
-    const loopBody = loopMatch ? loopMatch[1] : "";
+    const setupBody = setupMatch && setupMatch[1] ? setupMatch[1] : "";
+    const loopBody = loopMatch && loopMatch[1] ? loopMatch[1] : "";
 
     let globals = clean
       .replace(/void\s+setup\s*\(\s*\)\s*\{[\s\S]*?\}/, "")
@@ -283,16 +283,16 @@ export class ArduinoSimulator {
 
     const pinMode = (pin: number, mode: "INPUT" | "OUTPUT" | "INPUT_PULLUP") => {
       const pinNum = Number(pin);
-      if (pinNum >= 0 && pinNum <= 13) {
-        self.board.digital[pinNum].mode = mode;
+      if (pinNum >= 0 && pinNum <= 13 && self.board.digital[pinNum]) {
+        self.board.digital[pinNum]!.mode = mode;
       }
     };
 
     const digitalWrite = (pin: number, val: 0 | 1 | boolean | number) => {
       const pinNum = Number(pin);
       const v: 0 | 1 = val ? 1 : 0;
-      if (pinNum >= 0 && pinNum <= 13) {
-        self.board.digital[pinNum].digitalValue = v;
+      if (pinNum >= 0 && pinNum <= 13 && self.board.digital[pinNum]) {
+        self.board.digital[pinNum]!.digitalValue = v;
         if (pinNum === 13) {
           self.board.builtinLed = v;
         }
@@ -301,11 +301,11 @@ export class ArduinoSimulator {
 
     const digitalRead = (pin: number): number => {
       const pinNum = Number(pin);
-      if (pinNum >= 0 && pinNum <= 13) {
-        return self.board.digital[pinNum].digitalValue;
+      if (pinNum >= 0 && pinNum <= 13 && self.board.digital[pinNum]) {
+        return self.board.digital[pinNum]!.digitalValue;
       }
-      if (pinNum >= 14 && pinNum <= 19) {
-        return self.board.analog[pinNum - 14].digitalValue;
+      if (pinNum >= 14 && pinNum <= 19 && self.board.analog[pinNum - 14]) {
+        return self.board.analog[pinNum - 14]!.digitalValue;
       }
       return 0;
     };
@@ -313,8 +313,8 @@ export class ArduinoSimulator {
     const analogRead = (pin: number): number => {
       const pinNum = Number(pin);
       const aPin = pinNum >= 14 ? pinNum - 14 : pinNum;
-      if (aPin >= 0 && aPin <= 5) {
-        return self.board.analog[aPin].analogValue;
+      if (aPin >= 0 && aPin <= 5 && self.board.analog[aPin]) {
+        return self.board.analog[aPin]!.analogValue;
       }
       return 0;
     };
@@ -322,9 +322,9 @@ export class ArduinoSimulator {
     const analogWrite = (pin: number, val: number) => {
       const pinNum = Number(pin);
       const clamped = Math.max(0, Math.min(255, Math.round(Number(val))));
-      if (pinNum >= 0 && pinNum <= 13) {
-        self.board.digital[pinNum].analogValue = clamped;
-        self.board.digital[pinNum].digitalValue = clamped > 127 ? 1 : 0;
+      if (pinNum >= 0 && pinNum <= 13 && self.board.digital[pinNum]) {
+        self.board.digital[pinNum]!.analogValue = clamped;
+        self.board.digital[pinNum]!.digitalValue = clamped > 127 ? 1 : 0;
         if (pinNum === 13) {
           self.board.builtinLed = clamped > 127 ? 1 : 0;
         }
