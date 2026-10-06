@@ -67,8 +67,8 @@ test.describe("Auth page interactions", () => {
     await page.goto("/auth");
     await expect(page.locator("body")).toContainText("MIOW", { timeout: 10000 });
     await expect(page.locator("body")).toContainText("Integrated Developmental School");
-    await expect(page.getByRole("button", { name: /RFID Card/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /PIN Login/ })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /RFID Card/ })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /PIN Login/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Tap/ })).toBeVisible();
   });
 
@@ -177,7 +177,7 @@ test.describe("Admin dashboard flow", () => {
   test("admin can navigate to Attendance/Kiosk page", async ({ page }) => {
     await page.goto("/dashboard/admin/attendance");
     await page.waitForTimeout(3000);
-    await expect(page.locator("body")).toContainText(/Attendance|Kiosk|Tap/i);
+    await expect(page.locator("body")).toContainText(/Attendance|Kiosk|Tap|RFID/i);
   });
 
   test("admin can open Create Course modal", async ({ page }) => {

@@ -40,8 +40,8 @@ export const Route = createFileRoute("/api/public/material")({
 
         const isMaterial = PATH_RE_MATERIAL.test(p);
         const submissionMatch = p.match(PATH_RE_SUBMISSION);
-        if (!isMaterial && !submissionMatch) return new Response("Not found", { status: 404 });
         if (!t) return new Response("Unauthorized", { status: 401 });
+        if (!isMaterial && !submissionMatch) return new Response("Not found", { status: 404 });
 
         const server = await import("@/lib/server");
         let caller;
