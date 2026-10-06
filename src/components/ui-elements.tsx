@@ -206,9 +206,14 @@ export function FadeIn({
 
 export function ProgressBar({ value, barClass }: { value: number; barClass?: string }) {
   const clamped = Math.min(100, Math.max(0, value));
+  const isComplete = clamped >= 100;
+
   return (
     <div
-      className="h-2 w-full overflow-hidden rounded-full bg-muted"
+      className={cn(
+        "relative h-2.5 w-full overflow-hidden rounded-full bg-muted transition-all duration-300",
+        isComplete && "ring-1 ring-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.25)]",
+      )}
       role="progressbar"
       aria-valuenow={clamped}
       aria-valuemin={0}
@@ -217,10 +222,29 @@ export function ProgressBar({ value, barClass }: { value: number; barClass?: str
     >
       <motion.div
         initial={{ width: 0 }}
-        animate={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+        animate={{ width: `${clamped}%` }}
         transition={{ duration: 0.7, ease: "easeOut" }}
-        className={cn("h-full rounded-full bg-primary", barClass)}
-      />
+        className={cn(
+          "relative h-full rounded-full transition-colors duration-500",
+          isComplete ? "bg-emerald-500" : "bg-primary",
+          barClass,
+        )}
+      >
+        {/* Shimmer sweep animation when complete */}
+        {isComplete && (
+          <motion.div
+            initial={{ x: "-100%" }}
+            animate={{ x: "200%" }}
+            transition={{
+              repeat: Infinity,
+              duration: 1.8,
+              ease: "easeInOut",
+              repeatDelay: 0.5,
+            }}
+            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent skew-x-12"
+          />
+        )}
+      </motion.div>
     </div>
   );
 }

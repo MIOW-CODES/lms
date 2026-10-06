@@ -546,7 +546,15 @@ function AdminSettings() {
                       >
                         Joseph Alan B. Vergara
                       </a>{" "}
-                      &amp; Kent Alexis T. Alia
+                      &amp;{" "}
+                      <a
+                        href="https://github.com/laeyue"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        Kent Alexis T. Alia
+                      </a>
                     </p>
                   </div>
                   <div>
