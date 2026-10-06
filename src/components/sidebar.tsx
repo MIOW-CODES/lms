@@ -333,7 +333,16 @@ export function AppShell({
         <footer className="border-t border-border/40 py-4 text-center text-xs text-muted-foreground/80">
           <p>© {new Date().getFullYear()} Integrated Developmental School (MIOW)</p>
           <p className="mt-0.5 text-[11px] text-muted-foreground/60">
-            Web Developers: Joseph Alan B. Vergara &amp; Kent Alexis T. Alia
+            Web Developers:{" "}
+            <a
+              href="https://personal-portfolio-one-jade-45.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline font-medium"
+            >
+              Joseph Alan B. Vergara
+            </a>{" "}
+            &amp; Kent Alexis T. Alia
           </p>
         </footer>
       </div>

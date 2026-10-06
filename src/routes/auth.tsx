@@ -273,7 +273,16 @@ function AuthPage() {
             Integrated Developmental School
           </p>
           <p className="mt-1 text-center text-[10px] text-muted-foreground/80">
-            Web Developers: Joseph Alan B. Vergara &amp; Kent Alexis T. Alia
+            Web Developers:{" "}
+            <a
+              href="https://personal-portfolio-one-jade-45.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline font-medium"
+            >
+              Joseph Alan B. Vergara
+            </a>{" "}
+            &amp; Kent Alexis T. Alia
           </p>
         </div>
       </div>

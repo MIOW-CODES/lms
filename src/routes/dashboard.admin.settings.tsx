@@ -538,7 +538,15 @@ function AdminSettings() {
                       Web Application Developers
                     </span>
                     <p className="mt-1 font-medium text-foreground">
-                      Joseph Alan B. Vergara &amp; Kent Alexis T. Alia
+                      <a
+                        href="https://personal-portfolio-one-jade-45.vercel.app/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        Joseph Alan B. Vergara
+                      </a>{" "}
+                      &amp; Kent Alexis T. Alia
                     </p>
                   </div>
                   <div>
