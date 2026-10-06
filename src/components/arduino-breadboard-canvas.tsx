@@ -9,12 +9,15 @@ import {
   Sliders,
   ToggleLeft,
   ToggleRight,
+  RotateCcw,
+  Compass,
+  Activity,
   Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ArduinoBoardState } from "@/lib/arduino-simulator";
 
-export type ComponentType = "led" | "pushbutton" | "potentiometer" | "buzzer";
+export type ComponentType = "led" | "pushbutton" | "potentiometer" | "buzzer" | "servo" | "ultrasonic";
 
 export interface CanvasComponent {
   id: string;
@@ -25,7 +28,7 @@ export interface CanvasComponent {
   color?: string; // for LED: 'red' | 'green' | 'blue' | 'yellow'
   connectedPin: number; // Digital 0-13 or Analog 14-19 (A0-A5)
   // Component runtime values
-  inputValue?: number; // for pushbutton (0 or 1), potentiometer (0-1023)
+  inputValue?: number; // for pushbutton (0 or 1), potentiometer (0-1023), ultrasonic distance (2-400cm)
 }
 
 interface InteractiveBreadboardCanvasProps {
@@ -203,6 +206,25 @@ export function InteractiveBreadboardCanvas({
         connectedPin: 15, // A1
         inputValue: 0,
       };
+    } else if (type === "servo") {
+      newComp = {
+        id,
+        type: "servo",
+        x: 100 + Math.random() * 200,
+        y: 60 + Math.random() * 150,
+        label: "SG90 Micro Servo",
+        connectedPin: 9, // standard PWM pin 9
+      };
+    } else if (type === "ultrasonic") {
+      newComp = {
+        id,
+        type: "ultrasonic",
+        x: 100 + Math.random() * 200,
+        y: 60 + Math.random() * 150,
+        label: "HC-SR04 Sonar",
+        connectedPin: 7, // Echo / trigger
+        inputValue: 25, // default 25 cm
+      };
     } else {
       newComp = {
         id,
@@ -295,6 +317,20 @@ export function InteractiveBreadboardCanvas({
           >
             <Volume2 className="h-3.5 w-3.5 text-sky-400" />
             + Buzzer
+          </button>
+          <button
+            onClick={() => addComponent("servo")}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background/80 px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
+          >
+            <RotateCcw className="h-3.5 w-3.5 text-rose-400" />
+            + SG90 Servo
+          </button>
+          <button
+            onClick={() => addComponent("ultrasonic")}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background/80 px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-teal-400" />
+            + Sonar (HC-SR04)
           </button>
         </div>
 
@@ -459,6 +495,66 @@ export function InteractiveBreadboardCanvas({
                     <p className="text-[10px] text-slate-400">
                       {boardState?.buzzerTone ? "Tone Output" : "Muted"}
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {c.type === "servo" && (
+                <div className="w-36 space-y-1.5 py-1 font-mono">
+                  <div className="flex items-center justify-between text-[10px] text-slate-300">
+                    <span className="flex items-center gap-1 font-semibold text-rose-300">
+                      <RotateCcw className="h-3 w-3" /> SG90 Arm
+                    </span>
+                    <span>{Math.round(((boardState?.digital[c.connectedPin]?.analogValue ?? 0) / 255) * 180)}°</span>
+                  </div>
+                  <div className="relative flex h-14 w-full items-center justify-center rounded-lg border border-slate-800 bg-slate-950/60 p-2">
+                    {/* Visual Servo Horn */}
+                    <div
+                      className="h-2 w-12 rounded-full bg-rose-500 shadow-md transition-transform duration-150 origin-left"
+                      style={{
+                        transform: `rotate(${Math.round(
+                          ((boardState?.digital[c.connectedPin]?.analogValue ?? 0) / 255) * 180,
+                        )}deg)`,
+                      }}
+                    />
+                    <div className="absolute h-3 w-3 rounded-full bg-slate-300 border border-slate-600 shadow-inner" />
+                  </div>
+                  <p className="text-[9px] text-center text-slate-400">
+                    PWM angle: 0° - 180°
+                  </p>
+                </div>
+              )}
+
+              {c.type === "ultrasonic" && (
+                <div className="w-44 space-y-1 py-1 font-mono">
+                  <div className="flex items-center justify-between text-[10px] text-slate-300">
+                    <span className="flex items-center gap-1 text-teal-300 font-semibold">
+                      <Sparkles className="h-3 w-3" /> Sonar Dist
+                    </span>
+                    <span className="font-bold text-teal-400">{c.inputValue ?? 25} cm</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="2"
+                    max="400"
+                    value={c.inputValue ?? 25}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setComponents((prev) =>
+                        prev.map((item) => (item.id === c.id ? { ...item, inputValue: val } : item)),
+                      );
+                      // Feed simulated echo duration / analog equivalent into simulator if connected
+                      const aPin = c.connectedPin >= 14 ? c.connectedPin - 14 : c.connectedPin;
+                      if (onAnalogPinChange && aPin <= 5) {
+                        onAnalogPinChange(aPin, Math.round((val / 400) * 1023));
+                      }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-slate-700 accent-teal-400"
+                  />
+                  <div className="flex justify-between text-[9px] text-slate-500">
+                    <span>2 cm (Min)</span>
+                    <span>400 cm (Max)</span>
                   </div>
                 </div>
               )}

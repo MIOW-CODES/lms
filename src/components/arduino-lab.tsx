@@ -132,6 +132,37 @@ void loop() {
 }
 `,
   },
+  {
+    title: "5. SG90 Servo Sweep (Pin 9)",
+    description: "PWM pulse sweep simulating 0 to 180 degree angular servo rotation.",
+    code: `// SG90 Servo Motor Sweep Simulation
+const int servoPin = 9;
+
+void setup() {
+  pinMode(servoPin, OUTPUT);
+  Serial.begin(9600);
+  Serial.println("SG90 Servo Sweep Initialized");
+}
+
+void loop() {
+  // Sweep from 0 to 180 degrees (simulated via analogWrite / PWM)
+  for (int angle = 0; angle <= 180; angle += 30) {
+    int pwmVal = map(angle, 0, 180, 0, 255);
+    analogWrite(servoPin, pwmVal);
+    Serial.print("Servo Angle: ");
+    Serial.println(angle);
+    delay(200);
+  }
+  for (int angle = 180; angle >= 0; angle -= 30) {
+    int pwmVal = map(angle, 0, 180, 0, 255);
+    analogWrite(servoPin, pwmVal);
+    Serial.print("Servo Angle: ");
+    Serial.println(angle);
+    delay(200);
+  }
+}
+`,
+  },
 ];
 
 export function ArduinoLab() {
