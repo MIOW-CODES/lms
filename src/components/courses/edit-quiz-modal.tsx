@@ -23,6 +23,8 @@ export function EditQuizModal({ quiz, onClose, onSaved }: EditQuizModalProps) {
     duration_minutes: "15",
     question_count: "0",
     questions: "",
+    opens_at: "",
+    closes_at: "",
     score_released: false,
     answer_key_released: false,
   });
@@ -37,6 +39,8 @@ export function EditQuizModal({ quiz, onClose, onSaved }: EditQuizModalProps) {
       duration_minutes: String(q.duration_minutes),
       question_count: String(q.question_count ?? 0),
       questions: "",
+      opens_at: q.opens_at ? q.opens_at.slice(0, 16) : "",
+      closes_at: q.closes_at ? q.closes_at.slice(0, 16) : "",
       score_released: !!q.score_released,
       answer_key_released: !!q.answer_key_released,
     });
@@ -77,6 +81,8 @@ export function EditQuizModal({ quiz, onClose, onSaved }: EditQuizModalProps) {
           title: editQuizForm.title.trim(),
           duration_minutes: Math.max(1, parseInt(editQuizForm.duration_minutes) || 15),
           question_count: questionCount,
+          opens_at: editQuizForm.opens_at ? new Date(editQuizForm.opens_at).toISOString() : null,
+          closes_at: editQuizForm.closes_at ? new Date(editQuizForm.closes_at).toISOString() : null,
           ...policyPayload(editQuizForm),
           score_released: !!editQuizForm.score_released,
           answer_key_released: !!editQuizForm.answer_key_released,
@@ -112,6 +118,28 @@ export function EditQuizModal({ quiz, onClose, onSaved }: EditQuizModalProps) {
             inputMode="numeric"
             className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+            <span>Opens at (Availability date/time)</span>
+            <input
+              type="datetime-local"
+              value={editQuizForm.opens_at}
+              onChange={(e) => setEditQuizForm((f) => ({ ...f, opens_at: e.target.value }))}
+              aria-label="Worksheet opens at"
+              className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+            <span>Closes at (Deadline / Hard lock)</span>
+            <input
+              type="datetime-local"
+              value={editQuizForm.closes_at}
+              onChange={(e) => setEditQuizForm((f) => ({ ...f, closes_at: e.target.value }))}
+              aria-label="Worksheet closes at"
+              className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+            />
+          </label>
         </div>
         <PolicyFields
           value={editQuizForm}

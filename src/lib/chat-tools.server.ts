@@ -242,7 +242,7 @@ export function buildChatTools(profile: ChatCaller): ToolSet {
       }),
       execute: async ({ limit }) => {
         const rows = await lms.listAnnouncements();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         return (rows as any[]).slice(0, limit ?? 5).map((a: any) => ({
           title: a.title,
           content: a.content,
@@ -291,7 +291,7 @@ export function buildChatTools(profile: ChatCaller): ToolSet {
           lms.listGradesForStudent(profile.id),
           courseMap(),
         ]);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         return (grades as any[]).map((g) => gradeRow(g, cmap));
       },
     }),
@@ -307,11 +307,10 @@ export function buildChatTools(profile: ChatCaller): ToolSet {
           : [...cmap.values()]
               .filter((c: any) => (profile.role === "admin" ? true : c.teacher_id === profile.id))
               .map((c: any) => c.id);
-        const all = (await lms.listAssignments()) as any[];
+        const all = (await lms.listAssignments(profile)) as any[];
         const mine = all.filter((a) => courseIds.includes(a.course_id));
         let subs = new Map<string, any>();
         if (isStudent) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const rows = (await lms.listSubmissionsForStudent(profile.id)) as any[];
           subs = new Map(rows.map((s) => [s.assignment_id, s]));
         }
@@ -354,7 +353,7 @@ export function buildChatTools(profile: ChatCaller): ToolSet {
           return {
             error: "Staff accounts should use get_student_attendance with a student id instead.",
           };
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const rows = (await lms.listAttendance(profile.id)) as any[];
         return rows.slice(0, limit ?? 20).map((l) => ({
           timestamp: l.timestamp,
@@ -371,7 +370,6 @@ export function buildChatTools(profile: ChatCaller): ToolSet {
         description: "List all students with their student number, grade level, and section.",
         inputSchema: z.object({}),
         execute: async () => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const rows = (await lms.listStudents()) as any[];
           return rows.map((p) => ({
             id: p.id,
@@ -394,7 +392,7 @@ export function buildChatTools(profile: ChatCaller): ToolSet {
             lms.listGradesForStudent(student_id),
             courseMap(),
           ]);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
           return (grades as any[]).map((g) => gradeRow(g, cmap));
         },
       }),
@@ -413,7 +411,6 @@ export function buildChatTools(profile: ChatCaller): ToolSet {
             .describe("Max log entries (default 20)."),
         }),
         execute: async ({ student_id, limit }) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const rows = (await lms.listAttendance(student_id)) as any[];
           return rows.slice(0, limit ?? 20).map((l) => ({
             timestamp: l.timestamp,
@@ -436,9 +433,9 @@ export function buildChatTools(profile: ChatCaller): ToolSet {
             courseMap(),
             lms.listStudents(),
           ]);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
           const names = new Map((students as any[]).map((s) => [s.id, s.full_name]));
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
           const rows = (grades as any[]).map((g) => ({
             student: names.get(g.student_id) ?? "Unknown",
             final_grade_transmuted: g.transmuted_final_grade,

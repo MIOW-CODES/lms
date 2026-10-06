@@ -3,7 +3,13 @@
 import { z } from "zod";
 import { db } from "@/integrations/db/client.server";
 import { unwrap, withoutToken, isUniqueViolation } from "@/lib/server/utils.server";
-import { requireStaff } from "@/lib/server/auth.server";
+import {
+  requireStaff,
+  requireSelfOrStaff,
+  requireEnrollment,
+  enrolledCourseIds,
+} from "@/lib/server/auth.server";
+import { requireOpen, canViewAssessment } from "@/lib/server/availability";
 import { schemas } from "@/lib/server/schemas.server";
 import { createProfile, getProfileById, updateProfile } from "@/lib/server/profiles.server";
 import { addMeetingMembers } from "@/lib/server/meetings.server";
@@ -90,8 +96,17 @@ export async function deleteCourse(id: string) {
   await unwrap(db.from("courses").delete().eq("id", id));
 }
 
-export async function listAssignments() {
-  return unwrap<any[]>(db.from("assignments").select("*").is("deleted_at", null).order("due_date"));
+export async function listAssignments(caller: { id: string; role: ProfileRole }) {
+  const rows = await unwrap<any[]>(
+    db.from("assignments").select("*").is("deleted_at", null).order("due_date"),
+  );
+  // Staff (teacher/admin) see every course's rows; students only see items in
+  // courses they are enrolled in AND that have opened (closed items stay
+  // visible for review).
+  if (caller.role !== "student") return rows;
+  const enrolled = new Set(await enrolledCourseIds(caller.id));
+  const now = new Date();
+  return rows.filter((a) => enrolled.has(a.course_id) && canViewAssessment(a, caller.role, now));
 }
 
 export async function createAssignment(input: z.infer<typeof schemas.assignmentInput>) {
@@ -366,6 +381,30 @@ export async function gradeSubmission(
 }
 
 export async function submitAssignment(input: z.infer<typeof schemas.submissionInput>) {
+  // Hard-block (user policy 2026-10-06): students must be enrolled in the
+  // assignment's course and can only submit inside its availability window
+  // (opens_at .. earliest of closes_at/due_date). Rejected before opens_at and
+  // after the deadline — no late flag, no overwrite. Staff bypass for
+  // grading/preview.
+  const caller = await requireSelfOrStaff(input.token, input.student_id);
+  const assignment = await unwrap<{
+    id: string;
+    course_id: string;
+    opens_at: string | null;
+    closes_at: string | null;
+    due_date: string | null;
+  } | null>(
+    db
+      .from("assignments")
+      .select("id, course_id, opens_at, closes_at, due_date")
+      .eq("id", input.assignment_id)
+      .maybeSingle(),
+  );
+  if (!assignment) throw new Error("Assignment not found");
+  if (caller.role === "student") {
+    await requireEnrollment(assignment.course_id, caller);
+    requireOpen(assignment, new Date());
+  }
   const existing = await unwrap<{ id: string } | null>(
     db
       .from("submissions")

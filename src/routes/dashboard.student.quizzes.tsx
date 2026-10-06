@@ -24,6 +24,7 @@ import {
 import {
   getQuiz,
   enrollmentsForStudent,
+  fmtDateTime,
   listCourses,
   listQuizzes,
   materialHref,
@@ -296,18 +297,26 @@ function QuizzesPage() {
             const st = courseStyle(course?.color ?? "indigo");
             const s = summaryByQuiz.get(q.id);
             const used = s?.attempts_used ?? 0;
-            const canTake = !s || s.can_retake;
+            const isClosed = q.closes_at ? new Date(q.closes_at).getTime() < Date.now() : false;
+            const canTake = !isClosed && (!s || s.can_retake);
             return (
               <MotionCard key={q.id} delay={Math.min(i * 0.05, 0.3)} className="p-5">
                 <div className="flex items-center justify-between gap-2">
                   <span className={cn("rounded-md px-2 py-0.5 text-[11px] font-bold", st.soft)}>
                     {course?.code}
                   </span>
-                  {used > 0 && (
-                    <Badge tone={canTake ? "indigo" : "slate"}>
-                      {attemptLabel(used, s?.attempts_allowed ?? null)}
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {isClosed ? (
+                      <Badge tone="red">Closed</Badge>
+                    ) : q.closes_at ? (
+                      <Badge tone="sky">Closes {fmtDateTime(q.closes_at)}</Badge>
+                    ) : null}
+                    {used > 0 && (
+                      <Badge tone={canTake ? "indigo" : "slate"}>
+                        {attemptLabel(used, s?.attempts_allowed ?? null)}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <p className="mt-2 font-semibold">{q.title}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -338,9 +347,11 @@ function QuizzesPage() {
                   onClick={() => setActiveId(q.id)}
                   disabled={!canTake}
                   title={
-                    !canTake
-                      ? "Maximum attempts reached. Contact your teacher to request a retake."
-                      : undefined
+                    isClosed
+                      ? "The deadline for this worksheet has passed."
+                      : !canTake
+                        ? "Maximum attempts reached. Contact your teacher to request a retake."
+                        : undefined
                   }
                   className={cn(
                     "mt-4 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl text-sm font-semibold",
@@ -350,11 +361,13 @@ function QuizzesPage() {
                   )}
                 >
                   {used > 0 && canTake && <RotateCcw className="h-3.5 w-3.5" />}
-                  {used === 0
-                    ? "Start worksheet"
-                    : canTake
-                      ? `Retake — ${attemptLabel(used, s?.attempts_allowed ?? null, true)}`
-                      : "Max attempts reached"}
+                  {isClosed
+                    ? "Submission closed"
+                    : used === 0
+                      ? "Start worksheet"
+                      : canTake
+                        ? `Retake — ${attemptLabel(used, s?.attempts_allowed ?? null, true)}`
+                        : "Max attempts reached"}
                 </button>
               </MotionCard>
             );

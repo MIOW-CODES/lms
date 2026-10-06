@@ -25,7 +25,11 @@ describe("lms.server session HMAC — SESSION_SECRET isolation with compat", () 
 
     const { createSessionToken, verifySessionToken } = await import("./server");
 
-    const token = createSessionToken("00000000-0000-4000-a000-000000000001");
+    const token = await createSessionToken(
+      "00000000-0000-4000-a000-000000000001",
+      undefined,
+      async () => {},
+    );
     expect(token).toContain(".");
 
     // Must verify with current SESSION_SECRET
@@ -68,7 +72,7 @@ describe("lms.server session HMAC — SESSION_SECRET isolation with compat", () 
 
     // New tokens still verify
     const { createSessionToken } = mod;
-    const newToken = createSessionToken(profileId);
+    const newToken = await createSessionToken(profileId, undefined, async () => {});
     expect(verifySessionToken(newToken)).toBe(profileId);
   });
 
@@ -77,9 +81,9 @@ describe("lms.server session HMAC — SESSION_SECRET isolation with compat", () 
     process.env["SUPABASE_SERVICE_ROLE_KEY"] = "fallback-service-key-1234567890abcdef";
 
     const { createSessionToken } = await import("./server");
-    expect(() => createSessionToken("00000000-0000-4000-a000-000000000003")).toThrow(
-      "Missing SESSION_SECRET",
-    );
+    await expect(
+      createSessionToken("00000000-0000-4000-a000-000000000003", undefined, async () => {}),
+    ).rejects.toThrow("Missing SESSION_SECRET");
   });
 
   it("rejects tampered or expired tokens", async () => {
@@ -87,7 +91,11 @@ describe("lms.server session HMAC — SESSION_SECRET isolation with compat", () 
     process.env["SUPABASE_SERVICE_ROLE_KEY"] = "other-key-for-tamper";
 
     const { createSessionToken, verifySessionToken } = await import("./server");
-    const token = createSessionToken("00000000-0000-4000-a000-000000000004");
+    const token = await createSessionToken(
+      "00000000-0000-4000-a000-000000000004",
+      undefined,
+      async () => {},
+    );
     const [payload, sig] = token.split(".");
 
     // Tampered signature

@@ -212,6 +212,7 @@ function AssignmentsPage() {
             const st = courseStyle(course?.color ?? "indigo");
             const sub = subByAssignment.get(a.id);
             const due = daysUntil(a.due_date);
+            const isClosed = a.due_date ? new Date(a.due_date).getTime() < Date.now() : false;
             const done = sub && sub.status !== "pending";
             return (
               <MotionCard key={a.id} delay={Math.min(i * 0.04, 0.3)} className="p-5">
@@ -252,6 +253,8 @@ function AssignmentsPage() {
                       </div>
                     ) : done ? (
                       <Badge tone="green">Submitted</Badge>
+                    ) : isClosed ? (
+                      <Badge tone="red">Submission closed</Badge>
                     ) : (
                       <button
                         onClick={() => openSubmit(a)}

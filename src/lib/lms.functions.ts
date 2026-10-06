@@ -231,8 +231,8 @@ export const deleteCourseFn = createServerFn({ method: "POST" })
 export const listAssignmentsFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.session.parse(data))
   .handler(async ({ data }) => {
-    await server.requireSession(data.token);
-    return server.listAssignments();
+    const caller = await server.requireSession(data.token);
+    return server.listAssignments(caller);
   });
 
 export const createAssignmentFn = createServerFn({ method: "POST" })
@@ -340,8 +340,8 @@ export const gradeSubmissionFn = createServerFn({ method: "POST" })
 export const listQuizzesFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.session.parse(data))
   .handler(async ({ data }) => {
-    await server.requireSession(data.token);
-    return server.listQuizzes();
+    const caller = await server.requireSession(data.token);
+    return server.listQuizzes(caller);
   });
 
 export const getQuizFn = createServerFn({ method: "POST" })

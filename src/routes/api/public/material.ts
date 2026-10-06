@@ -4,9 +4,13 @@
 // Authorization: Bearer header first (preferred — avoids token leakage in logs),
 // fallback to ?t= query is deprecated and kept only for backward compat.
 //
-// Access rules:
-//  - Course materials (handouts): any signed-in user (students need the
-//    reference materials their teachers attach to assignments/worksheets).
+// Access rules (P2a, user-signed 2026-10-06 — see src/lib/server/availability.ts):
+//  - Course materials (handouts): staff (teacher/admin) always; students only
+//    when enrolled in the course (path prefix = course_id) AND the file is open
+//    under the materials-for-review policy: a file referenced by assessments is
+//    downloadable once ANY referencing active assessment has opened and STAYS
+//    downloadable afterward; files referenced by no assessment open with
+//    enrollment. No attempt-gating, ever.
 //  - Submission files: the owning student, or any staff member.
 import { createFileRoute } from "@tanstack/react-router";
 
@@ -45,6 +49,12 @@ export const Route = createFileRoute("/api/public/material")({
           caller = await server.requireSession(t);
         } catch {
           return new Response("Unauthorized", { status: 401 });
+        }
+
+        // Course materials: course-membership + any-open-wins attachment lookup.
+        if (isMaterial) {
+          const allowed = await server.canAccessCourseMaterialPath(caller, p);
+          if (!allowed) return new Response("Forbidden", { status: 403 });
         }
 
         // Submission files are private: only the owning student or staff may read.

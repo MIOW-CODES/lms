@@ -58,6 +58,8 @@ export function CreateQuizModal({
     duration_minutes: "15",
     question_count: "0",
     questions: "",
+    opens_at: "",
+    closes_at: "",
   });
   const [quizMode, setQuizMode] = useState<QuizMode>("classmate");
   const [manualQuestions, setManualQuestions] = useState<ManualQuestion[]>([]);
@@ -248,6 +250,8 @@ export function CreateQuizModal({
           title: quizForm.title,
           duration_minutes: parseInt(quizForm.duration_minutes) || 15,
           question_count: questionCount,
+          opens_at: quizForm.opens_at ? new Date(quizForm.opens_at).toISOString() : null,
+          closes_at: quizForm.closes_at ? new Date(quizForm.closes_at).toISOString() : null,
           ...policyPayload(quizForm),
         },
         questions,
@@ -261,6 +265,8 @@ export function CreateQuizModal({
         duration_minutes: "15",
         question_count: "0",
         questions: "",
+        opens_at: "",
+        closes_at: "",
       });
       setManualQuestions([]);
       setQuizMode("classmate");
@@ -320,6 +326,28 @@ export function CreateQuizModal({
           <span className="text-[11px] text-muted-foreground">
             0 = all questions · e.g. 10 = a different random 10 per student/attempt
           </span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+            <span>Opens at (Availability date/time)</span>
+            <input
+              type="datetime-local"
+              value={quizForm.opens_at}
+              onChange={(e) => setQuizForm((f) => ({ ...f, opens_at: e.target.value }))}
+              aria-label="Worksheet opens at"
+              className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+            <span>Closes at (Deadline / Hard lock)</span>
+            <input
+              type="datetime-local"
+              value={quizForm.closes_at}
+              onChange={(e) => setQuizForm((f) => ({ ...f, closes_at: e.target.value }))}
+              aria-label="Worksheet closes at"
+              className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+            />
+          </label>
         </div>
         <PolicyFields
           value={quizForm}

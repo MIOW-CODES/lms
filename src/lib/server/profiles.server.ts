@@ -41,7 +41,7 @@ export async function findByRfid(uid: string) {
   const p = await unwrap<ProfileRow | null>(
     db.from("profiles").select("*").eq("rfid_uid", uid).is("deleted_at", null).maybeSingle(),
   );
-  return p ? { profile: safeProfile(p), token: createSessionToken(p.id) } : null;
+  return p ? { profile: safeProfile(p), token: await createSessionToken(p.id) } : null;
 }
 
 /* ---------- PIN verification ---------- */
@@ -181,7 +181,7 @@ export async function verifyPinLogin(login: string, secret: string) {
       .eq("id", p.id);
   }
   dbgS("login success", { email: p.email, role: p.role });
-  return { ok: true as const, profile: safeProfile(p), token: createSessionToken(p.id) };
+  return { ok: true as const, profile: safeProfile(p), token: await createSessionToken(p.id) };
 }
 
 /* ---------- Profile CRUD ---------- */

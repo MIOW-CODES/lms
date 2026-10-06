@@ -12,25 +12,40 @@ export function sessionSecret(): string {
   return key;
 }
 
-export function createSessionToken(profileId: string, jti: string = randomUUID()): string {
+/** Row persisted for JTI revocation (see {@link createSessionToken}). */
+export interface JtiRow {
+  jti: string;
+  profile_id: string;
+  expires_at: string;
+}
+
+/** Pluggable JTI writer — default persists to `sessions`; tests inject stubs. */
+export type JtiWriter = (row: JtiRow) => PromiseLike<unknown>;
+
+async function persistJti(row: JtiRow): Promise<void> {
+  await unwrap(db.from("sessions").insert(row as any));
+}
+
+/**
+ * Issue a signed session token. FAIL-CLOSED (Gate-1 3f / C12): the JTI row must
+ * be written before the token is returned — if it cannot be persisted the token
+ * is never issued and login errors, instead of handing out an unrevocable token.
+ */
+export async function createSessionToken(
+  profileId: string,
+  jti: string = randomUUID(),
+  writeJti: JtiWriter = persistJti,
+): Promise<string> {
+  const secret = sessionSecret();
   const exp = Date.now() + SESSION_TTL_MS;
   const payload = Buffer.from(JSON.stringify({ sub: profileId, jti, exp })).toString("base64url");
-  // Persist jti for revocation; best-effort so login never blocks on DB.
-  const row = { jti, profile_id: profileId, expires_at: new Date(exp).toISOString() } as any;
   try {
-    const pending: any = db.from("sessions").insert(row);
-    if (pending && typeof pending.then === "function")
-      void pending.then(
-        () => {},
-        (err: unknown) => {
-          console.warn("[sessions] JTI insert failed (token works but cannot be revoked):", err);
-        },
-      );
-    else void pending;
+    await writeJti({ jti, profile_id: profileId, expires_at: new Date(exp).toISOString() });
   } catch (e) {
-    console.error("[sessions] JTI insert failed:", e);
+    console.error("[sessions] JTI insert failed — refusing to issue token:", e);
+    throw new Error("Sign-in failed: the session could not be recorded. Please try again.");
   }
-  const sig = createHmac("sha256", sessionSecret()).update(payload).digest("base64url");
+  const sig = createHmac("sha256", secret).update(payload).digest("base64url");
   return `${payload}.${sig}`;
 }
 

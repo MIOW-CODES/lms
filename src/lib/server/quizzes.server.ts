@@ -3,12 +3,32 @@
 import { z } from "zod";
 import { db } from "@/integrations/db/client.server";
 import { unwrap, withoutToken, isUniqueViolation } from "@/lib/server/utils.server";
-import { requireSession, requireStaff } from "@/lib/server/auth.server";
+import {
+  requireSession,
+  requireStaff,
+  requireEnrollment,
+  enrolledCourseIds,
+} from "@/lib/server/auth.server";
+import { getProfileById } from "@/lib/server/profiles.server";
+import {
+  hasOpened,
+  requireOpen,
+  canViewAssessment,
+  AvailabilityError,
+} from "@/lib/server/availability";
 import { schemas } from "@/lib/server/schemas.server";
 import type { IntegrityEventType } from "@/lib/integrity";
+import type { ProfileRole } from "@/lib/server/db-types";
 
-export async function listQuizzes() {
-  return unwrap<any[]>(db.from("quizzes").select("*").is("deleted_at", null));
+export async function listQuizzes(caller: { id: string; role: ProfileRole }) {
+  const rows = await unwrap<any[]>(db.from("quizzes").select("*").is("deleted_at", null));
+  // Staff (teacher/admin) see every course's rows; students only see items in
+  // courses they are enrolled in AND that have opened (closed items stay
+  // visible for review).
+  if (caller.role !== "student") return rows;
+  const enrolled = new Set(await enrolledCourseIds(caller.id));
+  const now = new Date();
+  return rows.filter((q) => enrolled.has(q.course_id) && canViewAssessment(q, caller.role, now));
 }
 
 /** In-place Fisher-Yates shuffle (uniform random permutation). */
@@ -47,6 +67,17 @@ export async function getQuizPublic(id: string, studentId?: string) {
   const quiz = await unwrap<any>(
     db.from("quizzes").select("*").eq("id", id).is("deleted_at", null).single(),
   );
+  // Enforcement (user policy 2026-10-06): students must be enrolled in the
+  // course and may only open the worksheet inside its availability window.
+  // Staff (teacher/admin) bypass for grading/preview.
+  if (studentId) {
+    const profile = await getProfileById(studentId);
+    if (!profile) throw new Error("Unauthorized");
+    if (profile.role === "student") {
+      await requireEnrollment(quiz.course_id, profile);
+      requireOpen(quiz, new Date());
+    }
+  }
   let questions = await unwrap<any[]>(
     db
       .from("quiz_questions")
@@ -205,10 +236,12 @@ interface QuizConfig {
   score_released: boolean;
   answer_key_released: boolean;
   question_count: number;
+  opens_at: string | null;
+  closes_at: string | null;
 }
 
 const QUIZ_CONFIG_COLS =
-  "id, course_id, title, allow_retake, max_attempts, retake_score_policy, score_released, answer_key_released, question_count";
+  "id, course_id, title, allow_retake, max_attempts, retake_score_policy, score_released, answer_key_released, question_count, opens_at, closes_at";
 
 async function getQuizConfig(quizId: string): Promise<QuizConfig> {
   const quiz = await unwrap<any>(
@@ -364,6 +397,15 @@ export async function submitQuizAttempt(
     }
   }
 
+  // Hard-block before/after the availability window (user policy 2026-10-06):
+  // no new attempts before opens_at or after closes_at — no late flag, no
+  // overwrite. Idempotent replays above are reads of an already-recorded
+  // attempt and are never gated. Staff bypass for grading/preview.
+  if (caller.role === "student") {
+    await requireEnrollment(quiz.course_id, caller);
+    requireOpen(quiz, new Date());
+  }
+
   const [attempts, extra] = await Promise.all([
     attemptsFor(quiz_id, caller.id),
     extraAttemptsFor(quiz_id, caller.id),
@@ -454,6 +496,12 @@ export async function submitQuizAttempt(
 export async function quizAttemptInfo(quiz_id: string, token: string) {
   const caller = await requireSession(token);
   const quiz = await getQuizConfig(quiz_id);
+  // Students must be enrolled and cannot probe not-yet-open worksheets. Closed
+  // worksheets stay readable so scores remain reviewable; staff bypass.
+  if (caller.role === "student") {
+    await requireEnrollment(quiz.course_id, caller);
+    if (!hasOpened(quiz, new Date())) throw new AvailabilityError("not_yet_open");
+  }
   const [attempts, extra] = await Promise.all([
     attemptsFor(quiz_id, caller.id),
     extraAttemptsFor(quiz_id, caller.id),
@@ -491,8 +539,16 @@ export async function listMyQuizSummaries(token: string) {
     ),
     unwrap<any[]>(db.from("quizzes").select(QUIZ_CONFIG_COLS).is("deleted_at", null)),
   ]);
+  // Students only see summaries for enrolled courses' opened worksheets (same
+  // scoping rule as listQuizzes); staff see everything.
+  let visibleQuizzes = (quizzes ?? []) as Array<QuizConfig & { course_id: string }>;
+  if (caller.role === "student") {
+    const enrolled = new Set(await enrolledCourseIds(caller.id));
+    const now = new Date();
+    visibleQuizzes = visibleQuizzes.filter((q) => enrolled.has(q.course_id) && hasOpened(q, now));
+  }
   const configById = new Map<string, QuizConfig>(
-    (quizzes ?? []).map((q: any) => [q.id as string, q as QuizConfig]),
+    visibleQuizzes.map((q: any) => [q.id as string, q as QuizConfig]),
   );
   const extraByQuiz = new Map<string, number>(
     (grants ?? []).map((g: any) => [g.quiz_id as string, (g.extra_attempts as number) ?? 0]),
@@ -872,6 +928,8 @@ const ALLOWED_QUIZ_COLUMNS = new Set([
   "answer_key_released",
   "question_count",
   "attachments",
+  "opens_at",
+  "closes_at",
   "deleted_at",
 ]);
 

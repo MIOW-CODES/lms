@@ -5,8 +5,9 @@ import { extname } from "node:path";
 import { z } from "zod";
 import { db, supabaseAdmin } from "@/integrations/db/client.server";
 import { unwrap, withoutToken } from "@/lib/server/utils.server";
-import { requireStaff } from "@/lib/server/auth.server";
+import { requireStaff, isEnrolledIn } from "@/lib/server/auth.server";
 import { requireCourseOwnerOrAdmin } from "@/lib/server/courses.server";
+import { isMaterialOpen, requireOpen, type AvailabilityRow } from "@/lib/server/availability";
 import { sessionSecret } from "@/lib/server/sessions.server";
 
 const MATERIAL_BUCKET = "course-materials";
@@ -199,11 +200,27 @@ export async function uploadSubmissionFile(
   content_type: string,
 ): Promise<Attachment> {
   const { requireSelfOrStaff } = await import("@/lib/server/auth.server");
-  const submission = await unwrap<{ id: string; student_id: string } | null>(
-    db.from("submissions").select("id, student_id").eq("id", submissionId).maybeSingle(),
+  const submission = await unwrap<{ id: string; student_id: string; assignment_id: string } | null>(
+    db
+      .from("submissions")
+      .select("id, student_id, assignment_id")
+      .eq("id", submissionId)
+      .maybeSingle(),
   );
   if (!submission) throw new Error("Submission not found");
-  await requireSelfOrStaff(tokenStr, submission.student_id);
+  const caller = await requireSelfOrStaff(tokenStr, submission.student_id);
+  // Deadlines hard-block submissions — including late file attachments to an
+  // existing submission (that would be a late-work write). Staff bypass.
+  if (caller.role === "student") {
+    const assignment = await unwrap<AvailabilityRow | null>(
+      db
+        .from("assignments")
+        .select("opens_at, closes_at, due_date")
+        .eq("id", submission.assignment_id)
+        .maybeSingle(),
+    );
+    if (assignment) requireOpen(assignment, new Date());
+  }
 
   if (!content_type || !MATERIAL_EXT[content_type]) {
     const fileExt = extname(name).toLowerCase();
@@ -319,6 +336,8 @@ const ALLOWED_ASSIGNMENT_COLUMNS = new Set([
   "component_type",
   "score_released",
   "attachments",
+  "opens_at",
+  "closes_at",
   "deleted_at",
 ]);
 
@@ -373,7 +392,60 @@ export async function hardwareRoster() {
   return { synced_at: new Date().toISOString(), count: users.length, users };
 }
 
+// Tables with a soft-delete column — counts must never leak deleted rows.
+// (Not every countable table has `deleted_at`; `courses`/`announcements` etc.
+// are hard-deleted and are counted as-is.)
+const SOFT_DELETE_TABLES = new Set(["profiles", "assignments", "quizzes"]);
+
 export async function countRows(table: string): Promise<number> {
-  const rows = await unwrap<unknown[]>(db.from(table).select("id"));
+  let query = db.from(table).select("id");
+  if (SOFT_DELETE_TABLES.has(table)) query = query.is("deleted_at", null);
+  const rows = await unwrap<unknown[]>(query);
   return rows.length;
+}
+
+/* ---------- Material serving access policy (P2a, user-signed 2026-10-06) ----------
+ * Course-material paths (`<course_id>/material_...`):
+ *   - staff (teacher/admin): always allowed;
+ *   - students: must be enrolled in the course AND the path must be open under
+ *     the materials-for-review policy — a file referenced by assessments is
+ *     downloadable once ANY referencing active (non-deleted) assessment has
+ *     opened and stays downloadable afterward ("any-open wins", no re-locking);
+ *     a file referenced by no active assessment is course-level and opens with
+ *     enrollment. No attempt-gating, ever.
+ */
+
+function attachmentsIncludePath(attachments: unknown, path: string): boolean {
+  return Array.isArray(attachments) && attachments.some((a: any) => a?.path === path);
+}
+
+export async function canAccessCourseMaterialPath(
+  caller: { id: string; role: string },
+  path: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  if (caller.role === "admin" || caller.role === "teacher") return true;
+  const courseId = path.split("/")[0] ?? "";
+  if (!(await isEnrolledIn(caller.id, courseId))) return false;
+  // Reverse lookup: which ACTIVE assessments in this course reference the path?
+  const [quizzes, assignments] = await Promise.all([
+    unwrap<Array<{ attachments: unknown } & AvailabilityRow>>(
+      db
+        .from("quizzes")
+        .select("opens_at, closes_at, attachments")
+        .eq("course_id", courseId)
+        .is("deleted_at", null),
+    ),
+    unwrap<Array<{ attachments: unknown } & AvailabilityRow>>(
+      db
+        .from("assignments")
+        .select("opens_at, closes_at, due_date, attachments")
+        .eq("course_id", courseId)
+        .is("deleted_at", null),
+    ),
+  ]);
+  const referencing = [...quizzes, ...assignments].filter((row) =>
+    attachmentsIncludePath(row.attachments, path),
+  );
+  return isMaterialOpen(referencing, now);
 }

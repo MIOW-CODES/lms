@@ -224,6 +224,8 @@ export interface Assignment {
   score_released?: boolean | null;
   /** Handouts uploaded by staff (PDF/DOCX/PNG/JPG/ZIP). */
   attachments?: Attachment[];
+  opens_at?: string | null;
+  closes_at?: string | null;
 }
 
 // Pedagogical alias — DB table stays `assignments`, UI calls them Activities.
@@ -348,6 +350,8 @@ export interface Quiz {
   question_count?: number;
   /** Handouts uploaded by staff (PDF/DOCX/PNG/JPG/ZIP). */
   attachments?: Attachment[];
+  opens_at?: string | null;
+  closes_at?: string | null;
 }
 
 export interface QuizQuestion {
@@ -1310,6 +1314,17 @@ export function fmtDate(iso: string | null): string {
   });
 }
 
+export function fmtDateTime(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" });
 }
@@ -1393,6 +1408,8 @@ export async function updateQuiz(
     max_attempts?: number;
     retake_score_policy?: RetakePolicy;
     attachments?: Attachment[];
+    opens_at?: string | null;
+    closes_at?: string | null;
     score_released?: boolean;
     answer_key_released?: boolean;
   },
@@ -1413,7 +1430,14 @@ export async function updateAssignment(
   patch: Partial<
     Pick<
       Assignment,
-      "title" | "description" | "due_date" | "total_points" | "component_type" | "attachments"
+      | "title"
+      | "description"
+      | "due_date"
+      | "total_points"
+      | "component_type"
+      | "attachments"
+      | "opens_at"
+      | "closes_at"
     >
   >,
 ): Promise<void> {

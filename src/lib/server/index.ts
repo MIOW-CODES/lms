@@ -15,7 +15,25 @@ export {
   requireAdmin,
   requireTeacher,
   requireSelfOrStaff,
+  enrolledCourseIds,
+  isEnrolledIn,
+  requireEnrollment,
 } from "./auth.server";
+
+// Availability windows & access policy (P2a) — pure helpers, the seam for
+// future auth centralization (Gate-1 amendment #1).
+export {
+  hasOpened,
+  hasClosed,
+  deadlineOf,
+  availabilityStatus,
+  requireOpen,
+  AvailabilityError,
+  canViewAssessment,
+  canAccessCourse,
+  isMaterialOpen,
+} from "./availability";
+export type { AvailabilityRow, AvailabilityStatus, AvailabilityReason } from "./availability";
 
 export {
   safeProfile,
@@ -124,6 +142,7 @@ export {
 
 export {
   uploadCourseMaterial,
+  canAccessCourseMaterialPath,
   removeCourseMaterial,
   attachCourseMaterial,
   uploadSubmissionFile,

@@ -17,6 +17,7 @@ export function EditAssignmentModal({ assignment, onClose, onSaved }: EditAssign
   const [editAssignForm, setEditAssignForm] = useState({
     title: "",
     description: "",
+    opens_at: "",
     due_date: "",
     total_points: "100",
     component_type: "written_work" as Assignment["component_type"],
@@ -26,6 +27,7 @@ export function EditAssignmentModal({ assignment, onClose, onSaved }: EditAssign
     setEditAssignForm({
       title: a.title,
       description: a.description ?? "",
+      opens_at: a.opens_at ? a.opens_at.slice(0, 16) : "",
       due_date: a.due_date ? a.due_date.slice(0, 16) : "",
       total_points: String(a.total_points),
       component_type: a.component_type,
@@ -47,6 +49,7 @@ export function EditAssignmentModal({ assignment, onClose, onSaved }: EditAssign
       await updateAssignment(assignment.id, {
         title: editAssignForm.title.trim(),
         description: editAssignForm.description || null,
+        opens_at: editAssignForm.opens_at ? new Date(editAssignForm.opens_at).toISOString() : null,
         due_date: editAssignForm.due_date ? new Date(editAssignForm.due_date).toISOString() : null,
         total_points: Math.max(1, parseInt(editAssignForm.total_points) || 100),
         component_type: editAssignForm.component_type,
@@ -83,14 +86,29 @@ export function EditAssignmentModal({ assignment, onClose, onSaved }: EditAssign
           rows={3}
           className="rounded-xl border border-input bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring"
         />
-        <div className="grid grid-cols-3 gap-3">
-          <input
-            type="datetime-local"
-            aria-label="Due date"
-            value={editAssignForm.due_date}
-            onChange={(e) => setEditAssignForm((f) => ({ ...f, due_date: e.target.value }))}
-            className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+            <span>Opens at (Availability date/time)</span>
+            <input
+              type="datetime-local"
+              aria-label="Opens at"
+              value={editAssignForm.opens_at}
+              onChange={(e) => setEditAssignForm((f) => ({ ...f, opens_at: e.target.value }))}
+              className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+            <span>Due date (Deadline / Hard lock)</span>
+            <input
+              type="datetime-local"
+              aria-label="Due date"
+              value={editAssignForm.due_date}
+              onChange={(e) => setEditAssignForm((f) => ({ ...f, due_date: e.target.value }))}
+              className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+            />
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
           <input
             value={editAssignForm.total_points}
             onChange={(e) => setEditAssignForm((f) => ({ ...f, total_points: e.target.value }))}

@@ -61,3 +61,41 @@ export async function requireSelfOrStaff(token: string, studentId: string) {
   if (profile.role === "student" && profile.id !== studentId) throw new Error("Forbidden");
   return profile;
 }
+
+/* ---------- Course-membership guards (Gate-1 amendment #3) ---------- */
+
+/** Course ids the student is enrolled in. */
+export async function enrolledCourseIds(studentId: string): Promise<string[]> {
+  const rows = await unwrap<Array<{ course_id: string }>>(
+    db.from("enrollments").select("course_id").eq("student_id", studentId),
+  );
+  return rows.map((r) => r.course_id);
+}
+
+/** True when the student is enrolled in the course. */
+export async function isEnrolledIn(studentId: string, courseId: string): Promise<boolean> {
+  const row = await unwrap<{ course_id: string } | null>(
+    db
+      .from("enrollments")
+      .select("course_id")
+      .eq("student_id", studentId)
+      .eq("course_id", courseId)
+      .maybeSingle(),
+  );
+  return !!row;
+}
+
+/**
+ * Course-content guard: staff (teacher/admin) see everything; students must be
+ * enrolled in the course. Throws "Forbidden" otherwise. Doubles as the C13
+ * centralization seam alongside availability.requireOpen.
+ */
+export async function requireEnrollment(
+  courseId: string,
+  profile: { id: string; role: string },
+): Promise<void> {
+  if (profile.role !== "student") return;
+  if (!(await isEnrolledIn(profile.id, courseId))) {
+    throw new Error("Forbidden: you are not enrolled in this course.");
+  }
+}

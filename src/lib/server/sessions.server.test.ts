@@ -91,12 +91,14 @@ describe("sessions.server edge cases", () => {
   });
 
   describe("createSessionToken", () => {
+    const okWrite = async () => {};
+
     it("returns a token with payload.signature format", async () => {
       process.env["SESSION_SECRET"] = "create-test-secret-1234567890abcdef";
       process.env["SUPABASE_SERVICE_ROLE_KEY"] = "other-key-1234567890abcdef1234";
 
       const { createSessionToken } = await import("./sessions.server");
-      const token = createSessionToken("user-abc");
+      const token = await createSessionToken("user-abc", undefined, okWrite);
       const parts = token.split(".");
       expect(parts.length).toBe(2);
       expect(parts[0]!.length).toBeGreaterThan(0);
@@ -108,11 +110,36 @@ describe("sessions.server edge cases", () => {
       process.env["SUPABASE_SERVICE_ROLE_KEY"] = "other-key-1234567890abcdef1234";
 
       const { createSessionToken, verifySessionToken } = await import("./sessions.server");
-      const token = createSessionToken("user-custom", "my-custom-jti");
+      const token = await createSessionToken("user-custom", "my-custom-jti", okWrite);
       const payload = token.split(".")[0]!;
       const body = JSON.parse(Buffer.from(payload, "base64url").toString());
       expect(body.jti).toBe("my-custom-jti");
       expect(verifySessionToken(token)).toBe("user-custom");
+    });
+
+    it("persists the JTI row before returning (fail-closed write)", async () => {
+      process.env["SESSION_SECRET"] = "jti-persist-secret-1234567890abcdef";
+      const { createSessionToken } = await import("./sessions.server");
+      const rows: Array<{ jti: string; profile_id: string; expires_at: string }> = [];
+      const token = await createSessionToken("user-persist", "my-persist-jti", async (row) => {
+        rows.push(row);
+      });
+      expect(token).toContain(".");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.jti).toBe("my-persist-jti");
+      expect(rows[0]!.profile_id).toBe("user-persist");
+      expect(Number.isFinite(Date.parse(rows[0]!.expires_at))).toBe(true);
+    });
+
+    it("is fail-closed: no token is issued when the JTI row cannot be written", async () => {
+      process.env["SESSION_SECRET"] = "jti-failclosed-secret-1234567890abcdef";
+      const { createSessionToken } = await import("./sessions.server");
+      const failWrite = async () => {
+        throw new Error("database unavailable");
+      };
+      await expect(createSessionToken("user-fail", undefined, failWrite)).rejects.toThrow(
+        "Sign-in failed",
+      );
     });
   });
 });

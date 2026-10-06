@@ -33,6 +33,7 @@ export function CreateAssignmentModal({
     course_id: "",
     title: "",
     description: "",
+    opens_at: "",
     due_date: "",
     total_points: "100",
     component_type: "written_work" as const,
@@ -72,6 +73,7 @@ export function CreateAssignmentModal({
         course_id: assignForm.course_id,
         title: assignForm.title,
         description: assignForm.description || null,
+        opens_at: assignForm.opens_at ? new Date(assignForm.opens_at).toISOString() : null,
         due_date: assignForm.due_date ? new Date(assignForm.due_date).toISOString() : null,
         total_points: parseInt(assignForm.total_points) || 100,
         component_type: assignForm.component_type,
@@ -83,6 +85,7 @@ export function CreateAssignmentModal({
         course_id: "",
         title: "",
         description: "",
+        opens_at: "",
         due_date: "",
         total_points: "100",
         component_type: "written_work",
@@ -131,13 +134,29 @@ export function CreateAssignmentModal({
           progress={assignUploadPct}
           busy={saving}
         />
-        <div className="grid grid-cols-3 gap-3">
-          <input
-            type="datetime-local"
-            value={assignForm.due_date}
-            onChange={(e) => setAssignForm((f) => ({ ...f, due_date: e.target.value }))}
-            className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+            <span>Opens at (Availability date/time)</span>
+            <input
+              type="datetime-local"
+              value={assignForm.opens_at}
+              onChange={(e) => setAssignForm((f) => ({ ...f, opens_at: e.target.value }))}
+              aria-label="Assignment opens at"
+              className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+            <span>Due date (Deadline / Hard lock)</span>
+            <input
+              type="datetime-local"
+              value={assignForm.due_date}
+              onChange={(e) => setAssignForm((f) => ({ ...f, due_date: e.target.value }))}
+              aria-label="Assignment due date"
+              className="h-10 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+            />
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
           <input
             value={assignForm.total_points}
             onChange={(e) => setAssignForm((f) => ({ ...f, total_points: e.target.value }))}

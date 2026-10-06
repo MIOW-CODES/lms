@@ -281,6 +281,10 @@ export const schemas = {
     title: z.string().min(1).max(300),
     description: z.string().max(5000).nullable().optional(),
     due_date: z.string().max(40).nullable().optional(),
+    // Availability window (P2a): null opens_at = open now, null closes_at = no
+    // hard close from that column (due_date still hard-blocks assignments).
+    opens_at: z.string().max(40).nullable().optional(),
+    closes_at: z.string().max(40).nullable().optional(),
     total_points: z.number().int().min(1).max(1000).optional(),
     component_type: z.enum(["written_work", "performance_task", "quarterly_exam"]).optional(),
     attachments: z.array(attachmentMeta).max(10).optional(),
@@ -355,6 +359,9 @@ export const schemas = {
       retake_score_policy: z.enum(["highest_score", "latest_attempt", "average_score"]).optional(),
       question_count: z.number().int().min(0).max(100).optional(),
       attachments: z.array(attachmentMeta).max(10).optional(),
+      // Availability window (P2a): null = open now / no hard close.
+      opens_at: z.string().max(40).nullable().optional(),
+      closes_at: z.string().max(40).nullable().optional(),
     }),
     questions: z
       .array(
@@ -433,6 +440,8 @@ export const schemas = {
         attachments: z.array(attachmentMeta).max(10),
         score_released: z.boolean(),
         answer_key_released: z.boolean(),
+        opens_at: z.string().max(40).nullable(),
+        closes_at: z.string().max(40).nullable(),
       })
       .partial(),
     questions: z
@@ -458,6 +467,8 @@ export const schemas = {
         component_type: z.enum(["written_work", "performance_task", "quarterly_exam"]),
         attachments: z.array(attachmentMeta).max(10),
         score_released: z.boolean(),
+        opens_at: z.string().max(40).nullable(),
+        closes_at: z.string().max(40).nullable(),
       })
       .partial(),
     ...token,
