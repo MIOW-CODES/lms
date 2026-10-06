@@ -211,8 +211,8 @@ export function ProgressBar({ value, barClass }: { value: number; barClass?: str
   return (
     <div
       className={cn(
-        "relative h-2.5 w-full overflow-hidden rounded-full bg-muted transition-all duration-300",
-        isComplete && "ring-1 ring-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.25)]",
+        "relative h-3 w-full overflow-hidden rounded-full bg-muted/80 transition-all duration-300",
+        isComplete && "ring-2 ring-emerald-500/50 shadow-[0_0_16px_rgba(16,185,129,0.4)]",
       )}
       role="progressbar"
       aria-valuenow={clamped}
@@ -223,26 +223,37 @@ export function ProgressBar({ value, barClass }: { value: number; barClass?: str
       <motion.div
         initial={{ width: 0 }}
         animate={{ width: `${clamped}%` }}
-        transition={{ duration: 0.7, ease: "easeOut" }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
         className={cn(
-          "relative h-full rounded-full transition-colors duration-500",
-          isComplete ? "bg-emerald-500" : "bg-primary",
+          "relative h-full rounded-full transition-colors duration-500 overflow-hidden",
+          isComplete ? "bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500" : "bg-primary",
           barClass,
         )}
       >
-        {/* Shimmer sweep animation when complete */}
+        {/* Shimmer sweep & pulse animation when complete */}
         {isComplete && (
-          <motion.div
-            initial={{ x: "-100%" }}
-            animate={{ x: "200%" }}
-            transition={{
-              repeat: Infinity,
-              duration: 1.8,
-              ease: "easeInOut",
-              repeatDelay: 0.5,
-            }}
-            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent skew-x-12"
-          />
+          <>
+            <motion.div
+              initial={{ x: "-100%" }}
+              animate={{ x: "250%" }}
+              transition={{
+                repeat: Infinity,
+                duration: 1.5,
+                ease: "easeInOut",
+                repeatDelay: 0.4,
+              }}
+              className="absolute inset-0 w-1/2 bg-gradient-to-r from-transparent via-white/70 to-transparent skew-x-[-20deg]"
+            />
+            <motion.div
+              animate={{ opacity: [0.6, 1, 0.6] }}
+              transition={{
+                repeat: Infinity,
+                duration: 2,
+                ease: "easeInOut",
+              }}
+              className="absolute inset-0 bg-white/10"
+            />
+          </>
         )}
       </motion.div>
     </div>
