@@ -311,17 +311,17 @@ export function AppShell({
           </div>
         </header>
 
-        <nav className="flex gap-2 overflow-x-auto border-b border-border/60 bg-background/60 px-4 py-2 backdrop-blur-md lg:hidden">
+        <nav className="custom-scrollbar flex gap-2 overflow-x-auto border-b border-border/60 bg-background/60 px-4 py-2.5 backdrop-blur-md lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {nav.map((n) => (
             <Link
               key={n.to}
               to={n.to}
               aria-label={n.label}
               className={cn(
-                "flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold",
+                "flex items-center gap-1.5 shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors",
                 pathname === n.to
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground",
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-muted text-muted-foreground hover:text-foreground",
               )}
             >
               {n.icon}
@@ -330,9 +330,9 @@ export function AppShell({
           ))}
         </nav>
         <main className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
-        <footer className="border-t border-border/40 py-4 text-center text-xs text-muted-foreground/80">
+        <footer className="border-t border-border/40 py-4 text-center text-xs text-muted-foreground">
           <p>© {new Date().getFullYear()} Integrated Developmental School (MIOW)</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground/60">
+          <p className="mt-1 text-xs text-muted-foreground">
             Web Developer:{" "}
             <a
               href="https://github.com/Joal0816"
