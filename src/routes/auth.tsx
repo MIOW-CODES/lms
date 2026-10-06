@@ -163,20 +163,24 @@ function AuthPage() {
       </div>
 
       {/* Auth panel */}
-      <div className="flex flex-1 items-center justify-center p-4 sm:p-8">
-        <div className="w-full max-w-md">
-          <div className="mb-6 flex items-center gap-3 lg:hidden">
-            <MiowLockup size="sm" />
+      <div className="flex flex-1 items-center justify-center p-3 sm:p-8 min-w-0 max-w-full overflow-hidden">
+        <div className="w-full max-w-md min-w-0">
+          <div className="mb-6 flex items-center gap-3 lg:hidden min-w-0">
+            <MiowLockup size="sm" className="min-w-0 max-w-full" />
           </div>
 
-          <div className="rounded-2xl border border-border bg-card p-6 shadow-lift sm:p-8">
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-lift sm:p-8 min-w-0 max-w-full">
             <h1 className="sr-only">Sign in to Integrated Developmental School (MIOW)</h1>
-            <MiowLockup size="lg" aria-hidden />
+            <MiowLockup size="lg" aria-hidden className="min-w-0 max-w-full" />
             <p className="mt-1 text-sm text-muted-foreground">
               Enter your ID/username and PIN to continue.
             </p>
 
-            <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+            <div
+              role="tablist"
+              aria-label="Sign-in method"
+              className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-muted p-1"
+            >
               {(
                 [
                   ["scan", "RFID Card", Nfc],
@@ -185,11 +189,13 @@ function AuthPage() {
               ).map(([m, label, Icon]) => (
                 <button
                   key={m}
+                  role="tab"
+                  aria-selected={mode === m}
                   onClick={() => setMode(m)}
                   className={cn(
                     "flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors",
                     mode === m
-                      ? "bg-card shadow-sm"
+                      ? "bg-card shadow-sm text-foreground"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -215,50 +221,65 @@ function AuthPage() {
                     e.preventDefault();
                     if (uid.trim()) handleUid(uid);
                   }}
-                  className="flex gap-2"
+                  className="space-y-1.5"
                 >
-                  <input
-                    id="rfid-uid"
-                    value={uid}
-                    onChange={(e) => setUid(e.target.value)}
-                    placeholder="RFID UID (e.g. 0412345678)"
-                    aria-label="RFID UID"
-                    className="h-10 flex-1 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                  />
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className="h-10 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                  >
-                    Tap
-                  </button>
+                  <label htmlFor="rfid-uid" className="block text-xs font-medium text-foreground">
+                    Card UID
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="rfid-uid"
+                      value={uid}
+                      onChange={(e) => setUid(e.target.value)}
+                      placeholder="RFID UID (e.g. 0412345678)"
+                      aria-label="RFID UID"
+                      className="h-10 min-w-0 flex-1 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="h-10 shrink-0 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      Tap
+                    </button>
+                  </div>
                 </form>
               </div>
             ) : (
-              <form onSubmit={handlePin} className="mt-6 space-y-3">
+              <form onSubmit={handlePin} className="mt-6 space-y-3.5">
                 <p className="rounded-xl border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                   One login for students, teachers, and admins. Accounts lock for 15 minutes after 5
                   failed attempts.
                 </p>
-                <input
-                  id="login-id"
-                  value={login}
-                  onChange={(e) => setLogin(e.target.value)}
-                  placeholder="Student ID, email, or username"
-                  aria-label="Student ID, email, or username"
-                  autoComplete="username"
-                  className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
-                <input
-                  id="login-pin"
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  placeholder="PIN or password"
-                  type="password"
-                  aria-label="PIN or password"
-                  autoComplete="current-password"
-                  className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
+                <div className="space-y-1">
+                  <label htmlFor="login-id" className="block text-xs font-medium text-foreground">
+                    Account ID / Username
+                  </label>
+                  <input
+                    id="login-id"
+                    value={login}
+                    onChange={(e) => setLogin(e.target.value)}
+                    placeholder="Student ID, email, or username"
+                    aria-label="Student ID, email, or username"
+                    autoComplete="username"
+                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="login-pin" className="block text-xs font-medium text-foreground">
+                    Security PIN
+                  </label>
+                  <input
+                    id="login-pin"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value)}
+                    placeholder="Enter 4-digit PIN"
+                    type="password"
+                    aria-label="PIN or password"
+                    autoComplete="current-password"
+                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
                 <button
                   type="submit"
                   disabled={busy || !login.trim() || !pin}

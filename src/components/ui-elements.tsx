@@ -399,13 +399,69 @@ export function Modal({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousActiveElement = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!open) return;
+
+    // Remember previous active element to restore focus on close
+    previousActiveElement.current = document.activeElement as HTMLElement | null;
+
+    const dialog = dialogRef.current;
+    if (dialog) {
+      // Find first focusable element inside dialog or focus container
+      const focusableElements = dialog.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusableElements.length > 0) {
+        focusableElements[0]?.focus();
+      } else {
+        dialog.focus();
+      }
+    }
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+
+      if (e.key === "Tab") {
+        const dialogNode = dialogRef.current;
+        if (!dialogNode) return;
+        const focusable = dialogNode.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusable.length === 0) {
+          e.preventDefault();
+          return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first || !dialogNode.contains(document.activeElement)) {
+            e.preventDefault();
+            last?.focus();
+          }
+        } else {
+          if (document.activeElement === last || !dialogNode.contains(document.activeElement)) {
+            e.preventDefault();
+            first?.focus();
+          }
+        }
+      }
     };
+
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      if (previousActiveElement.current && typeof previousActiveElement.current.focus === "function") {
+        previousActiveElement.current.focus();
+      }
+    };
   }, [open, onClose]);
 
   return (
@@ -420,6 +476,8 @@ export function Modal({
           onClick={onClose}
         >
           <motion.div
+            ref={dialogRef}
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.95, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 8 }}
@@ -428,7 +486,7 @@ export function Modal({
             aria-modal="true"
             aria-label={title}
             className={cn(
-              "flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/95 shadow-lift backdrop-blur-xl",
+              "flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/95 shadow-lift backdrop-blur-xl outline-none",
               wide ? "max-w-3xl" : "max-w-lg",
             )}
             onClick={(e) => e.stopPropagation()}
