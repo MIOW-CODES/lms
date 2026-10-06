@@ -145,7 +145,7 @@ function AdminDashboard() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-bold uppercase tracking-wide">Recent Activity</h2>
             <Link
-              to="/dashboard/admin/students"
+              to="/dashboard/admin/attendance"
               className="text-xs font-semibold text-primary hover:underline flex items-center gap-1"
             >
               View all <ArrowRight className="h-3 w-3" />
