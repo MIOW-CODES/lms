@@ -531,6 +531,28 @@ function AdminSettings() {
               </Card>
 
               <Card className="p-6">
+                <h2 className="font-display text-lg font-bold">System &amp; Credits</h2>
+                <div className="mt-4 space-y-3 text-sm">
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Web Application Developers
+                    </span>
+                    <p className="mt-1 font-medium text-foreground">
+                      Joseph Alan B. Vergara &amp; Kent Alexis T. Alia
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Institution
+                    </span>
+                    <p className="mt-1 text-muted-foreground">
+                      MSU-IIT Integrated Developmental School (MIOW Online Workspace)
+                    </p>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-6">
                 <h2 className="font-display text-lg font-bold">Academic Calendar</h2>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <label className="block">

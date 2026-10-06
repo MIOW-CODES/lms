@@ -121,13 +121,45 @@ function QuizzesPage() {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [result, setResult] = useState<QuizSuccess | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  // Persist timer + answers per quiz so closing/reopening doesn't reset progress
+  // Persist timer + answers per quiz so closing/reopening or accidental reload doesn't reset progress
+  const getStoredTimer = (id: string): number | null => {
+    try {
+      const v = localStorage.getItem(`miow_quiz_timer_${id}`);
+      return v ? Number(v) : null;
+    } catch {
+      return null;
+    }
+  };
+  const setStoredTimer = (id: string, sec: number) => {
+    try {
+      localStorage.setItem(`miow_quiz_timer_${id}`, String(sec));
+    } catch {}
+  };
+  const clearStoredProgress = (id: string) => {
+    try {
+      localStorage.removeItem(`miow_quiz_timer_${id}`);
+      localStorage.removeItem(`miow_quiz_answers_${id}`);
+    } catch {}
+  };
+  const getStoredAnswers = (id: string): Record<string, string> => {
+    try {
+      const v = localStorage.getItem(`miow_quiz_answers_${id}`);
+      return v ? JSON.parse(v) : {};
+    } catch {
+      return {};
+    }
+  };
+  const setStoredAnswers = (id: string, a: Record<string, string>) => {
+    try {
+      localStorage.setItem(`miow_quiz_answers_${id}`, JSON.stringify(a));
+    } catch {}
+  };
+
   const savedTimerRef = useRef<Map<string, number>>(new Map());
   const savedAnswersRef = useRef<Map<string, Record<string, string>>>(new Map());
   // Persist the sampled question set for the in-progress attempt so reopening a
   // worksheet keeps the SAME questions (answers stay mapped). Cleared on submit,
   // so the next attempt (retake) fetches a fresh, non-overlapping bank subset.
-  // Session-only (in-memory): a full page reload starts a new attempt.
   const savedAttemptRef = useRef<
     Map<string, { questions: QuizQuestionPublic[]; duration: number; submissionId: string }>
   >(new Map());
@@ -170,12 +202,17 @@ function QuizzesPage() {
     setQuestions(attempt.questions);
     setResult(null);
     // Restore saved answers if they exist for this quiz
-    setAnswers(savedAnswersRef.current.get(id) ?? {});
+    const localAnswers = getStoredAnswers(id);
+    const inMemAnswers = savedAnswersRef.current.get(id);
+    const restoredAnswers = Object.keys(localAnswers).length > 0 ? localAnswers : (inMemAnswers ?? {});
+    setAnswers(restoredAnswers);
     setIdx(0);
     // Restore saved timer or start fresh
+    const localTimer = getStoredTimer(id);
     const saved = savedTimerRef.current.get(id);
-    if (saved != null && saved > 0) {
-      setSecondsLeft(saved);
+    const activeSec = localTimer ?? saved;
+    if (activeSec != null && activeSec > 0) {
+      setSecondsLeft(activeSec);
     } else {
       setSecondsLeft(attempt.duration);
     }
@@ -190,8 +227,9 @@ function QuizzesPage() {
 
   useEffect(() => {
     if (!activeId || result || secondsLeft <= 0) return;
-    // Persist remaining time so closing/reopening preserves it
+    // Persist remaining time so closing/reopening or reload preserves it
     savedTimerRef.current.set(activeId, secondsLeft);
+    setStoredTimer(activeId, secondsLeft);
     const t = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
     return () => clearTimeout(t);
   }, [activeId, secondsLeft, result]);
@@ -200,6 +238,7 @@ function QuizzesPage() {
   useEffect(() => {
     if (activeId && Object.keys(answers).length > 0) {
       savedAnswersRef.current.set(activeId, answers);
+      setStoredAnswers(activeId, answers);
     }
   }, [activeId, answers]);
 
@@ -209,6 +248,7 @@ function QuizzesPage() {
       savedTimerRef.current.delete(activeId);
       savedAnswersRef.current.delete(activeId);
       savedAttemptRef.current.delete(activeId);
+      clearStoredProgress(activeId);
     }
   }, [result, activeId]);
 

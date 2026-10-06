@@ -34,7 +34,7 @@ function TeacherArduinoPage() {
       subtitle="MIOW Teacher Portal · Practical Robotics Lab"
     >
       <div className="mb-6">
-        <h1 className="font-display text-2xl font-bold sm:text-3xl">Virtual Arduino Lab</h1>
+        <h1 className="font-display text-2xl font-bold sm:text-3xl">Virtual Arduino Lab (ongoing)</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Prepare practical activities, test student code sketches, and demonstrate embedded microcontrollers.
         </p>

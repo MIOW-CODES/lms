@@ -43,7 +43,7 @@ export const STUDENT_NAV: NavItem[] = [
   },
   {
     to: "/dashboard/student/arduino",
-    label: "Arduino Lab",
+    label: "Arduino Lab (ongoing)",
     icon: <Cpu className="h-4 w-4" />,
   },
   {
@@ -70,7 +70,7 @@ export const ADMIN_NAV: NavItem[] = [
   },
   {
     to: "/dashboard/admin/arduino",
-    label: "Arduino Lab",
+    label: "Arduino Lab (ongoing)",
     icon: <Cpu className="h-4 w-4" />,
   },
   { to: "/dashboard/admin/settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
@@ -88,7 +88,7 @@ export const TEACHER_NAV: NavItem[] = [
   { to: "/dashboard/teacher/grades", label: "Gradebook", icon: <Layers className="h-4 w-4" /> },
   {
     to: "/dashboard/teacher/arduino",
-    label: "Arduino Lab",
+    label: "Arduino Lab (ongoing)",
     icon: <Cpu className="h-4 w-4" />,
   },
   {
@@ -330,6 +330,12 @@ export function AppShell({
           ))}
         </nav>
         <main className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        <footer className="border-t border-border/40 py-4 text-center text-xs text-muted-foreground/80">
+          <p>© {new Date().getFullYear()} Integrated Developmental School (MIOW)</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground/60">
+            Web Developers: Joseph Alan B. Vergara &amp; Kent Alexis T. Alia
+          </p>
+        </footer>
       </div>
       {/* ClassMate Assistant is staff-only — students never see the launcher. */}
       {profile.role !== "student" && <ChatWidget profile={profile} />}

@@ -272,6 +272,9 @@ function AuthPage() {
           <p className="mt-4 text-center text-xs text-muted-foreground">
             Integrated Developmental School
           </p>
+          <p className="mt-1 text-center text-[10px] text-muted-foreground/80">
+            Web Developers: Joseph Alan B. Vergara &amp; Kent Alexis T. Alia
+          </p>
         </div>
       </div>
     </div>
