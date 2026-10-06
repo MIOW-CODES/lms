@@ -543,6 +543,8 @@ export function UserAvatar({
       <img
         src={avatarSrc}
         alt={name}
+        loading="lazy"
+        decoding="async"
         className={cn("rounded-full object-cover bg-white/10 p-0.5", className)}
       />
     );

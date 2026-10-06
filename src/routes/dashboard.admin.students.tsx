@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardPaste, KeyRound, Nfc, Plus, Search, Trash2 } from "lucide-react";
+import { ClipboardPaste, KeyRound, Nfc, Plus, Search, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { GRADE_LEVELS } from "@/components/courses/constants";
 import {
   Select,
@@ -91,6 +91,8 @@ function StudentsPage() {
   const [gradeFilter, setGradeFilter] = useState("all");
   const [sectionFilter, setSectionFilter] = useState("all");
   const [selected, setSelected] = useState<Profile | null>(null);
+  const [page, setPage] = useState(1);
+  const pageSize = 40;
 
   const sections = useMemo(() => {
     const set = new Set<string>();
@@ -114,6 +116,17 @@ function StudentsPage() {
       );
     });
   }, [students, search, gradeFilter, sectionFilter]);
+
+  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+  const paginatedStudents = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
+
+  // Reset to page 1 when search or filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [search, gradeFilter, sectionFilter]);
 
   const isLoading = !students;
 
@@ -276,7 +289,7 @@ function StudentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtered.map((s) => (
+              {paginatedStudents.map((s) => (
                 <tr
                   key={s.id}
                   onClick={() => setSelected(s)}
@@ -325,6 +338,37 @@ function StudentsPage() {
               ))}
             </tbody>
           </table>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-xs text-muted-foreground">
+              <span>
+                Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} of{" "}
+                {filtered.length} students
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 font-medium hover:bg-muted disabled:opacity-40 transition"
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" /> Previous
+                </button>
+                <span className="px-2 font-medium text-foreground">
+                  Page {page} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 font-medium hover:bg-muted disabled:opacity-40 transition"
+                  aria-label="Next page"
+                >
+                  Next <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
