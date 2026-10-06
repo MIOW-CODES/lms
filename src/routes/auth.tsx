@@ -266,9 +266,23 @@ function AuthPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label htmlFor="login-pin" className="block text-xs font-medium text-foreground">
-                    Security PIN
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="login-pin" className="block text-xs font-medium text-foreground">
+                      Security PIN
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toast.info(
+                          "Default PIN is your 4-digit ID code or birth month/day. If locked or forgotten, contact the MIOW Admin Office (admin@g.msuiit.edu.ph).",
+                          { duration: 6000 },
+                        )
+                      }
+                      className="text-[11px] font-medium text-primary hover:underline"
+                    >
+                      Forgot PIN?
+                    </button>
+                  </div>
                   <input
                     id="login-pin"
                     value={pin}
