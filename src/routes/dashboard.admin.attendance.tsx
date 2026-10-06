@@ -20,6 +20,7 @@ import {
   type TapResult,
 } from "@/lib/lms";
 import {
+  ADMIN_NAV,
   TEACHER_NAV,
   AppShell,
   Badge,
@@ -161,9 +162,12 @@ export function AttendanceKiosk() {
 
   if (!profile) return null;
 
+  const nav = profile.role === "admin" ? ADMIN_NAV : TEACHER_NAV;
+  const subtitle = profile.role === "admin" ? "Admin Console" : "Teacher Portal";
+
   if (isLoading)
     return (
-      <AppShell nav={TEACHER_NAV} profile={profile} subtitle="Teacher Portal">
+      <AppShell nav={nav} profile={profile} subtitle={subtitle}>
         <LoadingSkeleton />
       </AppShell>
     );
@@ -206,7 +210,7 @@ export function AttendanceKiosk() {
   };
 
   return (
-    <AppShell nav={TEACHER_NAV} profile={profile} subtitle="Teacher Portal">
+    <AppShell nav={nav} profile={profile} subtitle={subtitle}>
       {/* Big scan-result banner */}
       <AnimatePresence>
         {lastScan && (
