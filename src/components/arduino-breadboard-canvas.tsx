@@ -9,6 +9,9 @@ import {
   Info,
   Maximize2,
   Settings2,
+  Activity,
+  Plus,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ArduinoBoardState } from "@/lib/arduino-simulator";
@@ -35,9 +38,19 @@ export interface CanvasPart {
   label: string;
   connectedPin: number; // 0-13 for digital, 14-19 for A0-A5
   color?: string; // for LED: 'red', 'green', 'blue', 'yellow'
-  value?: number; // state value for input components (button: 0|1, pot: 0-1023, etc.)
-  customAngle?: number; // for servo
+  value?: number; // state value for input components
+  wireColor?: string; // visual jumper wire color
 }
+
+// Available jumper wire colors
+const WIRE_COLORS = [
+  { name: "Green", stroke: "#10b981" },
+  { name: "Amber", stroke: "#f59e0b" },
+  { name: "Cyan", stroke: "#06b6d4" },
+  { name: "Rose", stroke: "#f43f5e" },
+  { name: "Purple", stroke: "#a855f7" },
+  { name: "Blue", stroke: "#3b82f6" },
+];
 
 interface InteractiveBreadboardCanvasProps {
   boardState: ArduinoBoardState | null;
@@ -52,61 +65,66 @@ export function InteractiveBreadboardCanvas({
   onDigitalPinChange,
   onAnalogPinChange,
 }: InteractiveBreadboardCanvasProps) {
-  // Realistic physical hardware parts on the canvas
+  // Draggable Hardware Components
   const [parts, setParts] = useState<CanvasPart[]>([
     {
-      id: "led-red-1",
+      id: "led-13",
       type: "wokwi-led",
-      x: 320,
-      y: 60,
-      label: "LED 13",
+      x: 380,
+      y: 50,
+      label: "LED (D13)",
       connectedPin: 13,
       color: "red",
+      wireColor: "#f43f5e",
     },
     {
-      id: "led-green-1",
+      id: "led-12",
       type: "wokwi-led",
-      x: 390,
-      y: 60,
-      label: "LED 12",
+      x: 480,
+      y: 50,
+      label: "LED (D12)",
       connectedPin: 12,
       color: "green",
+      wireColor: "#10b981",
     },
     {
-      id: "btn-1",
+      id: "btn-2",
       type: "wokwi-pushbutton",
-      x: 320,
+      x: 380,
       y: 200,
-      label: "Pushbutton (D2)",
+      label: "Button (D2)",
       connectedPin: 2,
-      value: 0,
       color: "blue",
+      value: 0,
+      wireColor: "#3b82f6",
     },
     {
-      id: "pot-1",
+      id: "pot-a0",
       type: "wokwi-potentiometer",
-      x: 440,
+      x: 520,
       y: 190,
       label: "Pot (A0)",
       connectedPin: 14, // A0
       value: 512,
+      wireColor: "#f59e0b",
     },
     {
-      id: "buzzer-1",
+      id: "buzzer-8",
       type: "wokwi-buzzer",
-      x: 460,
+      x: 660,
       y: 50,
-      label: "Piezo Buzzer (D8)",
+      label: "Buzzer (D8)",
       connectedPin: 8,
+      wireColor: "#06b6d4",
     },
     {
-      id: "servo-1",
+      id: "servo-9",
       type: "wokwi-servo",
-      x: 320,
-      y: 320,
-      label: "SG90 Servo (D9)",
+      x: 440,
+      y: 340,
+      label: "Servo (D9)",
       connectedPin: 9,
-      customAngle: 0,
+      wireColor: "#a855f7",
     },
   ]);
 
@@ -120,10 +138,10 @@ export function InteractiveBreadboardCanvas({
     elemY: number;
   } | null>(null);
 
-  // Position of Arduino Uno Board on the canvas
-  const [unoPos, setUnoPos] = useState({ x: 20, y: 30 });
+  // Position of Arduino Uno Board on the canvas (scaled down to fit workbench)
+  const [unoPos, setUnoPos] = useState({ x: 30, y: 50 });
 
-  // Handle Dragging Components or Uno board
+  // Handle Dragging
   const handleMouseDown = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setSelectedId(id);
@@ -147,7 +165,7 @@ export function InteractiveBreadboardCanvas({
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
 
-    const newX = Math.max(10, Math.min(rect.width - 120, elemX + dx));
+    const newX = Math.max(10, Math.min(rect.width - 100, elemX + dx));
     const newY = Math.max(10, Math.min(rect.height - 100, elemY + dy));
 
     if (id === "arduino-uno") {
@@ -172,91 +190,35 @@ export function InteractiveBreadboardCanvas({
     };
   }, [handleMouseMove, handleMouseUp]);
 
-  // Add Part Palette Action
+  // Add Part
   const addPart = (type: WokwiComponentType) => {
     const id = `${type}-${Date.now().toString(36)}`;
+    const randX = 350 + Math.random() * 200;
+    const randY = 60 + Math.random() * 240;
+    const color = WIRE_COLORS[Math.floor(Math.random() * WIRE_COLORS.length)]?.stroke ?? "#10b981";
+
     let newPart: CanvasPart;
-
-    const randX = 300 + Math.random() * 150;
-    const randY = 80 + Math.random() * 200;
-
     switch (type) {
       case "wokwi-led":
-        newPart = {
-          id,
-          type,
-          x: randX,
-          y: randY,
-          label: "LED",
-          color: "red",
-          connectedPin: 11,
-        };
+        newPart = { id, type, x: randX, y: randY, label: "LED", color: "yellow", connectedPin: 11, wireColor: color };
         break;
       case "wokwi-pushbutton":
-        newPart = {
-          id,
-          type,
-          x: randX,
-          y: randY,
-          label: "Pushbutton",
-          color: "red",
-          connectedPin: 3,
-          value: 0,
-        };
+        newPart = { id, type, x: randX, y: randY, label: "Button", color: "red", connectedPin: 3, value: 0, wireColor: color };
         break;
       case "wokwi-potentiometer":
-        newPart = {
-          id,
-          type,
-          x: randX,
-          y: randY,
-          label: "Potentiometer",
-          connectedPin: 15, // A1
-          value: 0,
-        };
+        newPart = { id, type, x: randX, y: randY, label: "Pot (A1)", connectedPin: 15, value: 0, wireColor: color };
         break;
       case "wokwi-buzzer":
-        newPart = {
-          id,
-          type,
-          x: randX,
-          y: randY,
-          label: "Buzzer",
-          connectedPin: 8,
-        };
+        newPart = { id, type, x: randX, y: randY, label: "Buzzer", connectedPin: 8, wireColor: color };
         break;
       case "wokwi-servo":
-        newPart = {
-          id,
-          type,
-          x: randX,
-          y: randY,
-          label: "Servo",
-          connectedPin: 9,
-          customAngle: 0,
-        };
+        newPart = { id, type, x: randX, y: randY, label: "SG90 Servo", connectedPin: 9, wireColor: color };
         break;
       case "wokwi-hc-sr04":
-        newPart = {
-          id,
-          type,
-          x: randX,
-          y: randY,
-          label: "HC-SR04 Sonar",
-          connectedPin: 7,
-          value: 20,
-        };
+        newPart = { id, type, x: randX, y: randY, label: "Sonar", connectedPin: 7, value: 25, wireColor: color };
         break;
-      case "wokwi-resistor":
-        newPart = {
-          id,
-          type,
-          x: randX,
-          y: randY,
-          label: "220Ω Resistor",
-          connectedPin: 13,
-        };
-        break;
+      default:
+        newPart = { id, type, x: randX, y: randY, label: "Resistor", connectedPin: 13, wireColor: color };
     }
 
     setParts((prev) => [...prev, newPart]);
@@ -275,13 +237,12 @@ export function InteractiveBreadboardCanvas({
     );
   };
 
-  const updateColor = (id: string, color: string) => {
+  const updateWireColor = (id: string, wireColor: string) => {
     setParts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, color } : p)),
+      prev.map((p) => (p.id === id ? { ...p, wireColor } : p)),
     );
   };
 
-  // Button Click Trigger on Physical Pushbutton
   const handlePushButton = (part: CanvasPart) => {
     const nextVal = part.value === 1 ? 0 : 1;
     setParts((prev) =>
@@ -292,7 +253,6 @@ export function InteractiveBreadboardCanvas({
     }
   };
 
-  // Potentiometer input change
   const handlePotInput = (part: CanvasPart, val: number) => {
     setParts((prev) =>
       prev.map((p) => (p.id === part.id ? { ...p, value: val } : p)),
@@ -303,11 +263,33 @@ export function InteractiveBreadboardCanvas({
     }
   };
 
+  // Approximate relative coordinate of Arduino header pins on the Uno board (scaled at 0.75x)
+  const getUnoHeaderPinCoord = (pin: number) => {
+    const scale = 0.78;
+    // Board header coordinates relative to top-left of Uno
+    if (pin >= 0 && pin <= 13) {
+      // Digital pins header along top of Uno (D0 on right, D13 on left)
+      const pinOffset = (13 - pin) * 11;
+      return {
+        x: unoPos.x + (145 + pinOffset) * scale,
+        y: unoPos.y + 18 * scale,
+      };
+    } else {
+      // Analog pins header along bottom right of Uno (A0 to A5)
+      const aIndex = pin - 14;
+      const pinOffset = aIndex * 11;
+      return {
+        x: unoPos.x + (195 + pinOffset) * scale,
+        y: unoPos.y + 265 * scale,
+      };
+    }
+  };
+
   const selectedPart = parts.find((p) => p.id === selectedId);
 
   return (
     <div className="space-y-4">
-      {/* Real Hardware Component Palette */}
+      {/* Component Palette Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border/80 bg-card/90 p-3 shadow-sm backdrop-blur-md">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground mr-1">
@@ -353,7 +335,7 @@ export function InteractiveBreadboardCanvas({
             className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
           >
             <Sparkles className="h-3.5 w-3.5 text-teal-400" />
-            + HC-SR04 Sonar
+            + Sonar
           </button>
           <button
             onClick={() => addPart("wokwi-resistor")}
@@ -380,35 +362,88 @@ export function InteractiveBreadboardCanvas({
         )}
       </div>
 
-      {/* Main Interactive Breadboard / Circuit Sandbox with REAL SVG HW Components */}
+      {/* Main Interactive Circuit Sandbox with Realistic Jumper Wires */}
       <div
         ref={containerRef}
         onClick={() => setSelectedId(null)}
-        className="relative min-h-[520px] w-full select-none overflow-hidden rounded-2xl border-2 border-emerald-900/60 bg-[#090d16] shadow-2xl"
+        className="relative min-h-[580px] w-full select-none overflow-hidden rounded-2xl border-2 border-emerald-900/60 bg-[#090d16] shadow-2xl"
         style={{
           backgroundImage: `
-            radial-gradient(circle, rgba(148, 163, 184, 0.18) 1.5px, transparent 1.5px),
+            radial-gradient(circle, rgba(148, 163, 184, 0.22) 1.5px, transparent 1.5px),
             radial-gradient(circle, rgba(148, 163, 184, 0.08) 1.5px, transparent 1.5px)
           `,
-          backgroundSize: "26px 26px",
-          backgroundPosition: "0 0, 13px 13px",
+          backgroundSize: "28px 28px",
+          backgroundPosition: "0 0, 14px 14px",
         }}
       >
-        {/* Real Circuit Board Watermark */}
-        <div className="pointer-events-none absolute right-4 top-4 flex items-center gap-2 rounded-lg bg-slate-900/90 px-3 py-1 font-mono text-[11px] text-slate-300 border border-slate-700/80 shadow-md">
+        {/* Real-time SVG JUMPER WIRES connecting Uno to Components */}
+        <svg className="pointer-events-none absolute inset-0 h-full w-full z-10">
+          <defs>
+            <filter id="wire-glow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="2" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+          {parts.map((p) => {
+            const start = getUnoHeaderPinCoord(p.connectedPin);
+            // Component center terminal
+            const end = { x: p.x + 35, y: p.y + 35 };
+
+            // Natural curved bezier jumper wire
+            const midX = (start.x + end.x) / 2;
+            const midY = Math.min(start.y, end.y) - 30;
+            const pathData = `M ${start.x} ${start.y} Q ${midX} ${midY} ${end.x} ${end.y}`;
+
+            const wireColor = p.wireColor || "#10b981";
+
+            return (
+              <g key={`wire-${p.id}`}>
+                {/* Outer shadow / insulated sleeve */}
+                <path
+                  d={pathData}
+                  fill="none"
+                  stroke="#000000"
+                  strokeWidth="5"
+                  strokeOpacity="0.4"
+                  strokeLinecap="round"
+                />
+                {/* Colored Insulated Jumper Wire */}
+                <path
+                  d={pathData}
+                  fill="none"
+                  stroke={wireColor}
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                  filter="url(#wire-glow)"
+                />
+                {/* Metal Terminal Pin Ends */}
+                <circle cx={start.x} cy={start.y} r="3" fill="#cbd5e1" stroke="#475569" strokeWidth="1" />
+                <circle cx={end.x} cy={end.y} r="3" fill="#cbd5e1" stroke="#475569" strokeWidth="1" />
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* Workbench Watermark Badge */}
+        <div className="pointer-events-none absolute right-4 top-4 flex items-center gap-2 rounded-lg bg-slate-900/90 px-3 py-1 font-mono text-[11px] text-slate-300 border border-slate-700/80 shadow-md z-30">
           <Zap className="h-3.5 w-3.5 text-amber-400" />
-          <span>Wokwi Hardware Engine · Drag & Drop Components</span>
+          <span>Interactive Jumper Wire &amp; Hardware Workbench</span>
         </div>
 
-        {/* 1. REAL WOKWI ARDUINO UNO BOARD */}
+        {/* 1. ARDUINO UNO BOARD (Scalable & Draggable) */}
         <div
           onMouseDown={(e) => handleMouseDown(e, "arduino-uno")}
-          style={{ left: unoPos.x, top: unoPos.y }}
+          style={{
+            left: unoPos.x,
+            top: unoPos.y,
+            transform: "scale(0.85)",
+            transformOrigin: "top left",
+          }}
           className={cn(
-            "absolute cursor-grab active:cursor-grabbing select-none transition-shadow z-20 group p-1 rounded-xl",
+            "absolute cursor-grab active:cursor-grabbing select-none transition-shadow z-20 p-1 rounded-xl",
             selectedId === "arduino-uno" && "ring-2 ring-emerald-400 shadow-2xl",
           )}
-          title="Draggable Arduino Uno R3 Board"
+          title="Draggable Arduino Uno R3"
         >
           {React.createElement("wokwi-arduino-uno", {
             led13: boardState?.builtinLed === 1,
@@ -416,15 +451,15 @@ export function InteractiveBreadboardCanvas({
             ledRX: false,
             ledTX: false,
           })}
-          <div className="mt-1 flex items-center justify-between px-2 text-[10px] font-mono text-slate-400 bg-slate-900/80 rounded border border-slate-800">
+          <div className="mt-1 flex items-center justify-between px-2 text-[10px] font-mono text-slate-400 bg-slate-900/90 rounded border border-slate-800">
             <span>Arduino Uno R3</span>
             <span className={cn("font-bold", isRunning ? "text-emerald-400" : "text-slate-500")}>
-              {isRunning ? "POWER ON" : "STANDBY"}
+              {isRunning ? "PWR ON" : "STANDBY"}
             </span>
           </div>
         </div>
 
-        {/* 2. REAL PHYSICAL HARDWARE COMPONENTS (Wokwi Elements) */}
+        {/* 2. REAL PHYSICAL HARDWARE COMPONENTS WITH LIVE JUMPER TERMINALS */}
         {parts.map((p) => {
           const isSelected = p.id === selectedId;
           const isDigital = p.connectedPin <= 13;
@@ -433,7 +468,6 @@ export function InteractiveBreadboardCanvas({
             : boardState?.analog[p.connectedPin - 14]?.digitalValue ?? 0;
           const isHigh = pinVal === 1;
 
-          // Compute PWM / angle for servo
           const servoPwm = boardState?.digital[p.connectedPin]?.analogValue ?? 0;
           const servoAngle = Math.round((servoPwm / 255) * 180);
 
@@ -443,23 +477,26 @@ export function InteractiveBreadboardCanvas({
               onMouseDown={(e) => handleMouseDown(e, p.id)}
               style={{ left: p.x, top: p.y }}
               className={cn(
-                "absolute cursor-grab active:cursor-grabbing select-none rounded-xl p-2 transition-shadow z-30 group",
+                "absolute cursor-grab active:cursor-grabbing select-none rounded-xl p-2 transition-shadow z-20 group",
                 isSelected
-                  ? "ring-2 ring-emerald-400 bg-slate-900/70 shadow-2xl border border-emerald-500/50"
+                  ? "ring-2 ring-emerald-400 bg-slate-900/80 shadow-2xl border border-emerald-500/50"
                   : "hover:ring-1 hover:ring-slate-500/50 hover:bg-slate-900/40",
               )}
             >
-              {/* Wiring Pin Badge on Component */}
+              {/* Wiring Badge & Jumper Pin Connection */}
               <div className="mb-1 flex items-center justify-between gap-2 px-1 text-[10px] font-mono">
                 <span className="rounded bg-slate-800/90 px-1.5 py-0.2 text-slate-300 font-semibold border border-slate-700">
                   {p.label}
                 </span>
-                <span className="rounded bg-emerald-950 px-1.5 py-0.2 text-emerald-400 font-bold border border-emerald-800">
+                <span
+                  className="rounded px-1.5 py-0.2 font-bold border text-black shadow-sm"
+                  style={{ backgroundColor: p.wireColor || "#10b981", borderColor: p.wireColor || "#10b981" }}
+                >
                   {p.connectedPin >= 14 ? `A${p.connectedPin - 14}` : `D${p.connectedPin}`}
                 </span>
               </div>
 
-              {/* REAL WOKWI ELEMENT RENDERING */}
+              {/* Real Wokwi Component Rendering */}
               <div className="flex items-center justify-center p-1">
                 {p.type === "wokwi-led" &&
                   React.createElement("wokwi-led", {
@@ -504,8 +541,7 @@ export function InteractiveBreadboardCanvas({
                       className="h-1.5 w-24 cursor-pointer appearance-none rounded-lg bg-slate-700 accent-emerald-400"
                     />
                     <span className="font-mono text-[9px] text-slate-400">
-                      {p.value ?? 512} (
-                      {((((p.value ?? 512) / 1023) * 5.0)).toFixed(2)}V)
+                      {p.value ?? 512} ({((((p.value ?? 512) / 1023) * 5.0)).toFixed(2)}V)
                     </span>
                   </div>
                 )}
@@ -553,50 +589,58 @@ export function InteractiveBreadboardCanvas({
                   })}
               </div>
 
-              {/* Pin / Property Selector Popover when selected */}
+              {/* Wire & Pin Inspector Box */}
               {isSelected && (
                 <div
                   onClick={(e) => e.stopPropagation()}
-                  className="mt-1 flex items-center justify-between gap-1.5 rounded-lg border border-slate-700 bg-slate-900/90 p-1.5 text-[11px] backdrop-blur-md shadow"
+                  className="mt-1 flex flex-col gap-1.5 rounded-lg border border-slate-700 bg-slate-900/95 p-2 text-[11px] backdrop-blur-md shadow-lg"
                 >
-                  <label className="text-slate-400 font-mono text-[10px]">Pin:</label>
-                  <select
-                    value={p.connectedPin}
-                    onChange={(e) => updatePin(p.id, Number(e.target.value))}
-                    className="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-emerald-300 outline-none border border-slate-700 font-mono"
-                  >
-                    {p.type === "wokwi-potentiometer" ? (
-                      <>
-                        <option value={14}>A0</option>
-                        <option value={15}>A1</option>
-                        <option value={16}>A2</option>
-                        <option value={17}>A3</option>
-                        <option value={18}>A4</option>
-                        <option value={19}>A5</option>
-                      </>
-                    ) : (
-                      <>
-                        {[13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((pin) => (
-                          <option key={pin} value={pin}>
-                            Pin {pin}
-                          </option>
-                        ))}
-                      </>
-                    )}
-                  </select>
-
-                  {p.type === "wokwi-led" && (
+                  <div className="flex items-center justify-between gap-1.5">
+                    <label className="text-slate-400 font-mono text-[10px]">Pin:</label>
                     <select
-                      value={p.color || "red"}
-                      onChange={(e) => updateColor(p.id, e.target.value)}
-                      className="rounded bg-slate-800 px-1 py-0.5 text-xs text-slate-200 outline-none border border-slate-700 capitalize font-mono"
+                      value={p.connectedPin}
+                      onChange={(e) => updatePin(p.id, Number(e.target.value))}
+                      className="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-emerald-300 outline-none border border-slate-700 font-mono"
                     >
-                      <option value="red">Red</option>
-                      <option value="green">Green</option>
-                      <option value="blue">Blue</option>
-                      <option value="yellow">Yellow</option>
+                      {p.type === "wokwi-potentiometer" ? (
+                        <>
+                          <option value={14}>A0</option>
+                          <option value={15}>A1</option>
+                          <option value={16}>A2</option>
+                          <option value={17}>A3</option>
+                          <option value={18}>A4</option>
+                          <option value={19}>A5</option>
+                        </>
+                      ) : (
+                        <>
+                          {[13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((pin) => (
+                            <option key={pin} value={pin}>
+                              Pin {pin}
+                            </option>
+                          ))}
+                        </>
+                      )}
                     </select>
-                  )}
+                  </div>
+
+                  {/* Wire Color Picker */}
+                  <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-800">
+                    <span className="text-[10px] text-slate-400 font-mono">Wire:</span>
+                    <div className="flex items-center gap-1">
+                      {WIRE_COLORS.map((w) => (
+                        <button
+                          key={w.name}
+                          onClick={() => updateWireColor(p.id, w.stroke)}
+                          className={cn(
+                            "h-3.5 w-3.5 rounded-full transition-transform",
+                            p.wireColor === w.stroke ? "scale-125 ring-2 ring-white" : "opacity-80 hover:opacity-100",
+                          )}
+                          style={{ backgroundColor: w.stroke }}
+                          title={`${w.name} Wire`}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -607,7 +651,7 @@ export function InteractiveBreadboardCanvas({
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Info className="h-3.5 w-3.5 text-primary" />
         <span>
-          Real Wokwi physical hardware: Drag both the Arduino Uno board and external parts to build your test circuit. Click components to re-wire their pins or interact with them.
+          Dynamic Jumper Wires: Drag components to route wires across your circuit. Select any component to choose which Arduino pin (D0–D13 / A0–A5) it connects to or pick a wire color.
         </span>
       </div>
     </div>

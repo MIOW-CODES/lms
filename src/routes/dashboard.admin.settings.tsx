@@ -539,21 +539,12 @@ function AdminSettings() {
                     </span>
                     <p className="mt-1 font-medium text-foreground">
                       <a
-                        href="https://personal-portfolio-one-jade-45.vercel.app/"
+                        href="https://github.com/Joal0816"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary hover:underline"
                       >
                         Joseph Alan B. Vergara
-                      </a>{" "}
-                      &amp;{" "}
-                      <a
-                        href="https://github.com/laeyue"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline"
-                      >
-                        Kent Alexis T. Alia
                       </a>
                     </p>
                   </div>

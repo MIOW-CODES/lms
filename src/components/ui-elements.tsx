@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { MiowWatermark } from "@/components/brand";
+import { BRAND_LOGO_SRC } from "@/lib/brand";
 import { useTheme } from "@/hooks";
 import type { AttendanceStatus } from "@/lib/lms";
 
@@ -476,8 +477,17 @@ export function UserAvatar({
   name: string;
   className?: string;
 }) {
-  if (src) {
-    return <img src={src} alt={name} className={cn("rounded-full object-cover", className)} />;
+  const isAdmin = name.toLowerCase().includes("admin");
+  const avatarSrc = src || (isAdmin ? BRAND_LOGO_SRC : null);
+
+  if (avatarSrc) {
+    return (
+      <img
+        src={avatarSrc}
+        alt={name}
+        className={cn("rounded-full object-cover bg-white/10 p-0.5", className)}
+      />
+    );
   }
   return (
     <span

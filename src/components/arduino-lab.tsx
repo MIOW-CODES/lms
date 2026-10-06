@@ -366,113 +366,29 @@ export function ArduinoLab() {
         </div>
       )}
 
-      {/* Main Grid: Code Editor on Left, Hardware Simulation on Right */}
-      <div className="grid gap-6 lg:grid-cols-12">
-        {/* Left Column: Code Editor & Starter Sketches (7 cols) */}
-        <div className="space-y-4 lg:col-span-7">
-          <div className="rounded-2xl border border-border/80 bg-card/80 p-4 shadow-sm backdrop-blur-md">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
-              <div className="flex items-center gap-2">
-                <Code2 className="h-4 w-4 text-primary" />
-                <span className="text-sm font-semibold text-foreground">sketch.ino</span>
-                <span className="text-xs text-muted-foreground font-mono">(C++ / Arduino)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleCopy}
-                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                >
-                  {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-                  <span>{copied ? "Copied" : "Copy"}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Sketch selector pills */}
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              {STARTER_SKETCHES.map((sk, idx) => (
-                <button
-                  key={sk.title}
-                  onClick={() => handleSelectExample(idx)}
-                  className={cn(
-                    "rounded-lg px-2.5 py-1 text-xs font-medium transition",
-                    selectedSketch === idx
-                      ? "bg-primary text-primary-foreground font-semibold"
-                      : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
-                  {sk.title}
-                </button>
-              ))}
-            </div>
-
-            {/* Code text area with mono font */}
-            <div className="relative">
-              <textarea
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                spellCheck={false}
-                rows={16}
-                className="w-full resize-y rounded-xl border border-input bg-zinc-950 p-3.5 font-mono text-xs text-zinc-100 outline-none transition focus:ring-2 focus:ring-ring leading-relaxed"
-                placeholder="// Type or paste your Arduino C++ sketch here..."
-              />
-            </div>
-            <p className="mt-2 text-right text-[11px] text-muted-foreground">
-              Tip: Supports digitalRead, digitalWrite, analogRead, analogWrite, pinMode, tone, delay, Serial
-            </p>
-          </div>
-
-          {/* Serial Monitor */}
-          <div className="rounded-2xl border border-border/80 bg-card/80 p-4 shadow-sm backdrop-blur-md">
-            <div className="mb-2 flex items-center justify-between border-b border-border/60 pb-2">
-              <div className="flex items-center gap-2">
-                <Terminal className="h-4 w-4 text-emerald-400" />
-                <span className="text-sm font-semibold text-foreground">Serial Monitor</span>
-                <span className="text-xs text-muted-foreground font-mono">9600 baud</span>
-              </div>
-              <button
-                onClick={() => setLogs([])}
-                className="text-xs text-muted-foreground hover:text-foreground transition"
-              >
-                Clear
-              </button>
-            </div>
-            <div className="h-36 overflow-y-auto rounded-xl border border-input bg-zinc-950 p-3 font-mono text-xs text-emerald-400 shadow-inner">
-              {logs.length === 0 ? (
-                <span className="text-zinc-600">// Serial output will appear here when running...</span>
-              ) : (
-                logs.map((line, i) => (
-                  <div key={i} className="whitespace-pre-wrap leading-tight">
-                    {line}
-                  </div>
-                ))
-              )}
-              <div ref={serialEndRef} />
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column: Interactive Hardware Simulation (5 cols) */}
-        <div className="space-y-4 lg:col-span-5">
+      {/* Main Grid: Code Editor on Top/Left, Full Workbench on Bottom or Full-Width */}
+      <div className="grid gap-6">
+        {/* Hardware Workbench Simulation Row (Full width for comfortable wiring & component placement) */}
+        <div className="space-y-4">
           {/* View Mode Toggle: Interactive Canvas vs Compact PCB */}
-          <div className="flex items-center justify-between rounded-2xl border border-border/80 bg-card/80 p-2 shadow-sm backdrop-blur-md">
-            <div className="flex items-center gap-1">
+          <div className="flex items-center justify-between rounded-2xl border border-border/80 bg-card/80 p-2.5 shadow-sm backdrop-blur-md">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setActiveTab("canvas")}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition",
+                  "inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition",
                   activeTab === "canvas"
                     ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
-                Breadboard (Wokwi Style)
+                Breadboard & Circuit Workbench (Wokwi Style)
               </button>
               <button
                 onClick={() => setActiveTab("board")}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition",
+                  "inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition",
                   activeTab === "board"
                     ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -483,7 +399,7 @@ export function ArduinoLab() {
               </button>
             </div>
 
-            <div className="flex items-center gap-1.5 pr-2">
+            <div className="flex items-center gap-2 pr-2">
               <span
                 className={cn(
                   "inline-block h-2 w-2 rounded-full",
@@ -491,7 +407,7 @@ export function ArduinoLab() {
                 )}
               />
               <span className="text-[11px] font-mono text-muted-foreground">
-                {isRunning ? "ACTIVE" : "STANDBY"}
+                {isRunning ? "SIMULATION ACTIVE" : "STANDBY"}
               </span>
             </div>
           </div>
@@ -685,6 +601,95 @@ export function ArduinoLab() {
               </div>
             </>
           )}
+        </div>
+
+        {/* Code Editor & Serial Monitor Row */}
+        <div className="grid gap-6 lg:grid-cols-12">
+          {/* Code Editor (8 cols) */}
+          <div className="space-y-4 lg:col-span-8">
+            <div className="rounded-2xl border border-border/80 bg-card/80 p-4 shadow-sm backdrop-blur-md">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
+                <div className="flex items-center gap-2">
+                  <Code2 className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold text-foreground">sketch.ino</span>
+                  <span className="text-xs text-muted-foreground font-mono">(C++ / Arduino)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleCopy}
+                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  >
+                    {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                    <span>{copied ? "Copied" : "Copy"}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Sketch selector pills */}
+              <div className="mb-3 flex flex-wrap gap-1.5">
+                {STARTER_SKETCHES.map((sk, idx) => (
+                  <button
+                    key={sk.title}
+                    onClick={() => handleSelectExample(idx)}
+                    className={cn(
+                      "rounded-lg px-2.5 py-1 text-xs font-medium transition",
+                      selectedSketch === idx
+                        ? "bg-primary text-primary-foreground font-semibold"
+                        : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    {sk.title}
+                  </button>
+                ))}
+              </div>
+
+              {/* Code text area with mono font */}
+              <div className="relative">
+                <textarea
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  spellCheck={false}
+                  rows={14}
+                  className="w-full resize-y rounded-xl border border-input bg-zinc-950 p-3.5 font-mono text-xs text-zinc-100 outline-none transition focus:ring-2 focus:ring-ring leading-relaxed"
+                  placeholder="// Type or paste your Arduino C++ sketch here..."
+                />
+              </div>
+              <p className="mt-2 text-right text-[11px] text-muted-foreground">
+                Tip: Supports digitalRead, digitalWrite, analogRead, analogWrite, pinMode, tone, delay, Serial
+              </p>
+            </div>
+          </div>
+
+          {/* Serial Monitor (4 cols) */}
+          <div className="space-y-4 lg:col-span-4">
+            <div className="rounded-2xl border border-border/80 bg-card/80 p-4 shadow-sm backdrop-blur-md flex flex-col h-full">
+              <div className="mb-2 flex items-center justify-between border-b border-border/60 pb-2">
+                <div className="flex items-center gap-2">
+                  <Terminal className="h-4 w-4 text-emerald-400" />
+                  <span className="text-sm font-semibold text-foreground">Serial Monitor</span>
+                  <span className="text-xs text-muted-foreground font-mono">9600 baud</span>
+                </div>
+                <button
+                  onClick={() => setLogs([])}
+                  className="text-xs text-muted-foreground hover:text-foreground transition"
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="min-h-[220px] flex-1 overflow-y-auto rounded-xl border border-input bg-zinc-950 p-3 font-mono text-xs text-emerald-400 shadow-inner">
+                {logs.length === 0 ? (
+                  <span className="text-zinc-600">// Serial output will appear here when running...</span>
+                ) : (
+                  logs.map((line, i) => (
+                    <div key={i} className="whitespace-pre-wrap leading-tight">
+                      {line}
+                    </div>
+                  ))
+                )}
+                <div ref={serialEndRef} />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
