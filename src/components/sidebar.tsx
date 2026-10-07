@@ -16,12 +16,22 @@ import {
   LayoutDashboard,
   LogOut,
   Megaphone,
+  Menu as MenuIcon,
   Settings,
   Users,
+  X,
 } from "lucide-react";
 import type { Profile, Role } from "@/lib/lms";
 import { cn } from "@/lib/utils";
 import { MiowMark, MiowWordmark } from "@/components/brand";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/ui-elements";
 import { useSignOut } from "@/hooks";
 import { ChatWidget } from "@/components/chat-widget";
@@ -69,6 +79,11 @@ export const ADMIN_NAV: NavItem[] = [
     icon: <Megaphone className="h-4 w-4" />,
   },
   {
+    to: "/dashboard/admin/attendance",
+    label: "Attendance",
+    icon: <CalendarCheck className="h-4 w-4" />,
+  },
+  {
     to: "/dashboard/admin/arduino",
     label: "Arduino Lab (ongoing)",
     icon: <Cpu className="h-4 w-4" />,
@@ -109,11 +124,30 @@ export function settingsPathFor(role: Role): string {
   return "/dashboard/student/settings";
 }
 
+/**
+ * The few destinations worth keeping visible on small screens. Everything
+ * else lives behind the mobile "Menu" drawer so nothing hides behind
+ * sideways scrolling.
+ */
+function mobileQuickNav(nav: NavItem[]): NavItem[] {
+  const pick = (labels: string[]) => nav.find((n) => labels.includes(n.label));
+  return [
+    pick(["Dashboard"]),
+    pick(["Students", "Courses"]),
+    pick(["Attendance"]),
+    pick(["Settings"]),
+  ].filter((n): n is NavItem => Boolean(n));
+}
+
+function pathMatches(pathname: string, to: string): boolean {
+  return pathname.replace(/\/+$/, "") === to.replace(/\/+$/, "");
+}
+
 const SIDEBAR_KEY = "miow-sidebar-collapsed";
 
 function Breadcrumbs({ nav, subtitle }: { nav: NavItem[]; subtitle: string }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const current = nav.find((n) => n.to === pathname);
+  const current = nav.find((n) => pathMatches(pathname, n.to));
   return (
     <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm">
       <span className="font-medium text-muted-foreground">{subtitle}</span>
@@ -141,6 +175,8 @@ export function AppShell({
   const signOut = useSignOut();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [collapsed, setCollapsed] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const quickLinks = mobileQuickNav(nav);
 
   useEffect(() => {
     try {
@@ -162,7 +198,7 @@ export function AppShell({
   };
 
   const links = nav.map((n) => {
-    const active = pathname === n.to;
+    const active = pathMatches(pathname, n.to);
     return (
       <Link
         key={n.to}
@@ -292,15 +328,90 @@ export function AppShell({
             <p className="font-display text-sm font-extrabold tracking-[0.08em]">MIOW</p>
             <p className="truncate text-[10px] text-muted-foreground">IDS</p>
           </div>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-1.5">
+            <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+              <SheetTrigger asChild>
+                <button
+                  type="button"
+                  aria-controls="mobile-menu-drawer"
+                  className="flex items-center gap-1.5 rounded-full border border-border/70 bg-card/70 px-3.5 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+                >
+                  <MenuIcon className="h-4 w-4" aria-hidden />
+                  Menu
+                </button>
+              </SheetTrigger>
+              <SheetContent
+                id="mobile-menu-drawer"
+                side="left"
+                aria-modal="true"
+                className="flex w-[min(19rem,85vw)] flex-col gap-0 bg-sidebar p-0 text-sidebar-foreground sm:max-w-sm [&>button]:hidden"
+              >
+                <SheetHeader className="flex-row items-center gap-3 space-y-0 border-b border-border/40 px-4 py-3 text-left">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <MiowMark className="h-8 w-8 shrink-0 rounded-lg" />
+                    <div className="min-w-0">
+                      <SheetTitle className="font-display text-sm font-extrabold tracking-[0.08em]">
+                        Menu
+                      </SheetTitle>
+                      <SheetDescription className="truncate text-xs text-muted-foreground">
+                        {subtitle}
+                      </SheetDescription>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMenuOpen(false)}
+                    className="ml-auto flex shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-card/60 px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden />
+                    Close
+                  </button>
+                </SheetHeader>
+                <nav
+                  aria-label="All portal destinations"
+                  className="flex flex-1 flex-col gap-1 overflow-y-auto p-4"
+                >
+                  {nav.map((n) => {
+                    const active = pathMatches(pathname, n.to);
+                    return (
+                      <Link
+                        key={n.to}
+                        to={n.to}
+                        onClick={() => setMenuOpen(false)}
+                        aria-current={active ? "page" : undefined}
+                        className={cn(
+                          "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                          active
+                            ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-lift"
+                            : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                        )}
+                      >
+                        {n.icon}
+                        <span className="truncate">{n.label}</span>
+                      </Link>
+                    );
+                  })}
+                </nav>
+                <div className="border-t border-border/40 p-4">
+                  <div className="flex items-center gap-2.5 rounded-xl bg-sidebar-accent/80 p-3">
+                    <UserAvatar
+                      src={profile.avatar_url}
+                      name={profile.full_name}
+                      className="h-9 w-9 ring-2 ring-sidebar-primary/40"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-sidebar-foreground">
+                        {profile.full_name}
+                      </p>
+                      <p className="truncate text-xs capitalize text-sidebar-foreground/60">
+                        {profile.role}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
             <ThemeToggle />
-            <Link
-              to={settingsPathFor(profile.role)}
-              aria-label="Open settings"
-              className="rounded-lg p-2 text-muted-foreground hover:bg-muted"
-            >
-              <Settings className="h-4 w-4" />
-            </Link>
             <button
               onClick={signOut}
               aria-label="Sign out"
@@ -311,36 +422,52 @@ export function AppShell({
           </div>
         </header>
 
-        <nav className="custom-scrollbar flex gap-2 overflow-x-auto border-b border-border/60 bg-background/60 px-4 py-2.5 backdrop-blur-md lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {nav.map((n) => (
-            <Link
-              key={n.to}
-              to={n.to}
-              aria-label={n.label}
-              className={cn(
-                "flex items-center gap-1.5 shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors",
-                pathname === n.to
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "bg-muted text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {n.icon}
-              {n.label}
-            </Link>
-          ))}
+        <nav
+          aria-label="Quick navigation"
+          className="flex flex-wrap items-center gap-2 border-b border-border/60 bg-background/60 px-4 py-2.5 backdrop-blur-md lg:hidden"
+        >
+          {quickLinks.map((n) => {
+            const active = pathMatches(pathname, n.to);
+            return (
+              <Link
+                key={n.to}
+                to={n.to}
+                aria-label={n.label}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors",
+                  active
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-muted text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {n.icon}
+                {n.label}
+              </Link>
+            );
+          })}
         </nav>
         <main className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
         <footer className="border-t border-border/40 py-4 text-center text-xs text-muted-foreground">
           <p>© {new Date().getFullYear()} Integrated Developmental School (MIOW)</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Web Developer:{" "}
+            Web Developers:{" "}
             <a
-              href="https://github.com/Joal0816"
+              href="https://www.joalvergs.tech/"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline font-medium"
             >
               Joseph Alan B. Vergara
+            </a>
+            {", "}
+            <a
+              href="https://github.com/laeyue"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline font-medium"
+            >
+              Kent Alexis T. Alia
             </a>
           </p>
         </footer>

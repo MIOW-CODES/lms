@@ -80,7 +80,7 @@ export async function listCourseSections(courseId: string) {
 
   return sections.map((sec) => ({
     ...sec,
-    student_count: (countsBySection.get(sec.id) ?? countsBySection.get(sec.name)) ?? 0,
+    student_count: countsBySection.get(sec.id) ?? countsBySection.get(sec.name) ?? 0,
   }));
 }
 

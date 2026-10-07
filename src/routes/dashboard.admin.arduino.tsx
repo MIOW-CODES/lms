@@ -28,15 +28,14 @@ function AdminArduinoPage() {
   if (!profile) return null;
 
   return (
-    <AppShell
-      nav={ADMIN_NAV}
-      profile={profile}
-      subtitle="MIOW Admin Console · STEM Robotics Lab"
-    >
+    <AppShell nav={ADMIN_NAV} profile={profile} subtitle="MIOW Admin Console · STEM Robotics Lab">
       <div className="mb-6">
-        <h1 className="font-display text-2xl font-bold sm:text-3xl">Virtual Arduino Lab (ongoing)</h1>
+        <h1 className="font-display text-2xl font-bold sm:text-3xl">
+          Virtual Arduino Lab (ongoing)
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Interactive ATmega328P simulation environment for school robotics and microcontrollers curriculum.
+          Interactive ATmega328P simulation environment for school robotics and microcontrollers
+          curriculum.
         </p>
       </div>
 

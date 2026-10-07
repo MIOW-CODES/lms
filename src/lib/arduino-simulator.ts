@@ -84,7 +84,10 @@ export class ArduinoSimulator {
 
   public setAnalogInput(pinIndex: number, value0to1023: number) {
     if (this.board.analog[pinIndex]) {
-      this.board.analog[pinIndex].analogValue = Math.max(0, Math.min(1023, Math.round(value0to1023)));
+      this.board.analog[pinIndex].analogValue = Math.max(
+        0,
+        Math.min(1023, Math.round(value0to1023)),
+      );
       this.board.analog[pinIndex].digitalValue = value0to1023 > 512 ? 1 : 0;
       this.emitChange();
     }
@@ -107,10 +110,12 @@ export class ArduinoSimulator {
     }
   }
 
-  public parseAndCompile(cCode: string): { setupCode: string; loopCode: string; globalCode: string } {
-    let clean = cCode
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/\/\/.*$/gm, "");
+  public parseAndCompile(cCode: string): {
+    setupCode: string;
+    loopCode: string;
+    globalCode: string;
+  } {
+    const clean = cCode.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
     const setupMatch = clean.match(/void\s+setup\s*\(\s*\)\s*\{([\s\S]*?)\}/);
     const loopMatch = clean.match(/void\s+loop\s*\(\s*\)\s*\{([\s\S]*?)\}/);
@@ -118,7 +123,7 @@ export class ArduinoSimulator {
     const setupBody = setupMatch && setupMatch[1] ? setupMatch[1] : "";
     const loopBody = loopMatch && loopMatch[1] ? loopMatch[1] : "";
 
-    let globals = clean
+    const globals = clean
       .replace(/void\s+setup\s*\(\s*\)\s*\{[\s\S]*?\}/, "")
       .replace(/void\s+loop\s*\(\s*\)\s*\{[\s\S]*?\}/, "");
 
@@ -136,8 +141,11 @@ export class ArduinoSimulator {
     let js = rawCode;
 
     // Convert type declarations
-    js = js.replace(/\b(int|float|double|long|unsigned\s+long|byte|char|bool|boolean|void|String|const\s+\w+)\s+([a-zA-Z0-9_]+)\b/g, "let $2");
-    
+    js = js.replace(
+      /\b(int|float|double|long|unsigned\s+long|byte|char|bool|boolean|void|String|const\s+\w+)\s+([a-zA-Z0-9_]+)\b/g,
+      "let $2",
+    );
+
     // Convert boolean keywords
     js = js.replace(/\bHIGH\b/g, "1");
     js = js.replace(/\bLOW\b/g, "0");
@@ -199,7 +207,7 @@ export class ArduinoSimulator {
         "abs",
         "random",
         "Serial",
-        runnerCode
+        runnerCode,
       );
 
       const userProgram = fn(
@@ -219,7 +227,7 @@ export class ArduinoSimulator {
         sandboxEnv.max,
         sandboxEnv.abs,
         sandboxEnv.random,
-        sandboxEnv.Serial
+        sandboxEnv.Serial,
       );
 
       this.isRunning = true;
@@ -279,33 +287,34 @@ export class ArduinoSimulator {
   }
 
   private createRuntimeSandbox() {
-    const self = this;
+    const board = this.board;
+    const log = this.log.bind(this);
 
     const pinMode = (pin: number, mode: "INPUT" | "OUTPUT" | "INPUT_PULLUP") => {
       const pinNum = Number(pin);
-      if (pinNum >= 0 && pinNum <= 13 && self.board.digital[pinNum]) {
-        self.board.digital[pinNum]!.mode = mode;
+      if (pinNum >= 0 && pinNum <= 13 && board.digital[pinNum]) {
+        board.digital[pinNum]!.mode = mode;
       }
     };
 
     const digitalWrite = (pin: number, val: 0 | 1 | boolean | number) => {
       const pinNum = Number(pin);
       const v: 0 | 1 = val ? 1 : 0;
-      if (pinNum >= 0 && pinNum <= 13 && self.board.digital[pinNum]) {
-        self.board.digital[pinNum]!.digitalValue = v;
+      if (pinNum >= 0 && pinNum <= 13 && board.digital[pinNum]) {
+        board.digital[pinNum]!.digitalValue = v;
         if (pinNum === 13) {
-          self.board.builtinLed = v;
+          board.builtinLed = v;
         }
       }
     };
 
     const digitalRead = (pin: number): number => {
       const pinNum = Number(pin);
-      if (pinNum >= 0 && pinNum <= 13 && self.board.digital[pinNum]) {
-        return self.board.digital[pinNum]!.digitalValue;
+      if (pinNum >= 0 && pinNum <= 13 && board.digital[pinNum]) {
+        return board.digital[pinNum]!.digitalValue;
       }
-      if (pinNum >= 14 && pinNum <= 19 && self.board.analog[pinNum - 14]) {
-        return self.board.analog[pinNum - 14]!.digitalValue;
+      if (pinNum >= 14 && pinNum <= 19 && board.analog[pinNum - 14]) {
+        return board.analog[pinNum - 14]!.digitalValue;
       }
       return 0;
     };
@@ -313,8 +322,8 @@ export class ArduinoSimulator {
     const analogRead = (pin: number): number => {
       const pinNum = Number(pin);
       const aPin = pinNum >= 14 ? pinNum - 14 : pinNum;
-      if (aPin >= 0 && aPin <= 5 && self.board.analog[aPin]) {
-        return self.board.analog[aPin]!.analogValue;
+      if (aPin >= 0 && aPin <= 5 && board.analog[aPin]) {
+        return board.analog[aPin]!.analogValue;
       }
       return 0;
     };
@@ -322,49 +331,50 @@ export class ArduinoSimulator {
     const analogWrite = (pin: number, val: number) => {
       const pinNum = Number(pin);
       const clamped = Math.max(0, Math.min(255, Math.round(Number(val))));
-      if (pinNum >= 0 && pinNum <= 13 && self.board.digital[pinNum]) {
-        self.board.digital[pinNum]!.analogValue = clamped;
-        self.board.digital[pinNum]!.digitalValue = clamped > 127 ? 1 : 0;
+      if (pinNum >= 0 && pinNum <= 13 && board.digital[pinNum]) {
+        board.digital[pinNum]!.analogValue = clamped;
+        board.digital[pinNum]!.digitalValue = clamped > 127 ? 1 : 0;
         if (pinNum === 13) {
-          self.board.builtinLed = clamped > 127 ? 1 : 0;
+          board.builtinLed = clamped > 127 ? 1 : 0;
         }
       }
     };
 
     const tone = (pin: number, freq: number) => {
-      self.board.buzzerTone = Math.max(20, Math.min(20000, Number(freq)));
+      board.buzzerTone = Math.max(20, Math.min(20000, Number(freq)));
     };
 
     const noTone = () => {
-      self.board.buzzerTone = null;
+      board.buzzerTone = null;
     };
 
     const delay = (_ms: number) => {
       // In browser cooperative tick loop, delay steps time forward simulated
-      self.simulatedMillis += Math.round(Number(_ms) || 0);
+      this.simulatedMillis += Math.round(Number(_ms) || 0);
     };
 
-    const millis = () => self.simulatedMillis;
-    const micros = () => self.simulatedMillis * 1000;
+    const millis = () => this.simulatedMillis;
+    const micros = () => this.simulatedMillis * 1000;
 
     const map = (x: number, in_min: number, in_max: number, out_min: number, out_max: number) => {
       return ((x - in_min) * (out_max - out_min)) / (in_max - in_min) + out_min;
     };
 
-    const constrain = (amt: number, low: number, high: number) => Math.max(low, Math.min(high, amt));
+    const constrain = (amt: number, low: number, high: number) =>
+      Math.max(low, Math.min(high, amt));
 
     const Serial = {
       begin: (baud: number) => {
-        self.log(`[Serial opened at ${baud} baud]`);
+        log(`[Serial opened at ${baud} baud]`);
       },
       print: (val: unknown) => {
-        self.log(String(val));
+        log(String(val));
       },
       println: (val: unknown = "") => {
-        self.log(String(val) + "\n");
+        log(String(val) + "\n");
       },
       write: (val: unknown) => {
-        self.log(String(val));
+        log(String(val));
       },
     };
 

@@ -28,7 +28,8 @@ export interface WorkspaceTab {
   id: string;
   label: string;
   icon: ReactNode;
-  count?: number;
+  /** Omit for no badge; use "…" while the count is still loading — 0 is reserved for confirmed empty. */
+  count?: number | string;
 }
 
 /** Breadcrumb + hero header + tab bar shared by staff and student workspaces. */
@@ -97,7 +98,7 @@ export function CourseWorkspaceShell({
           >
             {t.icon}
             {t.label}
-            {typeof t.count === "number" && (
+            {t.count != null && (
               <span
                 className={cn(
                   "ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold",
@@ -148,7 +149,11 @@ export function CourseRoster({
         <div>
           <p className="text-sm font-semibold">Enrolled students</p>
           <p className="text-xs text-muted-foreground">
-            {roster.length} learner{roster.length !== 1 ? "s" : ""} in this course
+            {loading ? (
+              <span className="inline-block h-3.5 w-24 animate-pulse rounded bg-muted align-middle" />
+            ) : (
+              `${roster.length} learner${roster.length !== 1 ? "s" : ""} in this course`
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -232,6 +237,7 @@ export function StaffCourseWorkspace({
   onEditAssignment,
   onRemoveAssignment,
   onSubmissions,
+  loading = false,
 }: {
   course: Course;
   quizzes: Quiz[];
@@ -246,6 +252,8 @@ export function StaffCourseWorkspace({
   onEditAssignment: (a: Assignment) => void;
   onRemoveAssignment: (a: Assignment) => void;
   onSubmissions: (a: Assignment) => void;
+  /** Worksheets/assignments lists are still loading — reserve 0 for confirmed empty. */
+  loading?: boolean;
 }) {
   const [tab, setTab] = useState("worksheets");
   const { roster, loading: rosterLoading } = useCourseRoster(course.id);
@@ -264,20 +272,20 @@ export function StaffCourseWorkspace({
       id: "worksheets",
       label: "Worksheets",
       icon: <FileQuestion className="h-4 w-4" />,
-      count: courseQuizzes.length,
+      count: loading ? "…" : courseQuizzes.length,
     },
     {
       id: "assignments",
       label: "Assignments",
       icon: <ClipboardList className="h-4 w-4" />,
-      count: courseAssignments.length,
+      count: loading ? "…" : courseAssignments.length,
     },
     { id: "class", label: "Class Record", icon: <FileSpreadsheet className="h-4 w-4" /> },
     {
       id: "roster",
       label: "Students",
       icon: <Users className="h-4 w-4" />,
-      count: roster.length,
+      count: rosterLoading ? "…" : roster.length,
     },
     {
       id: "schedule",
@@ -311,7 +319,9 @@ export function StaffCourseWorkspace({
       }
     >
       {tab === "worksheets" &&
-        (courseQuizzes.length === 0 ? (
+        (loading ? (
+          <Card className="p-6 text-sm text-muted-foreground">Loading worksheets…</Card>
+        ) : courseQuizzes.length === 0 ? (
           <EmptyState
             title="No worksheets yet"
             sub="Create a worksheet for this course — generate one with ClassMate or build it manually."
@@ -328,7 +338,9 @@ export function StaffCourseWorkspace({
         ))}
 
       {tab === "assignments" &&
-        (courseAssignments.length === 0 ? (
+        (loading ? (
+          <Card className="p-6 text-sm text-muted-foreground">Loading assignments…</Card>
+        ) : courseAssignments.length === 0 ? (
           <EmptyState
             title="No assignments yet"
             sub="Post an assignment, attach handouts and grade student submissions here."

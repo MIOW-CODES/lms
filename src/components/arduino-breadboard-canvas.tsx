@@ -145,7 +145,8 @@ export function InteractiveBreadboardCanvas({
   const handleMouseDown = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setSelectedId(id);
-    const item = id === "arduino-uno" ? { x: unoPos.x, y: unoPos.y } : parts.find((p) => p.id === id);
+    const item =
+      id === "arduino-uno" ? { x: unoPos.x, y: unoPos.y } : parts.find((p) => p.id === id);
     if (!item) return;
 
     dragRef.current = {
@@ -171,9 +172,7 @@ export function InteractiveBreadboardCanvas({
     if (id === "arduino-uno") {
       setUnoPos({ x: newX, y: newY });
     } else {
-      setParts((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, x: newX, y: newY } : p)),
-      );
+      setParts((prev) => prev.map((p) => (p.id === id ? { ...p, x: newX, y: newY } : p)));
     }
   }, []);
 
@@ -200,25 +199,86 @@ export function InteractiveBreadboardCanvas({
     let newPart: CanvasPart;
     switch (type) {
       case "wokwi-led":
-        newPart = { id, type, x: randX, y: randY, label: "LED", color: "yellow", connectedPin: 11, wireColor: color };
+        newPart = {
+          id,
+          type,
+          x: randX,
+          y: randY,
+          label: "LED",
+          color: "yellow",
+          connectedPin: 11,
+          wireColor: color,
+        };
         break;
       case "wokwi-pushbutton":
-        newPart = { id, type, x: randX, y: randY, label: "Button", color: "red", connectedPin: 3, value: 0, wireColor: color };
+        newPart = {
+          id,
+          type,
+          x: randX,
+          y: randY,
+          label: "Button",
+          color: "red",
+          connectedPin: 3,
+          value: 0,
+          wireColor: color,
+        };
         break;
       case "wokwi-potentiometer":
-        newPart = { id, type, x: randX, y: randY, label: "Pot (A1)", connectedPin: 15, value: 0, wireColor: color };
+        newPart = {
+          id,
+          type,
+          x: randX,
+          y: randY,
+          label: "Pot (A1)",
+          connectedPin: 15,
+          value: 0,
+          wireColor: color,
+        };
         break;
       case "wokwi-buzzer":
-        newPart = { id, type, x: randX, y: randY, label: "Buzzer", connectedPin: 8, wireColor: color };
+        newPart = {
+          id,
+          type,
+          x: randX,
+          y: randY,
+          label: "Buzzer",
+          connectedPin: 8,
+          wireColor: color,
+        };
         break;
       case "wokwi-servo":
-        newPart = { id, type, x: randX, y: randY, label: "SG90 Servo", connectedPin: 9, wireColor: color };
+        newPart = {
+          id,
+          type,
+          x: randX,
+          y: randY,
+          label: "SG90 Servo",
+          connectedPin: 9,
+          wireColor: color,
+        };
         break;
       case "wokwi-hc-sr04":
-        newPart = { id, type, x: randX, y: randY, label: "Sonar", connectedPin: 7, value: 25, wireColor: color };
+        newPart = {
+          id,
+          type,
+          x: randX,
+          y: randY,
+          label: "Sonar",
+          connectedPin: 7,
+          value: 25,
+          wireColor: color,
+        };
         break;
       default:
-        newPart = { id, type, x: randX, y: randY, label: "Resistor", connectedPin: 13, wireColor: color };
+        newPart = {
+          id,
+          type,
+          x: randX,
+          y: randY,
+          label: "Resistor",
+          connectedPin: 13,
+          wireColor: color,
+        };
     }
 
     setParts((prev) => [...prev, newPart]);
@@ -232,31 +292,23 @@ export function InteractiveBreadboardCanvas({
   };
 
   const updatePin = (id: string, pin: number) => {
-    setParts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, connectedPin: pin } : p)),
-    );
+    setParts((prev) => prev.map((p) => (p.id === id ? { ...p, connectedPin: pin } : p)));
   };
 
   const updateWireColor = (id: string, wireColor: string) => {
-    setParts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, wireColor } : p)),
-    );
+    setParts((prev) => prev.map((p) => (p.id === id ? { ...p, wireColor } : p)));
   };
 
   const handlePushButton = (part: CanvasPart) => {
     const nextVal = part.value === 1 ? 0 : 1;
-    setParts((prev) =>
-      prev.map((p) => (p.id === part.id ? { ...p, value: nextVal } : p)),
-    );
+    setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, value: nextVal } : p)));
     if (onDigitalPinChange) {
       onDigitalPinChange(part.connectedPin, nextVal);
     }
   };
 
   const handlePotInput = (part: CanvasPart, val: number) => {
-    setParts((prev) =>
-      prev.map((p) => (p.id === part.id ? { ...p, value: val } : p)),
-    );
+    setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, value: val } : p)));
     const aPin = part.connectedPin >= 14 ? part.connectedPin - 14 : part.connectedPin;
     if (onAnalogPinChange) {
       onAnalogPinChange(aPin, val);
@@ -299,50 +351,43 @@ export function InteractiveBreadboardCanvas({
             onClick={() => addPart("wokwi-led")}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
           >
-            <div className="h-2.5 w-2.5 rounded-full bg-red-500 shadow-sm" />
-            + LED
+            <div className="h-2.5 w-2.5 rounded-full bg-red-500 shadow-sm" />+ LED
           </button>
           <button
             onClick={() => addPart("wokwi-pushbutton")}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
           >
-            <div className="h-2.5 w-2.5 rounded-sm bg-blue-500 shadow-sm" />
-            + Push Button
+            <div className="h-2.5 w-2.5 rounded-sm bg-blue-500 shadow-sm" />+ Push Button
           </button>
           <button
             onClick={() => addPart("wokwi-potentiometer")}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
           >
-            <Sliders className="h-3.5 w-3.5 text-amber-500" />
-            + Potentiometer
+            <Sliders className="h-3.5 w-3.5 text-amber-500" />+ Potentiometer
           </button>
           <button
             onClick={() => addPart("wokwi-buzzer")}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
           >
-            <Volume2 className="h-3.5 w-3.5 text-sky-400" />
-            + Buzzer
+            <Volume2 className="h-3.5 w-3.5 text-sky-400" />+ Buzzer
           </button>
           <button
             onClick={() => addPart("wokwi-servo")}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
           >
-            <RotateCcw className="h-3.5 w-3.5 text-rose-400" />
-            + SG90 Servo
+            <RotateCcw className="h-3.5 w-3.5 text-rose-400" />+ SG90 Servo
           </button>
           <button
             onClick={() => addPart("wokwi-hc-sr04")}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
           >
-            <Sparkles className="h-3.5 w-3.5 text-teal-400" />
-            + Sonar
+            <Sparkles className="h-3.5 w-3.5 text-teal-400" />+ Sonar
           </button>
           <button
             onClick={() => addPart("wokwi-resistor")}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
           >
-            <span className="font-mono text-amber-600 font-bold">220Ω</span>
-            + Resistor
+            <span className="font-mono text-amber-600 font-bold">220Ω</span>+ Resistor
           </button>
         </div>
 
@@ -417,8 +462,22 @@ export function InteractiveBreadboardCanvas({
                   filter="url(#wire-glow)"
                 />
                 {/* Metal Terminal Pin Ends */}
-                <circle cx={start.x} cy={start.y} r="3" fill="#cbd5e1" stroke="#475569" strokeWidth="1" />
-                <circle cx={end.x} cy={end.y} r="3" fill="#cbd5e1" stroke="#475569" strokeWidth="1" />
+                <circle
+                  cx={start.x}
+                  cy={start.y}
+                  r="3"
+                  fill="#cbd5e1"
+                  stroke="#475569"
+                  strokeWidth="1"
+                />
+                <circle
+                  cx={end.x}
+                  cy={end.y}
+                  r="3"
+                  fill="#cbd5e1"
+                  stroke="#475569"
+                  strokeWidth="1"
+                />
               </g>
             );
           })}
@@ -464,8 +523,8 @@ export function InteractiveBreadboardCanvas({
           const isSelected = p.id === selectedId;
           const isDigital = p.connectedPin <= 13;
           const pinVal = isDigital
-            ? boardState?.digital[p.connectedPin]?.digitalValue ?? 0
-            : boardState?.analog[p.connectedPin - 14]?.digitalValue ?? 0;
+            ? (boardState?.digital[p.connectedPin]?.digitalValue ?? 0)
+            : (boardState?.analog[p.connectedPin - 14]?.digitalValue ?? 0);
           const isHigh = pinVal === 1;
 
           const servoPwm = boardState?.digital[p.connectedPin]?.analogValue ?? 0;
@@ -490,7 +549,10 @@ export function InteractiveBreadboardCanvas({
                 </span>
                 <span
                   className="rounded px-1.5 py-0.2 font-bold border text-black shadow-sm"
-                  style={{ backgroundColor: p.wireColor || "#10b981", borderColor: p.wireColor || "#10b981" }}
+                  style={{
+                    backgroundColor: p.wireColor || "#10b981",
+                    borderColor: p.wireColor || "#10b981",
+                  }}
                 >
                   {p.connectedPin >= 14 ? `A${p.connectedPin - 14}` : `D${p.connectedPin}`}
                 </span>
@@ -541,7 +603,7 @@ export function InteractiveBreadboardCanvas({
                       className="h-1.5 w-24 cursor-pointer appearance-none rounded-lg bg-slate-700 accent-emerald-400"
                     />
                     <span className="font-mono text-[9px] text-slate-400">
-                      {p.value ?? 512} ({((((p.value ?? 512) / 1023) * 5.0)).toFixed(2)}V)
+                      {p.value ?? 512} ({(((p.value ?? 512) / 1023) * 5.0).toFixed(2)}V)
                     </span>
                   </div>
                 )}
@@ -633,7 +695,9 @@ export function InteractiveBreadboardCanvas({
                           onClick={() => updateWireColor(p.id, w.stroke)}
                           className={cn(
                             "h-3.5 w-3.5 rounded-full transition-transform",
-                            p.wireColor === w.stroke ? "scale-125 ring-2 ring-white" : "opacity-80 hover:opacity-100",
+                            p.wireColor === w.stroke
+                              ? "scale-125 ring-2 ring-white"
+                              : "opacity-80 hover:opacity-100",
                           )}
                           style={{ backgroundColor: w.stroke }}
                           title={`${w.name} Wire`}
@@ -651,7 +715,9 @@ export function InteractiveBreadboardCanvas({
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Info className="h-3.5 w-3.5 text-primary" />
         <span>
-          Dynamic Jumper Wires: Drag components to route wires across your circuit. Select any component to choose which Arduino pin (D0–D13 / A0–A5) it connects to or pick a wire color.
+          Dynamic Jumper Wires: Drag components to route wires across your circuit. Select any
+          component to choose which Arduino pin (D0–D13 / A0–A5) it connects to or pick a wire
+          color.
         </span>
       </div>
     </div>

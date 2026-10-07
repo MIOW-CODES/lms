@@ -1,16 +1,7 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
 User-agent: *
 Allow: /
+Allow: /auth
+Disallow: /dashboard/
+Disallow: /api/
 
-Sitemap: https://miow.joalvergs.tech/sitemap.xml
+Sitemap: https://miow-lms.ter-ids.online/sitemap.xml

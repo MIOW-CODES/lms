@@ -347,7 +347,7 @@ function AssignMembersModal({
   const [saving, setSaving] = useState(false);
 
   // Fetch enrolled students for course
-  const { data: enrolledIds = [] } = useQuery({
+  const { data: enrolledIds = [], isPending: enrollmentsLoading } = useQuery({
     queryKey: ["enrollments", courseId],
     queryFn: () => enrollmentsForCourse(courseId),
     enabled: open && !!courseId,
@@ -448,7 +448,11 @@ function AssignMembersModal({
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-3 text-xs">
           <div className="text-muted-foreground">
             <span>Enrolled learners: </span>
-            <span className="font-semibold text-foreground">{courseRoster.length}</span>
+            {studentsLoading || enrollmentsLoading ? (
+              <span className="inline-block h-3.5 w-8 animate-pulse rounded bg-muted align-middle" />
+            ) : (
+              <span className="font-semibold text-foreground">{courseRoster.length}</span>
+            )}
             {meeting?.capacity != null && (
               <>
                 <span className="mx-2">·</span>

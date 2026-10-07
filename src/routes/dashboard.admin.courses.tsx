@@ -30,6 +30,7 @@ import { CreateQuizModal } from "@/components/courses/create-quiz-modal";
 import { EditQuizModal } from "@/components/courses/edit-quiz-modal";
 import { EditAssignmentModal } from "@/components/courses/edit-assignment-modal";
 import { ConfirmRemoveModal } from "@/components/courses/confirm-remove-modal";
+import { LoadingSkeleton } from "@/components/ui-elements";
 
 export const Route = createFileRoute("/dashboard/admin/courses")({
   head: () => ({
@@ -161,6 +162,7 @@ export function CoursesPage() {
           course={selectedCourse}
           quizzes={quizzes ?? []}
           assignments={assignments ?? []}
+          loading={quizzes === undefined || assignments === undefined}
           onBack={() => selectCourse(null)}
           onNewQuiz={() => setModal("quiz")}
           onNewAssignment={() => setModal("assignment")}
@@ -180,7 +182,11 @@ export function CoursesPage() {
             <div>
               <h1 className="font-display text-2xl font-bold sm:text-3xl">Courses</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                {courses?.length ?? 0} active courses
+                {courses === undefined ? (
+                  <span className="inline-block h-4 w-28 animate-pulse rounded bg-muted align-middle" />
+                ) : (
+                  `${courses.length} active courses`
+                )}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -208,7 +214,9 @@ export function CoursesPage() {
             </div>
           </div>
 
-          {(courses ?? []).length === 0 ? (
+          {courses === undefined ? (
+            <LoadingSkeleton />
+          ) : courses.length === 0 ? (
             <EmptyState
               title="No courses yet"
               sub={

@@ -35,7 +35,8 @@ describe("ArduinoSimulator", () => {
     const sim = new ArduinoSimulator();
     sim.setAnalogInput(0, 512);
 
-    let recordedVal = 0;
+    const recordedVal = 0;
+    void recordedVal;
     const code = `
       int sensorValue = 0;
       int mapped = 0;

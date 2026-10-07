@@ -16,10 +16,10 @@ Open `http://127.0.0.1:3000` — you'll see the login page.
 
 ### Seed PINs (test accounts)
 
-| Email | Role | PIN |
-|---|---|---|
-| `admin@g.msuiit.edu.ph` | Admin | `0000` |
-| `maria.santos@northview.edu` | Teacher | `1111` |
+| Email                                 | Role    | PIN    |
+| ------------------------------------- | ------- | ------ |
+| `admin@g.msuiit.edu.ph`               | Admin   | `0000` |
+| `maria.santos@northview.edu`          | Teacher | `1111` |
 | `juan.delacruz@student.northview.edu` | Student | `1234` |
 
 ## Database Setup
@@ -69,11 +69,11 @@ The app auto-detects which backend to use based on your env vars.
 
 See `.env.example` for the full list. Required:
 
-| Variable | Description |
-|---|---|
-| `SESSION_SECRET` | HMAC key for session tokens (`openssl rand -hex 32`) |
-| `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` | Supabase credentials |
-| `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase client-side credentials |
+| Variable                                              | Description                                          |
+| ----------------------------------------------------- | ---------------------------------------------------- |
+| `SESSION_SECRET`                                      | HMAC key for session tokens (`openssl rand -hex 32`) |
+| `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`          | Supabase credentials                                 |
+| `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase client-side credentials                     |
 
 ## Features
 

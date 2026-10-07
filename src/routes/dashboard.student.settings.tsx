@@ -290,7 +290,7 @@ function StudentSettings() {
 
       <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
         {/* Tab navigation */}
-        <nav aria-label="Settings sections" className="flex gap-2 overflow-x-auto lg:flex-col">
+        <nav aria-label="Settings sections" className="flex flex-wrap gap-2 lg:flex-col">
           {TABS.map((t) => (
             <button
               key={t.value}

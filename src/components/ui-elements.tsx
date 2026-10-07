@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { MiowWatermark } from "@/components/brand";
@@ -227,7 +227,9 @@ export function ProgressBar({ value, barClass }: { value: number; barClass?: str
         transition={{ duration: 0.8, ease: "easeOut" }}
         className={cn(
           "relative h-full rounded-full transition-colors duration-500 overflow-hidden",
-          isComplete ? "bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500" : "bg-primary",
+          isComplete
+            ? "bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500"
+            : "bg-primary",
           barClass,
         )}
       >
@@ -386,6 +388,54 @@ export function Toggle({
 
 /* ---------- Modal ---------- */
 
+const MODAL_FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(", ");
+
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(MODAL_FOCUSABLE_SELECTOR)).filter(
+    (el) =>
+      !el.closest("[inert]") &&
+      (el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0),
+  );
+}
+
+/**
+ * Marks everything outside `node` (the modal overlay) as `inert` + `aria-hidden`
+ * so the background cannot receive focus or be read by assistive tech while the
+ * dialog is open. Walks up the ancestor chain and marks each sibling subtree,
+ * which correctly handles modals rendered inline inside the page content.
+ * Nested modals are safe: ancestor overlays are never marked, and subtrees that
+ * host another open dialog are left untouched.
+ */
+function inertOutside(node: HTMLElement): () => void {
+  const marked: HTMLElement[] = [];
+  let el: HTMLElement | null = node;
+  while (el && el.parentElement && el !== document.body) {
+    const parent: HTMLElement = el.parentElement;
+    for (const sibling of Array.from(parent.children)) {
+      if (!(sibling instanceof HTMLElement) || sibling === el) continue;
+      if (sibling.hasAttribute("inert")) continue;
+      if (sibling.querySelector('[role="dialog"][aria-modal="true"]')) continue;
+      sibling.setAttribute("inert", "");
+      sibling.setAttribute("aria-hidden", "true");
+      marked.push(sibling);
+    }
+    el = parent;
+  }
+  return () => {
+    for (const sibling of marked) {
+      sibling.removeAttribute("inert");
+      sibling.removeAttribute("aria-hidden");
+    }
+  };
+}
+
 export function Modal({
   open,
   onClose,
@@ -399,47 +449,52 @@ export function Modal({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const overlayRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const previousActiveElement = useRef<HTMLElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  const titleId = useId();
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     if (!open) return;
 
-    // Remember previous active element to restore focus on close
-    previousActiveElement.current = document.activeElement as HTMLElement | null;
-
+    const overlay = overlayRef.current;
     const dialog = dialogRef.current;
-    if (dialog) {
-      // Find first focusable element inside dialog or focus container
-      const focusableElements = dialog.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
-      if (focusableElements.length > 0) {
-        focusableElements[0]?.focus();
-      } else {
-        dialog.focus();
-      }
-    }
+    if (!dialog) return;
+
+    // Remember previous active element to restore focus on close
+    restoreFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    // Move focus into the dialog: first focusable element, else the container
+    const focusable = getFocusableElements(dialog);
+    (focusable[0] ?? dialog).focus();
+
+    // Make the background inert + hidden while the dialog is open
+    const releaseBackground = overlay ? inertOutside(overlay) : undefined;
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
 
       if (e.key === "Tab") {
         const dialogNode = dialogRef.current;
         if (!dialogNode) return;
-        const focusable = dialogNode.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        );
-        if (focusable.length === 0) {
+        const items = getFocusableElements(dialogNode);
+        if (items.length === 0) {
           e.preventDefault();
+          dialogNode.focus();
           return;
         }
 
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
+        const first = items[0];
+        const last = items[items.length - 1];
 
         if (e.shiftKey) {
           if (document.activeElement === first || !dialogNode.contains(document.activeElement)) {
@@ -458,16 +513,19 @@ export function Modal({
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
-      if (previousActiveElement.current && typeof previousActiveElement.current.focus === "function") {
-        previousActiveElement.current.focus();
+      releaseBackground?.();
+      const restore = restoreFocusRef.current;
+      if (restore && restore.isConnected && typeof restore.focus === "function") {
+        restore.focus();
       }
     };
-  }, [open, onClose]);
+  }, [open]);
 
   return (
     <AnimatePresence>
       {open && (
         <motion.div
+          ref={overlayRef}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -485,6 +543,7 @@ export function Modal({
             role="dialog"
             aria-modal="true"
             aria-label={title}
+            aria-labelledby={titleId}
             className={cn(
               "flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/95 shadow-lift backdrop-blur-xl outline-none",
               wide ? "max-w-3xl" : "max-w-lg",
@@ -492,7 +551,9 @@ export function Modal({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex shrink-0 items-center justify-between border-b border-border/40 px-6 py-4">
-              <h3 className="text-lg font-bold">{title}</h3>
+              <h3 id={titleId} className="text-lg font-bold">
+                {title}
+              </h3>
               <button
                 onClick={onClose}
                 aria-label="Close dialog"
@@ -545,6 +606,8 @@ export function UserAvatar({
         alt={name}
         loading="lazy"
         decoding="async"
+        width={32}
+        height={32}
         className={cn("rounded-full object-cover bg-white/10 p-0.5", className)}
       />
     );

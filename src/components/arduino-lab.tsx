@@ -190,7 +190,9 @@ export function ArduinoLab() {
     if (isRunning && freq && freq > 20) {
       try {
         if (!audioCtxRef.current) {
-          const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+          const AudioCtx =
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
           audioCtxRef.current = new AudioCtx();
         }
         const ctx = audioCtxRef.current;
@@ -483,7 +485,9 @@ export function ArduinoLab() {
                       />
                       <div className="text-xs font-mono">
                         <p className="font-bold text-emerald-300">ON (PWR)</p>
-                        <p className="text-[10px] text-teal-400">{isRunning ? "5.0V Active" : "No Power"}</p>
+                        <p className="text-[10px] text-teal-400">
+                          {isRunning ? "5.0V Active" : "No Power"}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -505,7 +509,9 @@ export function ArduinoLab() {
 
                   {/* Digital Pins (0 to 13) */}
                   <div className="space-y-1.5">
-                    <p className="font-mono text-[11px] font-semibold text-teal-300">DIGITAL PINS (0–13)</p>
+                    <p className="font-mono text-[11px] font-semibold text-teal-300">
+                      DIGITAL PINS (0–13)
+                    </p>
                     <div className="grid grid-cols-7 gap-1.5 text-center font-mono text-[10px]">
                       {[13, 12, 11, 10, 9, 8, 7].map((pin) => {
                         const st = boardState?.digital[pin];
@@ -569,7 +575,9 @@ export function ArduinoLab() {
                 <div className="mb-3 flex items-center justify-between border-b border-border/60 pb-2">
                   <div className="flex items-center gap-2">
                     <Sliders className="h-4 w-4 text-primary" />
-                    <span className="font-semibold text-foreground text-sm">Analog Inputs (A0–A5 Potentiometers)</span>
+                    <span className="font-semibold text-foreground text-sm">
+                      Analog Inputs (A0–A5 Potentiometers)
+                    </span>
                   </div>
                   <span className="text-[11px] font-mono text-muted-foreground">0–1023 ADC</span>
                 </div>
@@ -582,8 +590,7 @@ export function ArduinoLab() {
                         <div className="flex items-center justify-between text-xs font-mono">
                           <span className="font-bold text-foreground">Pin A{pinIndex}</span>
                           <span className="text-muted-foreground">
-                            {val} / 1023 (
-                            {((val / 1023) * 5.0).toFixed(2)}V)
+                            {val} / 1023 ({((val / 1023) * 5.0).toFixed(2)}V)
                           </span>
                         </div>
                         <input
@@ -619,7 +626,11 @@ export function ArduinoLab() {
                     onClick={handleCopy}
                     className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                   >
-                    {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                    {copied ? (
+                      <Check className="h-3.5 w-3.5 text-emerald-500" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
                     <span>{copied ? "Copied" : "Copy"}</span>
                   </button>
                 </div>
@@ -655,7 +666,8 @@ export function ArduinoLab() {
                 />
               </div>
               <p className="mt-2 text-right text-[11px] text-muted-foreground">
-                Tip: Supports digitalRead, digitalWrite, analogRead, analogWrite, pinMode, tone, delay, Serial
+                Tip: Supports digitalRead, digitalWrite, analogRead, analogWrite, pinMode, tone,
+                delay, Serial
               </p>
             </div>
           </div>
@@ -678,7 +690,9 @@ export function ArduinoLab() {
               </div>
               <div className="min-h-[220px] flex-1 overflow-y-auto rounded-xl border border-input bg-zinc-950 p-3 font-mono text-xs text-emerald-400 shadow-inner">
                 {logs.length === 0 ? (
-                  <span className="text-zinc-600">// Serial output will appear here when running...</span>
+                  <span className="text-zinc-600">
+                    // Serial output will appear here when running...
+                  </span>
                 ) : (
                   logs.map((line, i) => (
                     <div key={i} className="whitespace-pre-wrap leading-tight">

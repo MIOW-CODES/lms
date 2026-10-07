@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardPaste, KeyRound, Nfc, Plus, Search, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  ClipboardPaste,
+  KeyRound,
+  Nfc,
+  Plus,
+  Search,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { GRADE_LEVELS } from "@/components/courses/constants";
 import {
   Select,

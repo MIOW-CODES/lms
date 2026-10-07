@@ -133,13 +133,17 @@ function QuizzesPage() {
   const setStoredTimer = (id: string, sec: number) => {
     try {
       localStorage.setItem(`miow_quiz_timer_${id}`, String(sec));
-    } catch {}
+    } catch {
+      /* ignore storage quota or access error */
+    }
   };
   const clearStoredProgress = (id: string) => {
     try {
       localStorage.removeItem(`miow_quiz_timer_${id}`);
       localStorage.removeItem(`miow_quiz_answers_${id}`);
-    } catch {}
+    } catch {
+      /* ignore storage access error */
+    }
   };
   const getStoredAnswers = (id: string): Record<string, string> => {
     try {
@@ -152,7 +156,9 @@ function QuizzesPage() {
   const setStoredAnswers = (id: string, a: Record<string, string>) => {
     try {
       localStorage.setItem(`miow_quiz_answers_${id}`, JSON.stringify(a));
-    } catch {}
+    } catch {
+      /* ignore storage quota or access error */
+    }
   };
 
   const savedTimerRef = useRef<Map<string, number>>(new Map());
@@ -204,7 +210,8 @@ function QuizzesPage() {
     // Restore saved answers if they exist for this quiz
     const localAnswers = getStoredAnswers(id);
     const inMemAnswers = savedAnswersRef.current.get(id);
-    const restoredAnswers = Object.keys(localAnswers).length > 0 ? localAnswers : (inMemAnswers ?? {});
+    const restoredAnswers =
+      Object.keys(localAnswers).length > 0 ? localAnswers : (inMemAnswers ?? {});
     setAnswers(restoredAnswers);
     setIdx(0);
     // Restore saved timer or start fresh

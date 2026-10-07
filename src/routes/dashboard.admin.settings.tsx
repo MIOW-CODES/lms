@@ -173,11 +173,17 @@ function AdminSettings() {
 
   const isLoading = !teachers || !courses || !students || !directory;
 
-  if (!profile || !cfg) return null;
+  if (!profile) return null;
 
-  if (isLoading)
+  if (!cfg || isLoading)
     return (
       <AppShell nav={ADMIN_NAV} profile={profile} subtitle="Admin Console">
+        <div className="mb-6">
+          <h1 className="font-display text-2xl font-bold sm:text-3xl">System Settings</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            School configuration, kiosk hardware, permissions, and data tools.
+          </p>
+        </div>
         <LoadingSkeleton />
       </AppShell>
     );
@@ -430,7 +436,7 @@ function AdminSettings() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
-        <nav aria-label="Settings sections" className="flex gap-2 overflow-x-auto lg:flex-col">
+        <nav aria-label="Settings sections" className="flex flex-wrap gap-2 lg:flex-col">
           {TABS.map((t) => (
             <button
               key={t.value}
@@ -460,8 +466,8 @@ function AdminSettings() {
                   palette cannot be overridden per campus or per portal.
                 </p>
                 <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-2xl border border-border bg-background/60 p-5">
-                    <MiowLockup size="md" />
+                  <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-background/60 p-5">
+                    <MiowLockup size="md" className="max-w-full" />
                     <div className="mt-4 flex flex-wrap gap-2">
                       {Object.entries(BRAND_COLORS).map(([name, hex]) => (
                         <span
@@ -491,7 +497,7 @@ function AdminSettings() {
                   </div>
 
                   {/* RFID / school ID card artwork reference for print vendors */}
-                  <div>
+                  <div className="min-w-0">
                     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       RFID ID card template
                     </p>
@@ -539,12 +545,21 @@ function AdminSettings() {
                     </span>
                     <p className="mt-1 font-medium text-foreground">
                       <a
-                        href="https://github.com/Joal0816"
+                        href="https://www.joalvergs.tech/"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary hover:underline"
                       >
                         Joseph Alan B. Vergara
+                      </a>
+                      {", "}
+                      <a
+                        href="https://github.com/laeyue"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        Kent Alexis T. Alia
                       </a>
                     </p>
                   </div>

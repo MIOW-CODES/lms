@@ -14,7 +14,7 @@ export function TabNav<T extends string>({
 }) {
   return (
     <div className="grid gap-6" style={{ gridTemplateColumns: `minmax(0,${navWidth}) 1fr` }}>
-      <nav aria-label="Settings sections" className="flex gap-2 overflow-x-auto lg:flex-col">
+      <nav aria-label="Settings sections" className="flex flex-wrap gap-2 lg:flex-col">
         {tabs.map((t) => (
           <button
             key={t.value}

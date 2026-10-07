@@ -41,6 +41,7 @@ import { cn } from "@/lib/utils";
 import { PREFIXES } from "@/lib/course-levels";
 import { CreatableSelect } from "@/components/ui/creatable-select";
 import { DEFAULT_DEPARTMENTS } from "@/lib/constants";
+import { LoadingSkeleton } from "@/components/ui-elements";
 
 export const Route = createFileRoute("/dashboard/teacher/settings")({
   head: () => ({
@@ -151,7 +152,20 @@ function TeacherSettingsPage() {
     listening,
   );
 
-  if (!profile || !settings) return null;
+  if (!profile) return null;
+
+  if (!settings)
+    return (
+      <AppShell nav={TEACHER_NAV} profile={profile} subtitle="Teacher Portal">
+        <div className="mb-6">
+          <h1 className="font-display text-2xl font-bold sm:text-3xl">Settings</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Manage your faculty identity, kiosk credentials, and classroom defaults.
+          </p>
+        </div>
+        <LoadingSkeleton />
+      </AppShell>
+    );
 
   const persist = (next: TeacherSettings, message = "Changes saved successfully") => {
     setSettings(next);
@@ -281,7 +295,7 @@ function TeacherSettingsPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
-        <nav aria-label="Settings sections" className="flex gap-2 overflow-x-auto lg:flex-col">
+        <nav aria-label="Settings sections" className="flex flex-wrap gap-2 lg:flex-col">
           {TABS.map((t) => (
             <button
               key={t.value}

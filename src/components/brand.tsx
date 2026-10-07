@@ -69,7 +69,7 @@ export function MiowWordmark({
       {descriptor && (
         <p
           className={cn(
-            "mt-1 truncate uppercase leading-none tracking-[0.16em]",
+            "mt-1 break-words uppercase leading-[1.2] tracking-[0.16em]",
             desc,
             tone === "sidebar" ? "text-sidebar-foreground/60" : "text-muted-foreground",
           )}
@@ -114,7 +114,7 @@ export function MiowLockup({
         {subLabel && (
           <p
             className={cn(
-              "mt-1 truncate text-xs font-semibold",
+              "mt-1 break-words text-xs font-semibold",
               tone === "sidebar" ? "text-sidebar-foreground/70" : "text-muted-foreground",
             )}
           >

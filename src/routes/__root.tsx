@@ -90,19 +90,27 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         content:
           "Integrated Developmental School (MIOW): RFID kiosk attendance, courses, timed worksheets, and DepEd-compliant grading for junior and senior high school.",
       },
-      { name: "author", content: "Joseph Vergara" },
+      { name: "author", content: "Joseph Alan B. Vergara, Kent Alexis T. Alia" },
       { name: "theme-color", content: "#800000" },
       // iOS / WebKit home-screen (PWA) metadata — Safari ignores manifest icons.
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
       { name: "apple-mobile-web-app-title", content: "MIOW LMS" },
+      { property: "og:site_name", content: "MIOW LMS" },
       { property: "og:title", content: "MIOW - Integrated Developmental School" },
       {
         property: "og:description",
         content: "RFID kiosk attendance, courses, timed worksheets, and DepEd-compliant grading.",
       },
       { property: "og:type", content: "website" },
+      { property: "og:image", content: "https://miow-lms.ter-ids.online/og-cover.jpg" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "MIOW - Integrated Developmental School" },
+      {
+        name: "twitter:description",
+        content: "RFID kiosk attendance, courses, timed worksheets, and DepEd-compliant grading.",
+      },
+      { name: "twitter:image", content: "https://miow-lms.ter-ids.online/og-cover.jpg" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },

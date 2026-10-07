@@ -1,19 +1,25 @@
-import { useEffect, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { Fragment, useEffect, useState } from "react";
+import { createFileRoute, useRouter, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { LogIn, LogOut, Nfc, Trash2, Volume2, VolumeX, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { LoadingSkeleton, UserAvatar } from "@/components/ui-elements";
-import { ATTENDANCE_LIMIT_KIOSK, SCAN_BANNER_DISMISS_MS } from "@/components/courses/constants";
+import {
+  ATTENDANCE_LIMIT_KIOSK,
+  ATTENDANCE_LIMIT_REPORTS,
+  SCAN_BANNER_DISMISS_MS,
+} from "@/components/courses/constants";
 import {
   createMockTapPayload,
   deleteAttendanceLog,
+  fmtDate,
   fmtTime,
   listAllAttendance,
   listStudents,
   recordTap,
   updateAttendanceLog,
+  type AttendanceLog,
   type AttendanceStatus,
   type Profile,
   type TapPayload,
@@ -35,20 +41,24 @@ import { KIOSK_EVENT_HEADER, KIOSK_TITLE } from "@/lib/brand";
 import { MiowMark } from "@/components/brand";
 
 export const Route = createFileRoute("/dashboard/admin/attendance")({
+  // ?view=logs deep-links the Logs & Reports tab; kiosk is the default.
+  validateSearch: (search: Record<string, unknown>): { view?: "logs" | undefined } => ({
+    view: search["view"] === "logs" ? "logs" : undefined,
+  }),
   head: () => ({
     meta: [
-      { title: "Attendance Kiosk | MIOW - Integrated Developmental School" },
+      { title: "Attendance | MIOW - Integrated Developmental School" },
       {
         name: "description",
-        content: "Gate kiosk: RFID tap-in/tap-out with live feed.",
+        content: "Attendance kiosk and logs: RFID tap-in/tap-out, live feed, and scan history.",
       },
       {
         property: "og:title",
-        content: "Attendance Kiosk | MIOW - Integrated Developmental School",
+        content: "Attendance | MIOW - Integrated Developmental School",
       },
       {
         property: "og:description",
-        content: "Gate kiosk: RFID tap-in/tap-out with live feed.",
+        content: "Attendance kiosk and logs: RFID tap-in/tap-out, live feed, and scan history.",
       },
     ],
   }),
@@ -56,6 +66,7 @@ export const Route = createFileRoute("/dashboard/admin/attendance")({
 });
 
 type FeedFilter = "all" | "in" | "out" | "late";
+type AttendanceView = "kiosk" | "logs";
 
 /** Short confirmation tone — success chirp or error buzz. */
 function playTone(ok: boolean, muted: boolean) {
@@ -86,13 +97,87 @@ function playTone(ok: boolean, muted: boolean) {
   }
 }
 
+/** One attendance log row — shared by today's kiosk feed and the logs view. */
+function LogRow({
+  log,
+  name,
+  onStatus,
+  onDelete,
+}: {
+  log: AttendanceLog;
+  name?: string | undefined;
+  onStatus: (id: string, status: AttendanceStatus) => void;
+  onDelete: (id: string) => void;
+}) {
+  const t = attendanceTone(log.status);
+  return (
+    <div className="flex items-center gap-3 p-3.5">
+      <div
+        className={cn(
+          "flex h-9 w-9 items-center justify-center rounded-xl",
+          log.scan_type === "in"
+            ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300"
+            : "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300",
+        )}
+      >
+        {log.scan_type === "in" ? <LogIn className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold">{name ?? "Unknown"}</p>
+        <p className="text-xs text-muted-foreground">{fmtTime(log.timestamp)}</p>
+      </div>
+      {log.scan_type === "in" ? (
+        <select
+          value={log.status}
+          onChange={(e) => onStatus(log.id, e.target.value as AttendanceStatus)}
+          aria-label="Attendance status override"
+          title="Manual override"
+          className="h-8 rounded-lg border border-border bg-background px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="on-time">On time</option>
+          <option value="late">Late</option>
+          <option value="excused">Excused</option>
+        </select>
+      ) : (
+        <Badge tone={t.tone}>{t.label}</Badge>
+      )}
+      <button
+        onClick={() => onDelete(log.id)}
+        aria-label="Delete attendance record"
+        title="Delete record"
+        className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
 export function AttendanceKiosk() {
   const profile = useProfile(["admin", "teacher"]);
   const qc = useQueryClient();
+  const search = useSearch({ strict: false }) as { view?: unknown };
+  const router = useRouter();
+  const view: AttendanceView = search.view === "logs" ? "logs" : "kiosk";
+  const setView = (v: AttendanceView) =>
+    void router.navigate({
+      to: ".",
+      search: (prev) => ({
+        ...(prev as Record<string, unknown>),
+        view: v === "logs" ? "logs" : undefined,
+      }),
+      replace: true,
+    });
   const { data: logs } = useQuery({
     queryKey: ["attendance-all"],
     queryFn: () => listAllAttendance(ATTENDANCE_LIMIT_KIOSK),
     enabled: !!profile,
+  });
+  // Wider history for the Logs & Reports view (auto-refreshed alongside "attendance-all").
+  const { data: reportLogs } = useQuery({
+    queryKey: ["attendance-all", "reports"],
+    queryFn: () => listAllAttendance(ATTENDANCE_LIMIT_REPORTS),
+    enabled: !!profile && view === "logs",
   });
   const { data: students } = useQuery({
     queryKey: ["students"],
@@ -104,6 +189,7 @@ export function AttendanceKiosk() {
   const [busy, setBusy] = useState(false);
   const [muted, setMuted] = useState(false);
   const [filter, setFilter] = useState<FeedFilter>("all");
+  const [reportFilter, setReportFilter] = useState<FeedFilter>("all");
   const [lastScan, setLastScan] = useState<{
     profile: Profile;
     scan_type: "in" | "out";
@@ -188,6 +274,30 @@ export function AttendanceKiosk() {
     if (filter === "late") return l.scan_type === "in" && l.status === "late";
     return true;
   });
+
+  // Logs & Reports: full fetched history, newest first, grouped by day.
+  const history = (reportLogs ?? logs ?? [])
+    .slice()
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const reportCounts: Record<FeedFilter, number> = {
+    all: history.length,
+    in: history.filter((l) => l.scan_type === "in").length,
+    out: history.filter((l) => l.scan_type === "out").length,
+    late: history.filter((l) => l.scan_type === "in" && l.status === "late").length,
+  };
+  const visibleHistory = history.filter((l) => {
+    if (reportFilter === "in") return l.scan_type === "in";
+    if (reportFilter === "out") return l.scan_type === "out";
+    if (reportFilter === "late") return l.scan_type === "in" && l.status === "late";
+    return true;
+  });
+  const historyDays: Array<{ key: string; logs: AttendanceLog[] }> = [];
+  for (const l of visibleHistory) {
+    const key = new Date(l.timestamp).toDateString();
+    const last = historyDays[historyDays.length - 1];
+    if (last && last.key === key) last.logs.push(l);
+    else historyDays.push({ key, logs: [l] });
+  }
 
   const markStatus = async (id: string, status: AttendanceStatus) => {
     try {
@@ -274,147 +384,189 @@ export function AttendanceKiosk() {
         )}
       </AnimatePresence>
 
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold sm:text-3xl">{KIOSK_TITLE}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Students tap their RFID ID at the gate. On-time vs late is evaluated against today's
-            class schedule (each course's grace period); with no scheduled class, the 7:30 AM gate
-            cutoff applies. Absent = no tap within the session window.
-          </p>
-        </div>
-        <button
-          onClick={() => setMuted((m) => !m)}
-          aria-label={muted ? "Unmute scan sounds" : "Mute scan sounds"}
-          title={muted ? "Unmute scan sounds" : "Mute scan sounds"}
-          className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm font-semibold hover:bg-muted"
-        >
-          {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-          {muted ? "Muted" : "Sound on"}
-        </button>
+      {/* Kiosk vs. Logs & Reports view switcher */}
+      <div className="mb-6">
+        <FilterTabs<AttendanceView>
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "kiosk", label: "Kiosk" },
+            { value: "logs", label: "Logs & Reports" },
+          ]}
+        />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-4">
-          <Card className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground">
-            <Nfc className="h-10 w-10" />
-            <p className="text-sm font-semibold">RFID Kiosk</p>
-            <p className="text-xs">Tap a card or enter a UID below</p>
-          </Card>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (uid.trim()) {
-                void handleTapPayload({ uid, timestamp: new Date().toISOString() });
-              }
-            }}
-            className="flex gap-2"
-          >
-            <div className="relative flex-1">
-              <Nfc className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={uid}
-                onChange={(e) => setUid(e.target.value)}
-                aria-label="RFID UID"
-                placeholder="RFID UID — or just tap a card"
-                className="h-11 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-              />
+      {view === "kiosk" ? (
+        <>
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="font-display text-2xl font-bold sm:text-3xl">{KIOSK_TITLE}</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Students tap their RFID ID at the gate. On-time vs late is evaluated against today's
+                class schedule (each course's grace period); with no scheduled class, the 7:30 AM
+                gate cutoff applies. Absent = no tap within the session window.
+              </p>
             </div>
             <button
-              type="submit"
-              disabled={busy}
-              className="h-11 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              onClick={() => setMuted((m) => !m)}
+              aria-label={muted ? "Unmute scan sounds" : "Mute scan sounds"}
+              title={muted ? "Unmute scan sounds" : "Mute scan sounds"}
+              className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm font-semibold hover:bg-muted"
             >
-              Tap
+              {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              {muted ? "Muted" : "Sound on"}
             </button>
-            <button
-              type="button"
-              disabled={busy}
-              aria-label="Simulate RFID tap"
-              title="Dispatch a simulated reader payload"
-              onClick={() =>
-                void handleTapPayload(createMockTapPayload(uid.trim() || undefined), true)
-              }
-              className="flex h-11 items-center gap-1.5 rounded-xl border border-border bg-card px-4 text-sm font-semibold hover:bg-muted disabled:opacity-50"
-            >
-              <Zap className="h-4 w-4" /> Simulate
-            </button>
-          </form>
-        </div>
-
-        <div>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-bold">Today's feed</h2>
-            <FilterTabs<FeedFilter>
-              value={filter}
-              onChange={setFilter}
-              options={[
-                { value: "all", label: "All" },
-                { value: "in", label: "In" },
-                { value: "out", label: "Out" },
-                { value: "late", label: "Late" },
-              ]}
-              counts={feedCounts}
-            />
           </div>
-          <Card className="custom-scrollbar max-h-[560px] divide-y divide-border overflow-y-auto">
-            {visibleLogs.length === 0 && (
-              <p className="p-6 text-center text-sm text-muted-foreground">
-                {todayLogs.length === 0 ? "No taps yet today." : "No records match this filter."}
-              </p>
-            )}
-            {visibleLogs.map((l) => {
-              const s = nameOf.get(l.student_id);
-              const t = attendanceTone(l.status);
-              return (
-                <div key={l.id} className="flex items-center gap-3 p-3.5">
-                  <div
-                    className={cn(
-                      "flex h-9 w-9 items-center justify-center rounded-xl",
-                      l.scan_type === "in"
-                        ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300"
-                        : "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300",
-                    )}
-                  >
-                    {l.scan_type === "in" ? (
-                      <LogIn className="h-4 w-4" />
-                    ) : (
-                      <LogOut className="h-4 w-4" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{s?.full_name ?? "Unknown"}</p>
-                    <p className="text-xs text-muted-foreground">{fmtTime(l.timestamp)}</p>
-                  </div>
-                  {l.scan_type === "in" ? (
-                    <select
-                      value={l.status}
-                      onChange={(e) => markStatus(l.id, e.target.value as AttendanceStatus)}
-                      aria-label="Attendance status override"
-                      title="Manual override"
-                      className="h-8 rounded-lg border border-border bg-background px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      <option value="on-time">On time</option>
-                      <option value="late">Late</option>
-                      <option value="excused">Excused</option>
-                    </select>
-                  ) : (
-                    <Badge tone={t.tone}>{t.label}</Badge>
-                  )}
-                  <button
-                    onClick={() => removeLog(l.id)}
-                    aria-label="Delete attendance record"
-                    title="Delete record"
-                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="space-y-4">
+              <Card className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground">
+                <Nfc className="h-10 w-10" />
+                <p className="text-sm font-semibold">RFID Kiosk</p>
+                <p className="text-xs">Tap a card or enter a UID below</p>
+              </Card>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (uid.trim()) {
+                    void handleTapPayload({ uid, timestamp: new Date().toISOString() });
+                  }
+                }}
+                className="flex gap-2"
+              >
+                <div className="relative flex-1">
+                  <Nfc className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={uid}
+                    onChange={(e) => setUid(e.target.value)}
+                    aria-label="RFID UID"
+                    placeholder="RFID UID — or just tap a card"
+                    className="h-11 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
                 </div>
-              );
-            })}
-          </Card>
-        </div>
-      </div>
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="h-11 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                >
+                  Tap
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label="Simulate RFID tap"
+                  title="Dispatch a simulated reader payload"
+                  onClick={() =>
+                    void handleTapPayload(createMockTapPayload(uid.trim() || undefined), true)
+                  }
+                  className="flex h-11 items-center gap-1.5 rounded-xl border border-border bg-card px-4 text-sm font-semibold hover:bg-muted disabled:opacity-50"
+                >
+                  <Zap className="h-4 w-4" /> Simulate
+                </button>
+              </form>
+            </div>
+
+            <div>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="font-display text-lg font-bold">Today's feed</h2>
+                <FilterTabs<FeedFilter>
+                  value={filter}
+                  onChange={setFilter}
+                  options={[
+                    { value: "all", label: "All" },
+                    { value: "in", label: "In" },
+                    { value: "out", label: "Out" },
+                    { value: "late", label: "Late" },
+                  ]}
+                  counts={feedCounts}
+                />
+              </div>
+              <Card className="custom-scrollbar max-h-[560px] divide-y divide-border overflow-y-auto">
+                {visibleLogs.length === 0 && (
+                  <p className="p-6 text-center text-sm text-muted-foreground">
+                    {todayLogs.length === 0
+                      ? "No taps yet today."
+                      : "No records match this filter."}
+                  </p>
+                )}
+                {visibleLogs.map((l) => (
+                  <LogRow
+                    key={l.id}
+                    log={l}
+                    name={nameOf.get(l.student_id)?.full_name}
+                    onStatus={markStatus}
+                    onDelete={removeLog}
+                  />
+                ))}
+              </Card>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mb-6">
+            <h1 className="font-display text-2xl font-bold sm:text-3xl">Attendance logs</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Full scan history, newest first. Override a status or delete a record where needed.
+            </p>
+          </div>
+
+          <div>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-display text-lg font-bold">History</h2>
+              <FilterTabs<FeedFilter>
+                value={reportFilter}
+                onChange={setReportFilter}
+                options={[
+                  { value: "all", label: "All" },
+                  { value: "in", label: "In" },
+                  { value: "out", label: "Out" },
+                  { value: "late", label: "Late" },
+                ]}
+                counts={reportCounts}
+              />
+            </div>
+            <Card className="custom-scrollbar max-h-[560px] divide-y divide-border overflow-y-auto">
+              {historyDays.length === 0 && (
+                <p className="p-6 text-center text-sm text-muted-foreground">
+                  {history.length === 0
+                    ? "No attendance records yet."
+                    : "No records match this filter."}
+                </p>
+              )}
+              {historyDays.map((day) => {
+                const dayIn = day.logs.filter((l) => l.scan_type === "in").length;
+                const dayOut = day.logs.length - dayIn;
+                const dayLate = day.logs.filter(
+                  (l) => l.scan_type === "in" && l.status === "late",
+                ).length;
+                return (
+                  <Fragment key={day.key}>
+                    <div className="flex flex-wrap items-center justify-between gap-2 bg-muted/50 px-3.5 py-2">
+                      <p className="text-xs font-bold uppercase tracking-wide">
+                        {fmtDate(day.logs[0]?.timestamp ?? null)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {day.logs.length} scan{day.logs.length === 1 ? "" : "s"} · {dayIn} in ·{" "}
+                        {dayOut} out · {dayLate} late
+                      </p>
+                    </div>
+                    {day.logs.map((l) => (
+                      <LogRow
+                        key={l.id}
+                        log={l}
+                        name={nameOf.get(l.student_id)?.full_name}
+                        onStatus={markStatus}
+                        onDelete={removeLog}
+                      />
+                    ))}
+                  </Fragment>
+                );
+              })}
+            </Card>
+          </div>
+        </>
+      )}
     </AppShell>
   );
 }

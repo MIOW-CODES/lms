@@ -79,9 +79,9 @@ export function AttemptRoster({ quizId }: { quizId: string }) {
     }
   };
 
-  if (isLoading)
+  if (isLoading || data === undefined)
     return <p className="py-8 text-center text-sm text-muted-foreground">Loading attempts…</p>;
-  if (!data || data.students.length === 0) {
+  if (data.students.length === 0) {
     return <EmptyState title="No attempts yet" sub="No student has submitted this worksheet." />;
   }
 

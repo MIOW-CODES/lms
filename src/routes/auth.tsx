@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { KeyRound, Nfc } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Nfc } from "lucide-react";
 import { toast } from "sonner";
 import { dbg, dbgError } from "@/lib/debug";
 import {
@@ -39,13 +39,23 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
+type Mode = "scan" | "pin";
+const MODES: readonly Mode[] = ["scan", "pin"];
+
 function AuthPage() {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"scan" | "pin">("scan");
+  // PIN-first is the everyday sign-in; the reader-first RFID screen belongs to
+  // the gate kiosk. Start PIN everywhere (SSR-stable), then hand the screen to
+  // the reader on wide, kiosk-like viewports after hydration. Phones and small
+  // screens never flip — they keep PIN as the default.
+  const [mode, setMode] = useState<Mode>("pin");
   const [uid, setUid] = useState("");
   const [login, setLogin] = useState("");
   const [pin, setPin] = useState("");
+  const [showPin, setShowPin] = useState(false);
+  const [showPinHelp, setShowPinHelp] = useState(false);
   const [busy, setBusy] = useState(false);
+  const modeTabs = useRef<Partial<Record<Mode, HTMLButtonElement | null>>>({});
 
   // Non-critical kiosk chrome: a transient backend blip must never take the
   // sign-in page down, so this query degrades to an empty list instead of
@@ -61,6 +71,26 @@ function AuthPage() {
     const existing = loadSession();
     if (existing) navigate({ to: dashboardPathFor(existing.role), replace: true });
   }, [navigate]);
+
+  // Reader-first (RFID) stays the default on wide, kiosk-like screens only.
+  useEffect(() => {
+    if (window.matchMedia("(min-width: 1024px)").matches) setMode("scan");
+  }, []);
+
+  const handleModeKeyDown = (e: React.KeyboardEvent) => {
+    const i = MODES.indexOf(mode);
+    let target: Mode | null = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown")
+      target = MODES[(i + 1) % MODES.length] ?? null;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp")
+      target = MODES[(i - 1 + MODES.length) % MODES.length] ?? null;
+    else if (e.key === "Home") target = MODES[0] ?? null;
+    else if (e.key === "End") target = MODES[MODES.length - 1] ?? null;
+    if (!target) return;
+    e.preventDefault();
+    setMode(target);
+    modeTabs.current[target]?.focus();
+  };
 
   const handleUid = async (code: string) => {
     if (busy) return;
@@ -163,8 +193,8 @@ function AuthPage() {
       </div>
 
       {/* Auth panel */}
-      <div className="flex flex-1 items-center justify-center p-3 sm:p-8 min-w-0 max-w-full overflow-hidden">
-        <div className="w-full max-w-md min-w-0">
+      <div className="flex flex-1 items-center justify-center p-3 sm:p-8 min-w-0 max-w-full">
+        <div className="w-full max-w-md min-w-0 break-words">
           <div className="mb-6 flex items-center gap-3 lg:hidden min-w-0">
             <MiowLockup size="sm" className="min-w-0 max-w-full" />
           </div>
@@ -173,12 +203,13 @@ function AuthPage() {
             <h1 className="sr-only">Sign in to Integrated Developmental School (MIOW)</h1>
             <MiowLockup size="lg" aria-hidden className="min-w-0 max-w-full" />
             <p className="mt-1 text-sm text-muted-foreground">
-              Enter your ID/username and PIN to continue.
+              Tap your RFID card at the kiosk, or sign in with your account ID and PIN.
             </p>
 
             <div
               role="tablist"
               aria-label="Sign-in method"
+              onKeyDown={handleModeKeyDown}
               className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-muted p-1"
             >
               {(
@@ -189,11 +220,18 @@ function AuthPage() {
               ).map(([m, label, Icon]) => (
                 <button
                   key={m}
+                  ref={(el) => {
+                    modeTabs.current[m] = el;
+                  }}
+                  type="button"
                   role="tab"
+                  id={`auth-tab-${m}`}
                   aria-selected={mode === m}
+                  aria-controls={`auth-panel-${m}`}
+                  tabIndex={mode === m ? 0 : -1}
                   onClick={() => setMode(m)}
                   className={cn(
-                    "flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors",
+                    "flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     mode === m
                       ? "bg-card shadow-sm text-foreground"
                       : "text-muted-foreground hover:text-foreground",
@@ -205,94 +243,168 @@ function AuthPage() {
               ))}
             </div>
 
-            {mode === "scan" ? (
-              <div className="mt-6 space-y-4">
-                <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-6 text-center">
-                  <div className="animate-pulse-ring flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-                    <Nfc className="h-8 w-8 text-primary" />
-                  </div>
-                  <p className="text-sm font-semibold">Listening for card tap…</p>
-                  <p className="text-xs text-muted-foreground">
-                    Hold your ID near the reader, or enter the UID below to simulate a tap.
-                  </p>
+            <div
+              id="auth-panel-scan"
+              role="tabpanel"
+              aria-labelledby="auth-tab-scan"
+              hidden={mode !== "scan"}
+              className="mt-6 space-y-4"
+            >
+              <p className="text-[11px] font-medium text-muted-foreground">Kiosk / RFID reader</p>
+              <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-6 text-center">
+                <div className="animate-pulse-ring flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+                  <Nfc className="h-8 w-8 text-primary" />
                 </div>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (uid.trim()) handleUid(uid);
-                  }}
-                  className="space-y-1.5"
-                >
-                  <label htmlFor="rfid-uid" className="block text-xs font-medium text-foreground">
-                    Card UID
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      id="rfid-uid"
-                      value={uid}
-                      onChange={(e) => setUid(e.target.value)}
-                      placeholder="RFID UID (e.g. 0412345678)"
-                      aria-label="RFID UID"
-                      className="h-10 min-w-0 flex-1 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                    />
-                    <button
-                      type="submit"
-                      disabled={busy}
-                      className="h-10 shrink-0 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    >
-                      Tap
-                    </button>
-                  </div>
-                </form>
+                <p className="text-sm font-semibold">Listening for card tap…</p>
+                <p className="text-xs text-muted-foreground">
+                  Hold your ID near the reader, or enter the UID below to simulate a tap.
+                </p>
               </div>
-            ) : (
-              <form onSubmit={handlePin} className="mt-6 space-y-3.5">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (uid.trim()) handleUid(uid);
+                }}
+                className="space-y-1.5"
+              >
+                <label
+                  htmlFor="rfid-uid"
+                  className="block text-xs font-medium text-muted-foreground"
+                >
+                  Card UID
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="rfid-uid"
+                    value={uid}
+                    onChange={(e) => setUid(e.target.value)}
+                    placeholder="RFID UID (e.g. 0412345678)"
+                    aria-label="RFID UID"
+                    aria-describedby="rfid-uid-help"
+                    className="h-10 min-w-0 flex-1 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="h-10 shrink-0 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                  >
+                    Tap
+                  </button>
+                </div>
+                <p id="rfid-uid-help" className="text-[11px] text-muted-foreground">
+                  10–13 digits, printed on your ID card.
+                </p>
+              </form>
+            </div>
+
+            <div
+              id="auth-panel-pin"
+              role="tabpanel"
+              aria-labelledby="auth-tab-pin"
+              hidden={mode !== "pin"}
+              className="mt-6"
+            >
+              <form onSubmit={handlePin} className="space-y-3.5">
                 <p className="rounded-xl border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                   One login for students, teachers, and admins. Accounts lock for 15 minutes after 5
-                  failed attempts.
+                  failed attempts. If you forget your PIN or get locked out, contact your class
+                  adviser or the ICT admin.
                 </p>
                 <div className="space-y-1">
-                  <label htmlFor="login-id" className="block text-xs font-medium text-foreground">
+                  <label
+                    htmlFor="login-id"
+                    className="block text-xs font-medium text-muted-foreground"
+                  >
                     Account ID / Username
                   </label>
                   <input
                     id="login-id"
                     value={login}
                     onChange={(e) => setLogin(e.target.value)}
-                    placeholder="Student ID, email, or username"
+                    placeholder="e.g. 2026-0042 or juan.delacruz"
                     aria-label="Student ID, email, or username"
+                    aria-describedby="login-id-help"
                     autoComplete="username"
                     className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                   />
+                  <p id="login-id-help" className="text-[11px] text-muted-foreground">
+                    Student number (2026-0042), employee ID (FAC-2026-014), school email, or
+                    username.
+                  </p>
                 </div>
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <label htmlFor="login-pin" className="block text-xs font-medium text-foreground">
+                    <label
+                      htmlFor="login-pin"
+                      className="block text-xs font-medium text-muted-foreground"
+                    >
                       Security PIN
                     </label>
                     <button
                       type="button"
-                      onClick={() =>
-                        toast.info(
-                          "Default PIN is your 4-digit ID code or birth month/day. If locked or forgotten, contact the MIOW Admin Office (admin@g.msuiit.edu.ph).",
-                          { duration: 6000 },
-                        )
-                      }
-                      className="text-[11px] font-medium text-primary hover:underline"
+                      aria-expanded={showPinHelp}
+                      aria-controls="pin-recovery-help"
+                      onClick={() => setShowPinHelp((v) => !v)}
+                      className="rounded-md text-[11px] font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       Forgot PIN?
                     </button>
                   </div>
-                  <input
-                    id="login-pin"
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value)}
-                    placeholder="Enter 4-digit PIN"
-                    type="password"
-                    aria-label="PIN or password"
-                    autoComplete="current-password"
-                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                  />
+                  <div className="relative">
+                    <input
+                      id="login-pin"
+                      value={pin}
+                      onChange={(e) => setPin(e.target.value)}
+                      placeholder="Enter your PIN or password"
+                      type={showPin ? "text" : "password"}
+                      aria-label="PIN or password"
+                      aria-describedby="login-pin-help"
+                      autoComplete="current-password"
+                      className="h-11 w-full rounded-xl border border-input bg-background px-3 pr-11 text-sm outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <button
+                      type="button"
+                      aria-pressed={showPin}
+                      aria-label={showPin ? "Hide PIN" : "Show PIN"}
+                      onClick={() => setShowPin((v) => !v)}
+                      className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {showPin ? (
+                        <EyeOff className="h-4 w-4" aria-hidden="true" />
+                      ) : (
+                        <Eye className="h-4 w-4" aria-hidden="true" />
+                      )}
+                    </button>
+                  </div>
+                  <p id="login-pin-help" className="text-[11px] text-muted-foreground">
+                    Your 4-digit PIN, or your account password.
+                  </p>
+                </div>
+                <div
+                  id="pin-recovery-help"
+                  hidden={!showPinHelp}
+                  className="space-y-2 rounded-xl border border-border bg-muted/50 px-3.5 py-3 text-xs"
+                >
+                  <p className="font-semibold text-foreground">Forgot or locked PIN?</p>
+                  <ol className="list-decimal space-y-1 pl-4 text-muted-foreground">
+                    <li>
+                      First try your default PIN — your 4-digit ID code or birth month and day
+                      (MMDD).
+                    </li>
+                    <li>If your account is locked, the lock clears after 15 minutes.</li>
+                    <li>To reset your PIN, contact your class adviser or the ICT admin.</li>
+                  </ol>
+                  <p className="text-muted-foreground">
+                    Email the MIOW Admin Office:{" "}
+                    <a
+                      href="mailto:admin@g.msuiit.edu.ph"
+                      className="font-medium text-primary hover:underline"
+                    >
+                      admin@g.msuiit.edu.ph
+                    </a>
+                  </p>
+                  {/* School contact placeholder — replace with the office room and hours. */}
+                  <p className="text-muted-foreground">Walk-in: [office room and hours]</p>
                 </div>
                 <button
                   type="submit"
@@ -302,20 +414,29 @@ function AuthPage() {
                   Sign In
                 </button>
               </form>
-            )}
+            </div>
           </div>
           <p className="mt-4 text-center text-xs text-muted-foreground">
             Integrated Developmental School
           </p>
           <p className="mt-1 text-center text-[10px] text-muted-foreground/80">
-            Web Developer:{" "}
+            Web Developers:{" "}
             <a
-              href="https://github.com/Joal0816"
+              href="https://www.joalvergs.tech/"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline font-medium"
             >
               Joseph Alan B. Vergara
+            </a>
+            {", "}
+            <a
+              href="https://github.com/laeyue"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline font-medium"
+            >
+              Kent Alexis T. Alia
             </a>
           </p>
         </div>

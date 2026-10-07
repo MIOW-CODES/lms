@@ -95,7 +95,7 @@ function AdminDashboard() {
                 Students
               </p>
               <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-bold text-green-600">
-                +{students?.length ?? 0}
+                Total
               </span>
             </div>
             <p className="font-display text-2xl font-extrabold text-accent-foreground">
@@ -146,6 +146,7 @@ function AdminDashboard() {
             <h2 className="text-sm font-bold uppercase tracking-wide">Recent Activity</h2>
             <Link
               to="/dashboard/admin/attendance"
+              search={{ view: "logs" }}
               className="text-xs font-semibold text-primary hover:underline flex items-center gap-1"
             >
               View all <ArrowRight className="h-3 w-3" />
@@ -216,8 +217,10 @@ function AdminDashboard() {
             >
               <CalendarCheck className="h-5 w-5 text-green-500" />
               <div>
-                <p className="text-sm font-semibold">Attendance</p>
-                <p className="text-xs text-muted-foreground">View logs & reports</p>
+                <p className="text-sm font-semibold">Attendance kiosk & logs</p>
+                <p className="text-xs text-muted-foreground">
+                  Tap cards and review attendance history
+                </p>
               </div>
               <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
             </Link>
