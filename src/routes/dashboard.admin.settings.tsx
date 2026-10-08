@@ -38,6 +38,7 @@ import {
   fmtTime,
   listAllAttendance,
   listAllUsers,
+  listAuditLogs,
   listCourses,
   listGradesForCourse,
   listTeachers,
@@ -200,6 +201,13 @@ function AdminSettings() {
     queryFn: listRfidDevices,
     enabled: !!profile && tab === "kiosk",
   });
+  // Authoritative trail: privileged server RPCs write audit_logs rows; the
+  // local listAudit() list still contributes client-only events (exports, prefs).
+  const { data: serverAudit = [] } = useQuery({
+    queryKey: ["audit-logs"],
+    queryFn: listAuditLogs,
+    enabled: !!profile && tab === "logs",
+  });
 
   useEffect(() => {
     if (profile && !cfg) {
@@ -292,8 +300,7 @@ function AdminSettings() {
       setDevLocation("");
       toast.success("Device registered — copy its API key now.");
       queryClient.invalidateQueries({ queryKey: ["rfid-devices"] });
-      logAudit("RFID device registered", `${created.name} (key ${created.key_prefix}…)`);
-      setAudit(listAudit());
+      queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not register the device.");
     } finally {
@@ -306,8 +313,7 @@ function AdminSettings() {
       await deactivateRfidDevice(d.id);
       toast.success(`"${d.name}" deactivated — its key no longer works.`);
       queryClient.invalidateQueries({ queryKey: ["rfid-devices"] });
-      logAudit("RFID device deactivated", `${d.name} (key ${d.key_prefix}…)`);
-      setAudit(listAudit());
+      queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not deactivate the device.");
     }
@@ -390,7 +396,11 @@ function AdminSettings() {
     }
   };
 
-  const filteredAudit = audit.filter((e) => {
+  // Server rows (authoritative) merged with local client-only entries, newest first.
+  const mergedAudit = [...serverAudit, ...audit].sort((a, b) =>
+    a.at < b.at ? 1 : a.at > b.at ? -1 : 0,
+  );
+  const filteredAudit = mergedAudit.filter((e) => {
     const q = auditQuery.toLowerCase();
     return !q || `${e.actor} ${e.action} ${e.detail}`.toLowerCase().includes(q);
   });
@@ -430,13 +440,8 @@ function AdminSettings() {
     setRoleBusy(true);
     try {
       const res = await updateUserRole(roleChange.user.id, roleChange.next);
-      logAudit(
-        "Role updated",
-        `${roleChange.user.full_name}: ${ROLE_LABEL[roleChange.user.role]} → ${ROLE_LABEL[roleChange.next]}${
-          res.unassignedCourses > 0 ? ` · ${res.unassignedCourses} course lead(s) unassigned` : ""
-        }`,
-      );
-      setAudit(listAudit());
+      // Server writes the "Role updated" audit row — refresh the merged trail.
+      queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
       toast.success(`${roleChange.user.full_name} is now a ${ROLE_LABEL[roleChange.next]}`, {
         description:
           res.unassignedCourses > 0
@@ -465,13 +470,8 @@ function AdminSettings() {
     setDeleteBusy(true);
     try {
       const res = await deleteProfile(deleteTarget.id);
-      logAudit(
-        "User removed",
-        `${deleteTarget.full_name} (${ROLE_LABEL[deleteTarget.role]})${
-          res.unassignedCourses > 0 ? ` · ${res.unassignedCourses} course lead(s) unassigned` : ""
-        }`,
-      );
-      setAudit(listAudit());
+      // Server writes the "User removed" audit row — refresh the merged trail.
+      queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
       toast.success("User successfully removed.", {
         description:
           res.unassignedCourses > 0

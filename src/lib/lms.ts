@@ -29,6 +29,7 @@ import {
   listAnnouncementsFn,
   listAssignmentsFn,
   listAttendanceFn,
+  listAuditLogsFn,
   listCourseMeetingsFn,
   listCourseSectionsFn,
   listCoursesFn,
@@ -632,7 +633,7 @@ export function transmutedOf(
   return transmute(initial);
 }
 
-import { logAudit, SESSION_KEY } from "@/lib/settings";
+import { logAudit, SESSION_KEY, type AuditEntry } from "@/lib/settings";
 import { dbg, dbgError } from "@/lib/debug";
 
 /* ---------- Session (hardware-auth demo with signed server tokens) ---------- */
@@ -854,21 +855,15 @@ export async function listAnnouncements(): Promise<Announcement[]> {
 }
 
 export async function createAnnouncement(input: Partial<Announcement>): Promise<string> {
-  const id = (await createAnnouncementFn({
+  return (await createAnnouncementFn({
     data: { ...(input as object), token: sessionToken() } as Record<string, unknown>,
   })) as string;
-  logAudit(
-    "Announcement broadcast",
-    `"${input.title ?? "Untitled"}" posted to ${input.target_audience ?? "all"}`,
-  );
-  return id;
 }
 
 export async function updateAnnouncement(id: string, patch: Partial<Announcement>): Promise<void> {
   await updateAnnouncementFn({
     data: { id, patch: patch as Record<string, unknown>, token: sessionToken() },
   });
-  logAudit("Announcement updated", `"${patch.title ?? id}" edited`);
 }
 
 export async function deleteAnnouncement(id: string): Promise<void> {
@@ -1110,7 +1105,6 @@ export async function upsertGrade(input: Partial<Grade>): Promise<void> {
   await upsertGradeFn({
     data: { ...(input as object), token: sessionToken() } as Record<string, unknown>,
   });
-  logAudit("Grade modified", `Student ${input.student_id} · Q${input.quarter}`);
 }
 
 export async function listStudents(): Promise<Profile[]> {
@@ -1295,11 +1289,6 @@ export async function bulkAddStudents(
       token: sessionToken(),
     },
   })) as BulkAddResult;
-  logAudit(
-    "Bulk students added",
-    `${result.added} new · ${result.linked} linked` +
-      (options.courseId ? ` · ${result.enrolled} enrolled` : ""),
-  );
   return result;
 }
 
@@ -1507,10 +1496,6 @@ export async function upsertCourseMeeting(input: {
   const res = (await upsertCourseMeetingFn({
     data: { ...(input as object), token: sessionToken() } as Record<string, unknown>,
   })) as CourseMeeting;
-  logAudit(
-    input.id ? "Course meeting updated" : "Course meeting created",
-    `${input.label} (${input.kind})`,
-  );
   return res;
 }
 
@@ -1518,7 +1503,6 @@ export async function deleteCourseMeeting(id: string): Promise<void> {
   await deleteCourseMeetingFn({
     data: { id, token: sessionToken() },
   });
-  logAudit("Course meeting deleted", `Meeting ${id}`);
 }
 
 export async function setMeetingMembers(meetingId: string, studentIds: string[]): Promise<void> {
@@ -1528,7 +1512,6 @@ export async function setMeetingMembers(meetingId: string, studentIds: string[])
       unknown
     >,
   });
-  logAudit("Meeting members updated", `Meeting ${meetingId} · ${studentIds.length} members`);
 }
 
 export async function listMeetingMembers(meetingId: string): Promise<string[]> {
@@ -1552,7 +1535,6 @@ export async function createSection(input: {
   const res = (await createSectionFn({
     data: { ...(input as object), token: sessionToken() } as Record<string, unknown>,
   })) as Section;
-  logAudit("Section created", `${input.name} (${input.education_level})`);
   return res;
 }
 
@@ -1569,7 +1551,6 @@ export async function setCourseSections(courseId: string, sectionIds: string[]):
       unknown
     >,
   });
-  logAudit("Course sections updated", `Course ${courseId} · ${sectionIds.length} sections`);
 }
 
 export interface SectionEnrollResult {
@@ -1589,9 +1570,31 @@ export async function enrollSectionStudents(
       unknown
     >,
   })) as SectionEnrollResult;
-  logAudit(
-    "Bulk section enrollment",
-    `Course ${courseId} · ${result.enrolled} enrolled from ${result.sections} section(s)`,
-  );
   return result;
+}
+
+/** Shape of an audit_logs row as returned over the RPC boundary. */
+type AuditLogRowDto = {
+  id: string;
+  actor_name: string | null;
+  actor_role: string;
+  action: string;
+  detail: string;
+  created_at: string;
+};
+
+/**
+ * Server-backed audit trail (authoritative, cross-browser), mapped to the
+ * AuditEntry shape the settings Logs tab renders. Staff-only on the server.
+ */
+export async function listAuditLogs(): Promise<AuditEntry[]> {
+  const rows = (await listAuditLogsFn({ data: { token: sessionToken() } })) as AuditLogRowDto[];
+  return rows.map((r) => ({
+    id: r.id,
+    actor: r.actor_name ?? "System",
+    role: r.actor_role,
+    action: r.action,
+    detail: r.detail,
+    at: r.created_at,
+  }));
 }

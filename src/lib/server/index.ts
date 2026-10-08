@@ -169,3 +169,6 @@ export {
 export type { RfidDevicePublic } from "./rfid-devices.server";
 
 export { schemas } from "./schemas.server";
+
+export { writeAuditLog, listAuditLogs, clampAuditDetail } from "./audit.server";
+export type { AuditActor, AuditLogRow } from "./audit.server";

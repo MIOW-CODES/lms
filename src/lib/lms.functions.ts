@@ -52,7 +52,9 @@ export const deleteProfileFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.id.parse(data))
   .handler(async ({ data }) => {
     const admin = await server.requireAdmin(data.token);
-    return server.deleteUser(admin.id, data.id);
+    const result = await server.deleteUser(admin.id, data.id);
+    await server.writeAuditLog(admin, "User removed", `Profile ${data.id}`);
+    return result;
   });
 
 // Teacher-only self-service settings mutation. requireTeacher rejects
@@ -133,7 +135,9 @@ export const updateUserRoleFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.roleUpdate.parse(data))
   .handler(async ({ data }) => {
     const admin = await server.requireAdmin(data.token);
-    return server.updateUserRole(admin.id, data.id, data.role);
+    const result = await server.updateUserRole(admin.id, data.id, data.role);
+    await server.writeAuditLog(admin, "Role updated", `User ${data.id} → ${data.role}`);
+    return result;
   });
 
 // Claims refresh: returns the caller's LIVE profile (role included) so the
@@ -153,15 +157,23 @@ export const listAnnouncementsFn = createServerFn({ method: "GET" }).handler(asy
 export const createAnnouncementFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.announcementInput.parse(data))
   .handler(async ({ data }) => {
-    await server.requireStaff(data.token);
-    return server.createAnnouncement(data);
+    const caller = await server.requireStaff(data.token);
+    const id = await server.createAnnouncement(data);
+    await server.writeAuditLog(caller, "Announcement created", data.title ?? "Untitled");
+    return id;
   });
 
 export const updateAnnouncementFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.announcementPatch.parse(data))
   .handler(async ({ data }) => {
-    await server.requireStaff(data.token);
-    return server.updateAnnouncement(data.id, data.patch);
+    const caller = await server.requireStaff(data.token);
+    const result = await server.updateAnnouncement(data.id, data.patch);
+    await server.writeAuditLog(
+      caller,
+      "Announcement updated",
+      data.patch.title ?? `Announcement ${data.id}`,
+    );
+    return result;
   });
 
 export const deleteAnnouncementFn = createServerFn({ method: "POST" })
@@ -224,8 +236,10 @@ export const updateCourseFn = createServerFn({ method: "POST" })
 export const deleteCourseFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.id.parse(data))
   .handler(async ({ data }) => {
-    await server.requireAdmin(data.token);
-    return server.deleteCourse(data.id);
+    const admin = await server.requireAdmin(data.token);
+    const result = await server.deleteCourse(data.id);
+    await server.writeAuditLog(admin, "Course deleted", `Course ${data.id}`);
+    return result;
   });
 
 export const listAssignmentsFn = createServerFn({ method: "POST" })
@@ -293,7 +307,14 @@ export const bulkAddStudentsFn = createServerFn({ method: "POST" })
     const caller = data.course_id
       ? await server.requireCourseOwnerOrAdmin(data.token, data.course_id)
       : await server.requireStaff(data.token);
-    return server.bulkAddStudents(data, caller);
+    const result = await server.bulkAddStudents(data, caller);
+    await server.writeAuditLog(
+      caller,
+      "Bulk students added",
+      `${result.added} new · ${result.linked} linked` +
+        (data.course_id ? ` · ${result.enrolled} enrolled` : ""),
+    );
+    return result;
   });
 
 /* ---------- Submissions ---------- */
@@ -457,7 +478,13 @@ export const upsertGradeFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.gradeInput.parse(data))
   .handler(async ({ data }) => {
     const caller = await server.requireTeacher(data.token);
-    return server.upsertGrade(data, caller.id);
+    const result = await server.upsertGrade(data, caller.id);
+    await server.writeAuditLog(
+      caller,
+      "Grade modified",
+      `Student ${data.student_id} · Q${data.quarter}`,
+    );
+    return result;
   });
 
 /* ---------- Attendance ---------- */
@@ -519,15 +546,26 @@ export const listRfidDevicesFn = createServerFn({ method: "POST" })
 export const createRfidDeviceFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.rfidDeviceCreate.parse(data))
   .handler(async ({ data }) => {
-    await server.requireStaff(data.token);
-    return server.createRfidDevice({ name: data.name, location: data.location ?? null });
+    const caller = await server.requireStaff(data.token);
+    const device = await server.createRfidDevice({
+      name: data.name,
+      location: data.location ?? null,
+    });
+    await server.writeAuditLog(
+      caller,
+      "RFID device registered",
+      `${data.name}${data.location ? ` · ${data.location}` : ""}`,
+    );
+    return device;
   });
 
 export const deactivateRfidDeviceFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.id.parse(data))
   .handler(async ({ data }) => {
-    await server.requireStaff(data.token);
-    return server.deactivateRfidDevice(data.id);
+    const caller = await server.requireStaff(data.token);
+    const device = await server.deactivateRfidDevice(data.id);
+    await server.writeAuditLog(caller, "RFID device deactivated", `Device ${data.id}`);
+    return device;
   });
 
 /* ---------- Misc ---------- */
@@ -607,14 +645,25 @@ export const upsertCourseMeetingFn = createServerFn({ method: "POST" })
 export const deleteCourseMeetingFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.id.parse(data))
   .handler(async ({ data }) => {
-    return server.deleteCourseMeeting(data.id, data.token);
+    // Resolve the actor first; the inner call enforces ownership (audit only on success).
+    const caller = await server.requireStaff(data.token);
+    const result = await server.deleteCourseMeeting(data.id, data.token);
+    await server.writeAuditLog(caller, "Course meeting deleted", `Meeting ${data.id}`);
+    return result;
   });
 
 // Meeting membership: teachers lead their own course meetings; admins may manage any.
 export const setMeetingMembersFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.meetingMembers.parse(data))
   .handler(async ({ data }) => {
-    return server.setMeetingMembers(data.meeting_id, data.student_ids, data.token);
+    const caller = await server.requireStaff(data.token);
+    const result = await server.setMeetingMembers(data.meeting_id, data.student_ids, data.token);
+    await server.writeAuditLog(
+      caller,
+      "Meeting members updated",
+      `Meeting ${data.meeting_id} · ${data.student_ids.length} members`,
+    );
+    return result;
   });
 
 export const listMeetingMembersFn = createServerFn({ method: "POST" })
@@ -636,8 +685,10 @@ export const listSectionsFn = createServerFn({ method: "POST" })
 export const createSectionFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.sectionCreate.parse(data))
   .handler(async ({ data }) => {
-    await server.requireStaff(data.token);
-    return server.createSection(data);
+    const caller = await server.requireStaff(data.token);
+    const section = await server.createSection(data);
+    await server.writeAuditLog(caller, "Section created", `${data.name} (${data.education_level})`);
+    return section;
   });
 
 export const listCourseSectionsFn = createServerFn({ method: "POST" })
@@ -651,8 +702,13 @@ export const listCourseSectionsFn = createServerFn({ method: "POST" })
 export const setCourseSectionsFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.courseSectionsLink.parse(data))
   .handler(async ({ data }) => {
-    await server.requireCourseOwnerOrAdmin(data.token, data.course_id);
-    return server.setCourseSections(data.course_id, data.section_ids);
+    const caller = await server.requireCourseOwnerOrAdmin(data.token, data.course_id);
+    await server.setCourseSections(data.course_id, data.section_ids);
+    await server.writeAuditLog(
+      caller,
+      "Course sections updated",
+      `Course ${data.course_id} · ${data.section_ids.length} sections`,
+    );
   });
 
 // Bulk section enrollment: enroll every student of the given sections into the
@@ -660,6 +716,20 @@ export const setCourseSectionsFn = createServerFn({ method: "POST" })
 export const enrollSectionStudentsFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.courseSectionsLink.parse(data))
   .handler(async ({ data }) => {
-    await server.requireCourseOwnerOrAdmin(data.token, data.course_id);
-    return server.enrollSectionStudents(data.course_id, data.section_ids);
+    const caller = await server.requireCourseOwnerOrAdmin(data.token, data.course_id);
+    const result = await server.enrollSectionStudents(data.course_id, data.section_ids);
+    await server.writeAuditLog(
+      caller,
+      "Bulk section enrollment",
+      `Course ${data.course_id} · ${result.enrolled} enrolled of ${result.candidates} candidates`,
+    );
+    return result;
+  });
+
+// Audit trail: staff may read; writes happen inside privileged RPCs above.
+export const listAuditLogsFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.session.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireStaff(data.token);
+    return server.listAuditLogs();
   });
