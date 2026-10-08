@@ -21,7 +21,7 @@ export const Route = createFileRoute("/api/public/hardware/attendance")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const guard = guardHardwareRequest(request);
+        const guard = await guardHardwareRequest(request);
         if (!guard.ok) return guard.response;
         let body: z.infer<typeof Body>;
         try {

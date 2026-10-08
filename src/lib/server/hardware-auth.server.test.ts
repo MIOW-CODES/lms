@@ -105,34 +105,34 @@ describe("authorized", () => {
 });
 
 describe("guardHardwareRequest", () => {
-  it("returns { ok: true, ip } for a valid request", () => {
+  it("returns { ok: true, ip } for a valid request", async () => {
     const req = makeRequest({
       Authorization: "Bearer test-key-123",
       "X-Hardware-Timestamp": validTimestamp(),
       "X-Forwarded-For": "10.0.0.1",
     });
-    const result = guardHardwareRequest(req);
+    const result = await guardHardwareRequest(req);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.ip).toBe("10.0.0.1");
   });
 
-  it("returns 401 for unauthorized requests", () => {
+  it("returns 401 for unauthorized requests", async () => {
     const req = makeRequest({
       "X-Hardware-Timestamp": validTimestamp(),
     });
-    const result = guardHardwareRequest(req);
+    const result = await guardHardwareRequest(req);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.response.status).toBe(401);
   });
 
-  it("returns 429 when rate limit is exceeded", () => {
+  it("returns 429 when rate limit is exceeded", async () => {
     const req = makeRequest({
       Authorization: "Bearer test-key-123",
       "X-Hardware-Timestamp": validTimestamp(),
       "X-Forwarded-For": "10.99.99.99",
     });
     for (let i = 0; i < 60; i++) {
-      guardHardwareRequest(
+      await guardHardwareRequest(
         makeRequest({
           Authorization: "Bearer test-key-123",
           "X-Hardware-Timestamp": validTimestamp(),
@@ -140,7 +140,7 @@ describe("guardHardwareRequest", () => {
         }),
       );
     }
-    const result = guardHardwareRequest(req);
+    const result = await guardHardwareRequest(req);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.response.status).toBe(429);
@@ -148,23 +148,23 @@ describe("guardHardwareRequest", () => {
     }
   });
 
-  it("extracts IP from X-Real-Header when X-Forwarded-For is absent", () => {
+  it("extracts IP from X-Real-Header when X-Forwarded-For is absent", async () => {
     const req = makeRequest({
       Authorization: "Bearer test-key-123",
       "X-Hardware-Timestamp": validTimestamp(),
       "X-Real-Ip": "192.168.1.50",
     });
-    const result = guardHardwareRequest(req);
+    const result = await guardHardwareRequest(req);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.ip).toBe("192.168.1.50");
   });
 
-  it("falls back to 'unknown' when no IP headers present", () => {
+  it("falls back to 'unknown' when no IP headers present", async () => {
     const req = makeRequest({
       Authorization: "Bearer test-key-123",
       "X-Hardware-Timestamp": validTimestamp(),
     });
-    const result = guardHardwareRequest(req);
+    const result = await guardHardwareRequest(req);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.ip).toBe("unknown");
   });

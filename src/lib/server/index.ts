@@ -157,4 +157,13 @@ export {
 
 export type { Attachment } from "./materials.server";
 
+export {
+  createRfidDevice,
+  listRfidDevices,
+  deactivateRfidDevice,
+  verifyRfidDeviceKey,
+  touchRfidDevice,
+} from "./rfid-devices.server";
+export type { RfidDevicePublic } from "./rfid-devices.server";
+
 export { schemas } from "./schemas.server";

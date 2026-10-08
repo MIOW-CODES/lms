@@ -10,6 +10,9 @@ import {
   createSectionFn,
   deleteAnnouncementFn,
   deleteAttendanceLogFn,
+  listRfidDevicesFn,
+  createRfidDeviceFn,
+  deactivateRfidDeviceFn,
   deleteCourseFn,
   deleteCourseMeetingFn,
   deleteProfileFn,
@@ -1193,6 +1196,37 @@ export async function recordTap(payload: TapPayload): Promise<TapResult | null> 
   return recordTapFn({
     data: { uid: payload.uid, at: payload.timestamp, token: sessionToken() },
   }) as Promise<TapResult | null>;
+}
+
+/* ---------- RFID devices (kiosk readers) ---------- */
+
+export interface RfidDevice {
+  id: string;
+  name: string;
+  location: string | null;
+  key_prefix: string;
+  is_active: boolean;
+  last_seen_at: string | null;
+  status: "online" | "offline";
+  created_at: string;
+}
+
+export async function listRfidDevices(): Promise<RfidDevice[]> {
+  return listRfidDevicesFn({ data: { token: sessionToken() } });
+}
+
+/** Register a device — the raw api_key is returned exactly once. */
+export async function createRfidDevice(input: {
+  name: string;
+  location?: string | null;
+}): Promise<{ id: string; name: string; key_prefix: string; api_key: string }> {
+  return createRfidDeviceFn({
+    data: { name: input.name, location: input.location ?? null, token: sessionToken() },
+  });
+}
+
+export async function deactivateRfidDevice(id: string): Promise<void> {
+  await deactivateRfidDeviceFn({ data: { id, token: sessionToken() } });
 }
 
 export async function updateAttendanceLog(

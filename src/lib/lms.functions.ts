@@ -507,6 +507,29 @@ export const deleteAttendanceLogFn = createServerFn({ method: "POST" })
     return server.deleteAttendanceLog(data.id);
   });
 
+/* ---------- RFID devices (kiosk readers) ---------- */
+
+export const listRfidDevicesFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.session.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireStaff(data.token);
+    return server.listRfidDevices();
+  });
+
+export const createRfidDeviceFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.rfidDeviceCreate.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireStaff(data.token);
+    return server.createRfidDevice({ name: data.name, location: data.location ?? null });
+  });
+
+export const deactivateRfidDeviceFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.id.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireStaff(data.token);
+    return server.deactivateRfidDevice(data.id);
+  });
+
 /* ---------- Misc ---------- */
 
 export const countRowsFn = createServerFn({ method: "POST" })

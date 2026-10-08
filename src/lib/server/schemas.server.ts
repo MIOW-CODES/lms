@@ -264,6 +264,11 @@ export const schemas = {
     at: z.string().max(40).optional(),
     ...token,
   }),
+  rfidDeviceCreate: z.object({
+    name: z.string().min(1).max(100),
+    location: z.string().max(200).nullable().optional(),
+    ...token,
+  }),
   announcementPatch: z.object({
     id: uuid,
     patch: z

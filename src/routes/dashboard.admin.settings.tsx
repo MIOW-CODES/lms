@@ -1,12 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ATTENDANCE_LIMIT_PURGE } from "@/components/courses/constants";
 import {
+  Copy,
   Database,
   Download,
+  KeyRound,
   Nfc,
+  Plus,
   Save,
   School,
   ScrollText,
@@ -39,6 +42,10 @@ import {
   listGradesForCourse,
   listTeachers,
   listStudents,
+  listRfidDevices,
+  createRfidDevice,
+  deactivateRfidDevice,
+  type RfidDevice,
   TRANSMUTATION_TABLE,
   updateCourse,
   updateUserRole,
@@ -141,6 +148,31 @@ function AdminSettings() {
   const [roleBusy, setRoleBusy] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Profile | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  // RFID device registry state
+  const [devName, setDevName] = useState("");
+  const [devLocation, setDevLocation] = useState("");
+  const [devBusy, setDevBusy] = useState(false);
+  const [newKey, setNewKey] = useState<null | { key: string; name: string }>(null);
+  const keyRef = useRef<HTMLElement>(null);
+
+  const copyNewKey = async () => {
+    if (!newKey) return;
+    try {
+      await navigator.clipboard.writeText(newKey.key);
+      toast.success("API key copied");
+    } catch {
+      // Clipboard can be denied (permissions / non-secure context) — select the
+      // text so the admin can copy it manually.
+      const sel = window.getSelection();
+      if (keyRef.current && sel) {
+        const range = document.createRange();
+        range.selectNodeContents(keyRef.current);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      toast.error("Clipboard unavailable — the key is selected, press Ctrl+C");
+    }
+  };
 
   // Course-lead pickers list TEACHERS only — admins never appear there.
   const { data: teachers } = useQuery({
@@ -162,6 +194,11 @@ function AdminSettings() {
     queryKey: ["directory"],
     queryFn: listAllUsers,
     enabled: !!profile,
+  });
+  const { data: rfidDevices, isPending: devicesPending } = useQuery({
+    queryKey: ["rfid-devices"],
+    queryFn: listRfidDevices,
+    enabled: !!profile && tab === "kiosk",
   });
 
   useEffect(() => {
@@ -239,6 +276,41 @@ function AdminSettings() {
     toast.success(`Parsed UID: ${parsed}`, {
       description: `Prefix "${cfg.rfidPrefix || "none"}" · Suffix "${cfg.rfidSuffix || "none"}" · Enter delimiter ${cfg.enterDelimiter ? "on" : "off"}`,
     });
+  };
+
+  const registerDevice = async () => {
+    const name = devName.trim();
+    if (!name) {
+      toast.error("Enter a device name first");
+      return;
+    }
+    setDevBusy(true);
+    try {
+      const created = await createRfidDevice({ name, location: devLocation.trim() || null });
+      setNewKey({ key: created.api_key, name: created.name });
+      setDevName("");
+      setDevLocation("");
+      toast.success("Device registered — copy its API key now.");
+      queryClient.invalidateQueries({ queryKey: ["rfid-devices"] });
+      logAudit("RFID device registered", `${created.name} (key ${created.key_prefix}…)`);
+      setAudit(listAudit());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not register the device.");
+    } finally {
+      setDevBusy(false);
+    }
+  };
+
+  const deactivateDevice = async (d: RfidDevice) => {
+    try {
+      await deactivateRfidDevice(d.id);
+      toast.success(`"${d.name}" deactivated — its key no longer works.`);
+      queryClient.invalidateQueries({ queryKey: ["rfid-devices"] });
+      logAudit("RFID device deactivated", `${d.name} (key ${d.key_prefix}…)`);
+      setAudit(listAudit());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not deactivate the device.");
+    }
   };
 
   const exportStudents = async () => {
@@ -810,6 +882,130 @@ function AdminSettings() {
                   >
                     <Save className="h-4 w-4" /> Save kiosk settings
                   </button>
+                </div>
+              </Card>
+
+              <Card className="p-6">
+                <div>
+                  <h2 className="flex items-center gap-2 font-display text-lg font-bold">
+                    <KeyRound className="h-5 w-5 text-primary" /> Registered devices
+                  </h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Per-device API keys for kiosk readers — each key authenticates hardware requests
+                    and reports a heartbeat that drives the online status below.
+                  </p>
+                </div>
+
+                {/* One-time key reveal */}
+                {newKey && (
+                  <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+                    <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                      API key for “{newKey.name}” — copy it now, it will not be shown again.
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <code
+                        ref={keyRef}
+                        className="min-w-0 flex-1 break-all rounded-lg bg-background/70 px-3 py-2 font-mono text-xs"
+                      >
+                        {newKey.key}
+                      </code>
+                      <button
+                        onClick={copyNewKey}
+                        className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                      >
+                        <Copy className="h-3.5 w-3.5" /> Copy
+                      </button>
+                      <button
+                        onClick={() => setNewKey(null)}
+                        className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Register form */}
+                <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                  <Field
+                    label="Device name"
+                    value={devName}
+                    maxLength={100}
+                    placeholder="e.g. Main gate kiosk"
+                    onChange={(e) => setDevName(e.target.value)}
+                  />
+                  <Field
+                    label="Location (optional)"
+                    value={devLocation}
+                    maxLength={200}
+                    placeholder="e.g. Building A entrance"
+                    onChange={(e) => setDevLocation(e.target.value)}
+                  />
+                  <button
+                    onClick={registerDevice}
+                    disabled={devBusy || !devName.trim()}
+                    className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                  >
+                    <Plus className="h-4 w-4" /> {devBusy ? "Registering…" : "Register"}
+                  </button>
+                </div>
+
+                {/* Device list */}
+                <div className="mt-4 space-y-2">
+                  {devicesPending ? (
+                    [1, 2].map((i) => (
+                      <div key={i} className="h-14 animate-pulse rounded-xl bg-muted/60" />
+                    ))
+                  ) : !rfidDevices?.length ? (
+                    <p className="rounded-xl border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+                      No registered devices yet — register your first kiosk reader above.
+                    </p>
+                  ) : (
+                    rfidDevices.map((d) => (
+                      <div
+                        key={d.id}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-card/60 px-4 py-3"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span
+                            className={cn(
+                              "h-2.5 w-2.5 shrink-0 rounded-full",
+                              d.status === "online"
+                                ? "bg-emerald-500"
+                                : d.is_active
+                                  ? "bg-slate-400"
+                                  : "bg-slate-600",
+                            )}
+                            aria-hidden
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold">
+                              {d.name}{" "}
+                              <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                {!d.is_active
+                                  ? "Deactivated"
+                                  : d.status === "online"
+                                    ? "Online"
+                                    : "Offline"}
+                              </span>
+                            </p>
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              {d.location ?? "No location"} · key {d.key_prefix}… · added{" "}
+                              {fmtDate(d.created_at)}
+                            </p>
+                          </div>
+                        </div>
+                        {d.is_active && (
+                          <button
+                            onClick={() => deactivateDevice(d)}
+                            className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-500/20 dark:text-rose-400"
+                          >
+                            Deactivate
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
                 </div>
               </Card>
             </>

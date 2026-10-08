@@ -7,7 +7,7 @@ export const Route = createFileRoute("/api/public/hardware/sync-users")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const guard = guardHardwareRequest(request);
+        const guard = await guardHardwareRequest(request);
         if (!guard.ok) return guard.response;
         const server = await import("@/lib/server");
         const payload = await server.hardwareRoster();
