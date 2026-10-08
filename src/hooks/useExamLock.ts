@@ -92,7 +92,7 @@ export function useExamLock(active: boolean): ExamLockState {
         key === "f12" ||
         (mod && ["c", "x", "v", "p", "s", "u", "n", "w", "j", "i"].includes(key)) ||
         (mod && e.shiftKey && ["i", "j", "c"].includes(key)) ||
-        (key === "printscreen");
+        key === "printscreen";
       if (blocked) {
         e.preventDefault();
         // PrintScreen still captures on some platforms — poison the clipboard

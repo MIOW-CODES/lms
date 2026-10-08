@@ -604,8 +604,8 @@ function QuizzesPage() {
                 <ShieldCheck className="h-10 w-10 text-primary" />
                 <p className="text-lg font-semibold">Exam lockdown active</p>
                 <p className="max-w-sm text-sm text-muted-foreground">
-                  This exam runs in fullscreen. Return to fullscreen to keep answering — your
-                  timer is still running.
+                  This exam runs in fullscreen. Return to fullscreen to keep answering — your timer
+                  is still running.
                 </p>
                 <button
                   onClick={() => examLock.lock()}
