@@ -16,10 +16,7 @@ describe("notifications.server", () => {
   });
 
   it("sendSmsNotification logs and returns true in mock/test mode", async () => {
-    const ok = await sendSmsNotification(
-      "+639171234567",
-      "New assignment posted in ICT 1.",
-    );
+    const ok = await sendSmsNotification("+639171234567", "New assignment posted in ICT 1.");
     expect(ok).toBe(true);
   });
 

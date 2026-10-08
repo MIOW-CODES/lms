@@ -117,7 +117,9 @@ export async function createAssignment(input: z.infer<typeof schemas.assignmentI
   void dispatchNotification({
     type: "assignment",
     title: (input as any).title ?? "New Assignment",
-    body: (input as any).description ? (input as any).description.slice(0, 150) : "A new assignment has been posted.",
+    body: (input as any).description
+      ? (input as any).description.slice(0, 150)
+      : "A new assignment has been posted.",
     course_id: (input as any).course_id,
   }).catch((err) => {
     console.error("[assignments] Failed to dispatch notifications:", err);

@@ -16,4 +16,3 @@ export async function notifyAnnouncementById(
 ): Promise<{ queued: true; reason: string }> {
   return { queued: true, reason: "dispatched" };
 }
-

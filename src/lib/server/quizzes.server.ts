@@ -844,7 +844,9 @@ export async function createQuizWithQuestions(
   void dispatchNotification({
     type: "quiz",
     title: quiz.title ?? "New Assessment",
-    body: (quiz as any).description ? (quiz as any).description.slice(0, 150) : "A new quiz/worksheet is now available.",
+    body: (quiz as any).description
+      ? (quiz as any).description.slice(0, 150)
+      : "A new quiz/worksheet is now available.",
     course_id: quiz.course_id,
   }).catch((err) => {
     console.error("[quizzes] Failed to dispatch notifications:", err);

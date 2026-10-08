@@ -55,7 +55,11 @@ async function logNotification(entry: {
 /**
  * Send an email via configured SMTP / Gmail API or mock mode.
  */
-export async function sendEmailNotification(to: string, subject: string, content: string): Promise<boolean> {
+export async function sendEmailNotification(
+  to: string,
+  subject: string,
+  content: string,
+): Promise<boolean> {
   const smtpUser = process.env["SMTP_USER"] || process.env["GMAIL_USER"];
   const smtpPass = process.env["SMTP_PASS"] || process.env["GMAIL_PASS"];
 
@@ -163,37 +167,21 @@ export async function sendSmsNotification(phone: string, text: string): Promise<
 
 /**
  * Resolve recipients matching target audience or course enrollment.
+ * Bounded by a hard timeout so an unreachable database degrades to an empty
+ * recipient list instead of hanging the dispatch (and its tests) indefinitely.
  */
-export async function resolveNotificationRecipients(payload: NotificationPayload): Promise<ProfileRow[]> {
+const RECIPIENT_RESOLVE_TIMEOUT_MS = 2_500;
+
+export async function resolveNotificationRecipients(
+  payload: NotificationPayload,
+): Promise<ProfileRow[]> {
   try {
-    if (payload.recipient_ids && payload.recipient_ids.length > 0) {
-      const list = await unwrap<ProfileRow[]>(
-        db.from("profiles").select("*").in("id", payload.recipient_ids).is("deleted_at", null),
-      );
-      return list;
-    }
-
-    if (payload.course_id) {
-      // Query students enrolled in this course
-      const enrollments = await unwrap<Array<{ student_id: string }>>(
-        db.from("enrollments").select("student_id").eq("course_id", payload.course_id),
-      );
-      const ids = enrollments.map((e) => e.student_id);
-      if (!ids.length) return [];
-      return unwrap<ProfileRow[]>(
-        db.from("profiles").select("*").in("id", ids).is("deleted_at", null),
-      );
-    }
-
-    // Broad audience resolution (announcements)
-    let query = db.from("profiles").select("*").is("deleted_at", null);
-    if (payload.target_audience === "students") {
-      query = query.eq("role", "student");
-    } else if (payload.target_audience === "teachers") {
-      query = query.eq("role", "teacher");
-    }
-
-    return await unwrap<ProfileRow[]>(query);
+    return await Promise.race([
+      resolveRecipientsUncapped(payload),
+      new Promise<ProfileRow[]>((resolve) => {
+        setTimeout(() => resolve([]), RECIPIENT_RESOLVE_TIMEOUT_MS);
+      }),
+    ]);
   } catch (err) {
     // If DB is offline or in disconnected test environment, return empty list gracefully
     console.warn("[notifications] Recipient resolution fallback:", err);
@@ -201,10 +189,43 @@ export async function resolveNotificationRecipients(payload: NotificationPayload
   }
 }
 
+async function resolveRecipientsUncapped(payload: NotificationPayload): Promise<ProfileRow[]> {
+  if (payload.recipient_ids && payload.recipient_ids.length > 0) {
+    const list = await unwrap<ProfileRow[]>(
+      db.from("profiles").select("*").in("id", payload.recipient_ids).is("deleted_at", null),
+    );
+    return list;
+  }
+
+  if (payload.course_id) {
+    // Query students enrolled in this course
+    const enrollments = await unwrap<Array<{ student_id: string }>>(
+      db.from("enrollments").select("student_id").eq("course_id", payload.course_id),
+    );
+    const ids = enrollments.map((e) => e.student_id);
+    if (!ids.length) return [];
+    return unwrap<ProfileRow[]>(
+      db.from("profiles").select("*").in("id", ids).is("deleted_at", null),
+    );
+  }
+
+  // Broad audience resolution (announcements)
+  let query = db.from("profiles").select("*").is("deleted_at", null);
+  if (payload.target_audience === "students") {
+    query = query.eq("role", "student");
+  } else if (payload.target_audience === "teachers") {
+    query = query.eq("role", "teacher");
+  }
+
+  return await unwrap<ProfileRow[]>(query);
+}
+
 /**
  * Dispatch notification across channels (institutional Gmail & SMS).
  */
-export async function dispatchNotification(payload: NotificationPayload): Promise<NotificationDispatchResult> {
+export async function dispatchNotification(
+  payload: NotificationPayload,
+): Promise<NotificationDispatchResult> {
   const recipients = await resolveNotificationRecipients(payload);
   const result: NotificationDispatchResult = {
     queued: true,
@@ -218,7 +239,11 @@ export async function dispatchNotification(payload: NotificationPayload): Promis
 
   for (const r of recipients) {
     if (r.email) {
-      const emailOk = await sendEmailNotification(r.email, `[MIOW LMS] ${payload.title}`, payload.body);
+      const emailOk = await sendEmailNotification(
+        r.email,
+        `[MIOW LMS] ${payload.title}`,
+        payload.body,
+      );
       if (emailOk) result.email_sent++;
     }
     if (r.phone) {
