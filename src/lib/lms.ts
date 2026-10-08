@@ -16,6 +16,7 @@ import {
   deleteCourseFn,
   deleteCourseMeetingFn,
   deleteProfileFn,
+  enrollSectionStudentsFn,
   enrollStudentFn,
   enrollStudentsFn,
   enrollmentsForCourseFn,
@@ -1569,4 +1570,28 @@ export async function setCourseSections(courseId: string, sectionIds: string[]):
     >,
   });
   logAudit("Course sections updated", `Course ${courseId} · ${sectionIds.length} sections`);
+}
+
+export interface SectionEnrollResult {
+  enrolled: number;
+  candidates: number;
+  sections: number;
+}
+
+/** Bulk section enrollment — enroll every student of the given sections into a course. */
+export async function enrollSectionStudents(
+  courseId: string,
+  sectionIds: string[],
+): Promise<SectionEnrollResult> {
+  const result = (await enrollSectionStudentsFn({
+    data: { course_id: courseId, section_ids: sectionIds, token: sessionToken() } as Record<
+      string,
+      unknown
+    >,
+  })) as SectionEnrollResult;
+  logAudit(
+    "Bulk section enrollment",
+    `Course ${courseId} · ${result.enrolled} enrolled from ${result.sections} section(s)`,
+  );
+  return result;
 }

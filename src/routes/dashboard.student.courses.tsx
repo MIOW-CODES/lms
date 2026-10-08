@@ -1,13 +1,21 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, BookOpen, ClipboardList, FileQuestion, Paperclip } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpen,
+  CalendarDays,
+  ClipboardList,
+  FileQuestion,
+  Paperclip,
+} from "lucide-react";
 import {
   COMPONENT_LABELS,
   daysUntil,
   enrollmentsForStudent,
   fmtDate,
   listAssignments,
+  listCourseMeetings,
   listCourses,
   listQuizzes,
   listSubmissionsForStudent,
@@ -16,6 +24,7 @@ import {
   formatSchedule,
   type Assignment,
   type Course,
+  type CourseMeeting,
   type Quiz,
   type QuizAttemptSummary,
   type Submission,
@@ -34,6 +43,7 @@ import { assignmentActionLabel, worksheetActionLabel } from "@/lib/assessment-ac
 import { cn } from "@/lib/utils";
 import { LoadingSkeleton } from "@/components/ui-elements";
 import { CourseWorkspaceShell, type WorkspaceTab } from "@/components/courses/course-workspace";
+import { DAYS } from "@/components/courses/constants";
 import { useCourseSelection } from "@/hooks/useCourseWorkspace";
 
 export const Route = createFileRoute("/dashboard/student/courses")({
@@ -340,6 +350,11 @@ function StudentCourseWorkspace({
       icon: <ClipboardList className="h-4 w-4" />,
       count: assignments.length,
     },
+    {
+      id: "schedule",
+      label: "Schedule",
+      icon: <CalendarDays className="h-4 w-4" />,
+    },
   ];
 
   return (
@@ -387,7 +402,97 @@ function StudentCourseWorkspace({
             ))}
           </div>
         ))}
+
+      {tab === "schedule" && <StudentCourseSchedule courseId={course.id} />}
     </CourseWorkspaceShell>
+  );
+}
+
+function formatStudentTime12(time24: string): string {
+  if (!time24) return "";
+  const parts = time24.split(":");
+  const p0 = parts[0];
+  const p1 = parts[1];
+  if (!p0 || !p1) return time24;
+  const hours = parseInt(p0, 10);
+  const minutes = parseInt(p1, 10);
+  if (isNaN(hours) || isNaN(minutes)) return time24;
+  const period = hours >= 12 ? "PM" : "AM";
+  const h12 = hours % 12 === 0 ? 12 : hours % 12;
+  return `${h12}:${minutes.toString().padStart(2, "0")} ${period}`;
+}
+
+function formatStudentTimeRange(start: string, end: string): string {
+  if (!start && !end) return "Time not set";
+  if (!end) return formatStudentTime12(start);
+  if (!start) return formatStudentTime12(end);
+  return `${formatStudentTime12(start)} – ${formatStudentTime12(end)}`;
+}
+
+/** Read-only lecture/lab timetable for a course (staff configure it in MeetingsPanel). */
+function StudentCourseSchedule({ courseId }: { courseId: string }) {
+  const { data: meetings = [], isPending } = useQuery({
+    queryKey: ["course-meetings", courseId],
+    queryFn: () => listCourseMeetings(courseId),
+  });
+
+  if (isPending) {
+    return (
+      <div className="space-y-3">
+        {[1, 2].map((i) => (
+          <div key={i} className="h-20 animate-pulse rounded-xl bg-muted/60" />
+        ))}
+      </div>
+    );
+  }
+
+  if (meetings.length === 0) {
+    return (
+      <EmptyState
+        title="No schedule yet"
+        sub="Your teacher's lecture and lab schedule for this course will appear here."
+      />
+    );
+  }
+
+  return (
+    <div className="grid gap-3">
+      {meetings.map((meeting: CourseMeeting) => (
+        <div
+          key={meeting.id}
+          className="flex flex-col gap-3 rounded-xl border border-border/70 bg-card/60 p-4 transition-all hover:border-border sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={meeting.kind === "lab" ? "violet" : "indigo"}>
+                {meeting.kind === "lab" ? "Laboratory" : "Lecture"}
+              </Badge>
+              <span className="text-sm font-semibold text-foreground">{meeting.label}</span>
+              <span className="text-xs text-muted-foreground">
+                · {formatStudentTimeRange(meeting.start_time, meeting.end_time)}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              {DAYS.map((d) =>
+                meeting.days_of_week.includes(d.code) ? (
+                  <span
+                    key={d.code}
+                    className="rounded-md border border-border/60 bg-muted/70 px-2 py-0.5 text-[11px] font-semibold text-foreground"
+                  >
+                    {d.label}
+                  </span>
+                ) : null,
+              )}
+            </div>
+          </div>
+          {meeting.capacity != null && (
+            <div className="text-xs text-muted-foreground sm:text-right">
+              {meeting.capacity} seat{meeting.capacity !== 1 ? "s" : ""}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 

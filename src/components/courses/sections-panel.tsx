@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { GraduationCap, Layers, Plus, Search, Trash2, Users } from "lucide-react";
+import { GraduationCap, Layers, Plus, Search, Trash2, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 import {
   type CourseSection,
   type Section,
   createSection,
+  enrollSectionStudents,
   listCourseSections,
   listSections,
   setCourseSections,
@@ -215,6 +216,7 @@ export function SectionsPanel({ courseId }: { courseId: string }) {
   const [newSectionLevel, setNewSectionLevel] = useState<"jhs" | "shs" | "college">("jhs");
   const [creating, setCreating] = useState(false);
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
+  const [enrollingId, setEnrollingId] = useState<string | null>(null);
 
   const { data: linkedSections = [], isPending } = useQuery({
     queryKey: ["course-sections", courseId],
@@ -265,6 +267,28 @@ export function SectionsPanel({ courseId }: { courseId: string }) {
     }
   };
 
+  const handleEnroll = async (key: string, sectionIds: string[], label: string) => {
+    if (enrollingId) return;
+    setEnrollingId(key);
+    try {
+      const result = await enrollSectionStudents(courseId, sectionIds);
+      if (result.enrolled > 0) {
+        toast.success(
+          `Enrolled ${result.enrolled} student${result.enrolled !== 1 ? "s" : ""} from ${label}.`,
+        );
+      } else {
+        toast.success(`Everyone in ${label} is already enrolled.`);
+      }
+      qc.invalidateQueries({ queryKey: ["enrollments", courseId] });
+      qc.invalidateQueries({ queryKey: ["students"] });
+      qc.invalidateQueries({ queryKey: ["course-sections", courseId] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not enroll students.");
+    } finally {
+      setEnrollingId(null);
+    }
+  };
+
   const totalCohortLearners = useMemo(() => {
     return linkedSections.reduce((sum, s) => sum + (s.student_count ?? 0), 0);
   }, [linkedSections]);
@@ -291,6 +315,24 @@ export function SectionsPanel({ courseId }: { courseId: string }) {
           >
             <Plus className="h-3.5 w-3.5" /> New section
           </button>
+          {linkedSections.length > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                handleEnroll(
+                  "all",
+                  linkedSections.map((s) => s.id),
+                  "linked sections",
+                )
+              }
+              disabled={enrollingId !== null}
+              title="Enroll every student in the linked sections into this course"
+              className="flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              {enrollingId === "all" ? "Enrolling…" : "Enroll all linked"}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setLinkModalOpen(true)}
@@ -409,16 +451,29 @@ export function SectionsPanel({ courseId }: { courseId: string }) {
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleUnlink(sec)}
-                    disabled={unlinkingId === sec.id}
-                    title={`Unlink ${sec.name} from this course`}
-                    aria-label={`Unlink ${sec.name}`}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition hover:bg-rose-500/10 hover:text-rose-600 disabled:opacity-50"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleEnroll(sec.id, [sec.id], sec.name)}
+                      disabled={enrollingId !== null}
+                      title={`Enroll all ${sec.name} students into this course`}
+                      aria-label={`Enroll ${sec.name} students`}
+                      className="flex h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-semibold text-muted-foreground transition hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      {enrollingId === sec.id ? "Enrolling…" : "Enroll"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUnlink(sec)}
+                      disabled={unlinkingId === sec.id}
+                      title={`Unlink ${sec.name} from this course`}
+                      aria-label={`Unlink ${sec.name}`}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition hover:bg-rose-500/10 hover:text-rose-600 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

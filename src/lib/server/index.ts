@@ -128,6 +128,8 @@ export {
   createSection,
   listCourseSections,
   setCourseSections,
+  enrollSectionStudents,
+  missingEnrollments,
 } from "./sections.server";
 
 export {

@@ -108,3 +108,78 @@ export async function setCourseSections(courseId: string, sectionIds: string[]) 
     );
   }
 }
+
+/**
+ * Pure set-diff for enrollment: candidate ids not already present in `existing`.
+ * Dedupes candidates and drops empty ids — order-preserving, DB-independent.
+ */
+export function missingEnrollments(existing: string[], candidates: string[]): string[] {
+  const have = new Set(existing);
+  const seen = new Set<string>();
+  const missing: string[] = [];
+  for (const id of candidates) {
+    if (!id || have.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    missing.push(id);
+  }
+  return missing;
+}
+
+/**
+ * Bulk section enrollment — enroll every active student whose profile section
+ * matches the given sections into a course (one click for a whole cohort).
+ * Idempotent: students already enrolled are skipped, so repeats are safe.
+ * Profile `section` may hold either the section id or the section name —
+ * same tolerance listCourseSections uses for counting.
+ */
+export async function enrollSectionStudents(
+  courseId: string,
+  sectionIds: string[],
+): Promise<{ enrolled: number; candidates: number; sections: number }> {
+  const targets = [...new Set(sectionIds)].filter((id) => typeof id === "string" && id.length > 0);
+  if (!targets.length) return { enrolled: 0, candidates: 0, sections: 0 };
+
+  const sections = await unwrap<Array<{ id: string; name: string }>>(
+    db.from("sections").select("id, name").in("id", targets).is("deleted_at", null),
+  );
+  if (!sections.length) return { enrolled: 0, candidates: 0, sections: 0 };
+
+  const matchTerms = new Set<string>();
+  for (const s of sections) {
+    matchTerms.add(s.id);
+    matchTerms.add(s.name);
+  }
+
+  const students = await unwrap<Array<{ id: string }>>(
+    db
+      .from("profiles")
+      .select("id")
+      .eq("role", "student")
+      .is("deleted_at", null)
+      .in("section", [...matchTerms]),
+  );
+  const candidateIds = students.map((s) => s.id);
+  if (!candidateIds.length) {
+    return { enrolled: 0, candidates: 0, sections: sections.length };
+  }
+
+  const existing = await unwrap<Array<{ student_id: string }>>(
+    db
+      .from("enrollments")
+      .select("student_id")
+      .eq("course_id", courseId)
+      .in("student_id", candidateIds),
+  );
+  const missing = missingEnrollments(
+    existing.map((r) => r.student_id),
+    candidateIds,
+  );
+  if (missing.length) {
+    await unwrap(
+      db
+        .from("enrollments")
+        .insert(missing.map((student_id) => ({ student_id, course_id: courseId }))),
+    );
+  }
+  return { enrolled: missing.length, candidates: candidateIds.length, sections: sections.length };
+}

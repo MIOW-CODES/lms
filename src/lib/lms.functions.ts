@@ -654,3 +654,12 @@ export const setCourseSectionsFn = createServerFn({ method: "POST" })
     await server.requireCourseOwnerOrAdmin(data.token, data.course_id);
     return server.setCourseSections(data.course_id, data.section_ids);
   });
+
+// Bulk section enrollment: enroll every student of the given sections into the
+// course in one call. Same ownership rules as section linking.
+export const enrollSectionStudentsFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.courseSectionsLink.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireCourseOwnerOrAdmin(data.token, data.course_id);
+    return server.enrollSectionStudents(data.course_id, data.section_ids);
+  });
