@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { setAssessmentMode } from "@/lib/assessment-mode";
+import { useExamLock } from "@/hooks/useExamLock";
 import {
   useAntiCheat,
   integrityLabel,
@@ -189,6 +190,8 @@ function QuizzesPage() {
 
   // Anti-cheat: detect tab switches / devtools / paste during active assessment
   const { tabSwitches, switchCount, counts, showFlash, flashType } = useAntiCheat(taking);
+  // Hard lock while taking: fullscreen + input blocking (installed PWA kiosk).
+  const examLock = useExamLock(taking);
 
   // Resume or start attempt: restore saved timer/answers if the student
   // closed and reopened the same worksheet within this session.
@@ -391,7 +394,12 @@ function QuizzesPage() {
                   </div>
                 )}
                 <button
-                  onClick={() => setActiveId(q.id)}
+                  onClick={() => {
+                    // Fullscreen needs a user gesture — request it here so the
+                    // exam opens in kiosk mode before the first render.
+                    examLock.lock();
+                    setActiveId(q.id);
+                  }}
                   disabled={!canTake}
                   title={
                     isClosed
@@ -558,7 +566,10 @@ function QuizzesPage() {
               <div className="mt-5 flex flex-col gap-2">
                 {result.can_retake ? (
                   <button
-                    onClick={() => activeId && void beginAttempt(activeId)}
+                    onClick={() => {
+                      examLock.lock();
+                      if (activeId) void beginAttempt(activeId);
+                    }}
                     className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90"
                   >
                     <RotateCcw className="h-4 w-4" />
@@ -586,6 +597,24 @@ function QuizzesPage() {
           )
         ) : (
           <>
+            {/* Hard lock: fullscreen was exited mid-exam — block the paper
+                until the student returns to fullscreen (tap = new gesture). */}
+            {examLock.lockLost && (
+              <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-background/95 p-8 text-center backdrop-blur">
+                <ShieldCheck className="h-10 w-10 text-primary" />
+                <p className="text-lg font-semibold">Exam lockdown active</p>
+                <p className="max-w-sm text-sm text-muted-foreground">
+                  This exam runs in fullscreen. Return to fullscreen to keep answering — your
+                  timer is still running.
+                </p>
+                <button
+                  onClick={() => examLock.lock()}
+                  className="flex h-11 items-center gap-2 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  Return to fullscreen
+                </button>
+              </div>
+            )}
             <div className="mb-2 flex items-center justify-between rounded-xl bg-muted px-4 py-2.5">
               <Badge tone="indigo">{questions.length} questions</Badge>
               <p
