@@ -15,6 +15,7 @@ import { createProfile, getProfileById, updateProfile } from "@/lib/server/profi
 import { addMeetingMembers } from "@/lib/server/meetings.server";
 import { type ProfileRole } from "@/lib/server/db-types";
 import { ENROLLMENT_ERRORS, type BulkAddResult, type BulkAddRowOutcome } from "@/lib/enrollment";
+import { dispatchNotification } from "@/lib/server/notifications.server";
 
 export async function listCourses() {
   const courses = await unwrap<any[]>(db.from("courses").select("*").order("code"));
@@ -111,6 +112,16 @@ export async function listAssignments(caller: { id: string; role: ProfileRole })
 
 export async function createAssignment(input: z.infer<typeof schemas.assignmentInput>) {
   await unwrap(db.from("assignments").insert(withoutToken(input)));
+
+  // Notify enrolled students via email and SMS
+  void dispatchNotification({
+    type: "assignment",
+    title: (input as any).title ?? "New Assignment",
+    body: (input as any).description ? (input as any).description.slice(0, 150) : "A new assignment has been posted.",
+    course_id: (input as any).course_id,
+  }).catch((err) => {
+    console.error("[assignments] Failed to dispatch notifications:", err);
+  });
 }
 
 export async function enrollmentsForCourse(courseId: string): Promise<string[]> {

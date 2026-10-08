@@ -38,6 +38,7 @@ const profileFields = {
   employee_id: z.string().max(50).nullable().optional(),
   prefix: z.string().max(20).nullable().optional(),
   department: z.string().max(100).nullable().optional(),
+  phone: z.string().max(30).nullable().optional(),
   pin: z
     .string()
     .regex(/^\d{4,8}$/)

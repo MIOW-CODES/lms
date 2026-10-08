@@ -25,6 +25,7 @@ export interface ProfileRow {
   employee_id: string | null;
   prefix: string | null;
   department: string | null;
+  phone: string | null;
 }
 
 export interface CourseRow {

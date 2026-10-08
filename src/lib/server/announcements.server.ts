@@ -7,6 +7,7 @@ import { db } from "@/integrations/db/client.server";
 import { unwrap, withoutToken } from "@/lib/server/utils.server";
 import { requireStaff } from "@/lib/server/auth.server";
 import { sessionSecret } from "@/lib/server/sessions.server";
+import { dispatchNotification } from "@/lib/server/notifications.server";
 
 export type AnnouncementAttachment = {
   id: string;
@@ -67,7 +68,19 @@ export async function createAnnouncement(
   const row = await unwrap<any>(
     db.from("announcements").insert(withoutToken(input)).select("id").single(),
   );
-  return row.id as string;
+  const id = row.id as string;
+
+  // Asynchronously dispatch notifications to institutional email and phone numbers
+  void dispatchNotification({
+    type: "announcement",
+    title: (input as any).title ?? "New Announcement",
+    body: (input as any).content ?? "",
+    target_audience: (input as any).target_audience ?? "all",
+  }).catch((err) => {
+    console.error("[announcements] Failed to dispatch notifications:", err);
+  });
+
+  return id;
 }
 
 export async function updateAnnouncement(id: string, patch: Record<string, unknown>) {

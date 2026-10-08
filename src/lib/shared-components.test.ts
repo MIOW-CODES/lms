@@ -9,19 +9,19 @@ describe("Field and Toggle shared components", () => {
 });
 
 describe("notifications stub", () => {
-  it("notifyAnnouncement returns queued=false", async () => {
+  it("notifyAnnouncement returns queued status", async () => {
     const { notifyAnnouncement } = await import("./notifications");
     const result = await notifyAnnouncement({
       title: "Test",
       content: "Body",
       target_audience: "all",
     });
-    expect(result.queued).toBe(false);
+    expect(result.queued).toBe(true);
   });
 
-  it("notifyAnnouncementById returns queued=false", async () => {
+  it("notifyAnnouncementById returns queued status", async () => {
     const { notifyAnnouncementById } = await import("./notifications");
     const result = await notifyAnnouncementById("test-id");
-    expect(result.queued).toBe(false);
+    expect(result.queued).toBe(true);
   });
 });

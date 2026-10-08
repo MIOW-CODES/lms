@@ -19,6 +19,7 @@ import {
 import { schemas } from "@/lib/server/schemas.server";
 import type { IntegrityEventType } from "@/lib/integrity";
 import type { ProfileRole } from "@/lib/server/db-types";
+import { dispatchNotification } from "@/lib/server/notifications.server";
 
 export async function listQuizzes(caller: { id: string; role: ProfileRole }) {
   const rows = await unwrap<any[]>(db.from("quizzes").select("*").is("deleted_at", null));
@@ -838,6 +839,16 @@ export async function createQuizWithQuestions(
       .from("quiz_questions")
       .insert(questions.map((q, i) => ({ ...q, quiz_id: created.id, position: i + 1 }))),
   );
+
+  // Notify enrolled students via email and SMS
+  void dispatchNotification({
+    type: "quiz",
+    title: quiz.title ?? "New Assessment",
+    body: (quiz as any).description ? (quiz as any).description.slice(0, 150) : "A new quiz/worksheet is now available.",
+    course_id: quiz.course_id,
+  }).catch((err) => {
+    console.error("[quizzes] Failed to dispatch notifications:", err);
+  });
 }
 
 /** List all quiz scores for a course — used by the gradebook. */

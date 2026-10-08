@@ -25,6 +25,7 @@ export function safeProfile(p: ProfileRow) {
     employee_id: p.employee_id,
     prefix: p.prefix,
     department: p.department,
+    phone: p.phone ?? null,
     // Credentials never leave the server.
     pin: null,
     rfid_uid: null,
