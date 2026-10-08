@@ -48,7 +48,25 @@ describe("verifyRfidDeviceKey", () => {
 
   it("resolves to null for an mw_ key with no matching active device (fail-closed)", async () => {
     const { apiKey } = generateDeviceKey();
-    expect(await verifyRfidDeviceKey(apiKey)).toBeNull();
+    expect(await verifyRfidDeviceKey(apiKey, async () => [])).toBeNull();
+  });
+
+  it("resolves to null when the lookup errors (db unavailable)", async () => {
+    const { apiKey } = generateDeviceKey();
+    expect(
+      await verifyRfidDeviceKey(apiKey, async () => {
+        throw new Error("database unavailable");
+      }),
+    ).toBeNull();
+  });
+
+  it("returns the matching active device when the stored hash matches", async () => {
+    const { apiKey } = generateDeviceKey();
+    const device = row({
+      key_prefix: apiKey.slice(0, 11),
+      key_hash: createHash("sha256").update(apiKey).digest("hex"),
+    });
+    expect(await verifyRfidDeviceKey(apiKey, async () => [device])).toEqual(device);
   });
 });
 
@@ -79,7 +97,16 @@ describe("toRfidDevicePublic", () => {
 describe("touchRfidDevice", () => {
   it("returns false and never throws for an unknown device key", async () => {
     const { apiKey } = generateDeviceKey();
-    await expect(touchRfidDevice(apiKey)).resolves.toBe(false);
+    await expect(touchRfidDevice(apiKey, async () => [])).resolves.toBe(false);
+  });
+
+  it("returns false without throwing when the lookup errors", async () => {
+    const { apiKey } = generateDeviceKey();
+    await expect(
+      touchRfidDevice(apiKey, async () => {
+        throw new Error("database unavailable");
+      }),
+    ).resolves.toBe(false);
   });
 
   it("returns false for malformed keys without throwing", async () => {

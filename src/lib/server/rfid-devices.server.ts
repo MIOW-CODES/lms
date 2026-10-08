@@ -87,17 +87,27 @@ export async function deactivateRfidDevice(id: string): Promise<void> {
   await unwrap(db.from("rfid_devices").update({ is_active: false }).eq("id", id));
 }
 
+/** Pluggable active-device lookup — default queries the DB; tests inject stubs. */
+export type RfidDeviceLookup = (keyPrefix: string) => Promise<RfidDeviceRow[]>;
+
+async function defaultDeviceLookup(keyPrefix: string): Promise<RfidDeviceRow[]> {
+  return unwrap<RfidDeviceRow[]>(
+    db.from("rfid_devices").select("*").eq("key_prefix", keyPrefix).eq("is_active", true),
+  );
+}
+
 /**
  * Verify a presented device key against stored hashes (active devices only).
  * Fails closed: any lookup error (DB down) resolves to null, never throws.
  */
-export async function verifyRfidDeviceKey(key: string): Promise<RfidDeviceRow | null> {
+export async function verifyRfidDeviceKey(
+  key: string,
+  lookup: RfidDeviceLookup = defaultDeviceLookup,
+): Promise<RfidDeviceRow | null> {
   if (!key || !key.startsWith("mw_")) return null;
   const prefix = key.slice(0, 11);
   try {
-    const rows = await unwrap<RfidDeviceRow[]>(
-      db.from("rfid_devices").select("*").eq("key_prefix", prefix).eq("is_active", true),
-    );
+    const rows = await lookup(prefix);
     const presented = sha256Hex(key);
     const match = rows.find((r) => safeEqualHex(presented, r.key_hash));
     return match ?? null;
@@ -111,9 +121,12 @@ export async function verifyRfidDeviceKey(key: string): Promise<RfidDeviceRow | 
  * Record a device heartbeat. Never throws — heartbeats must not break requests.
  * Returns true when the key matched an active device.
  */
-export async function touchRfidDevice(key: string): Promise<boolean> {
+export async function touchRfidDevice(
+  key: string,
+  lookup: RfidDeviceLookup = defaultDeviceLookup,
+): Promise<boolean> {
   try {
-    const device = await verifyRfidDeviceKey(key);
+    const device = await verifyRfidDeviceKey(key, lookup);
     if (!device) return false;
     await db
       .from("rfid_devices")
