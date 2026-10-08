@@ -102,10 +102,14 @@ function MeetingFormModal({ courseId, meeting, open, onClose, onSuccess }: Meeti
   );
   const [saving, setSaving] = useState(false);
 
-  // Synchronize state when meeting prop changes
-  const [prevMeetingId, setPrevMeetingId] = useState<string | null>(null);
-  if (meeting?.id !== prevMeetingId) {
-    setPrevMeetingId(meeting?.id ?? null);
+  // Synchronize state when meeting prop changes.
+  // Normalize `undefined` (new meeting) to `null` — otherwise `meeting?.id !==
+  // prevMeetingId` compares undefined to null forever and the render-phase sync
+  // below loops infinitely (new array identity from `?? ["mon"]` each pass).
+  const meetingId = meeting?.id ?? null;
+  const [prevMeetingId, setPrevMeetingId] = useState<string | null>(meetingId);
+  if (meetingId !== prevMeetingId) {
+    setPrevMeetingId(meetingId);
     setKind(meeting?.kind ?? "lecture");
     setLabel(meeting?.label ?? (meeting?.kind === "lab" ? "Lab 1" : "Lecture"));
     setSelectedDays(meeting?.days_of_week ?? ["mon"]);
