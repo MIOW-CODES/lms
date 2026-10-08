@@ -12,6 +12,8 @@ import {
   Activity,
   Plus,
   RefreshCw,
+  MousePointer2,
+  Spline,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ArduinoBoardState } from "@/lib/arduino-simulator";
@@ -138,12 +140,86 @@ export function InteractiveBreadboardCanvas({
     elemY: number;
   } | null>(null);
 
+  /* ---------- Manual wire drawing (Tinkercad-style pin-to-pin) ---------- */
+  type UserWire = { id: string; x1: number; y1: number; x2: number; y2: number; color: string };
+  const [drawMode, setDrawMode] = useState(false);
+  const [drawColor, setDrawColor] = useState<string>(WIRE_COLORS[0]?.stroke ?? "#10b981");
+  const [wireStart, setWireStart] = useState<{ x: number; y: number } | null>(null);
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+  const [userWires, setUserWires] = useState<UserWire[]>([]);
+  const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  // Escape cancels an in-progress wire (second Esc exits draw mode)
+  useEffect(() => {
+    if (!drawMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (wireStart) setWireStart(null);
+        else setDrawMode(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawMode, wireStart]);
+
+  // Component mousedown in draw mode anchors a wire; its click event still
+  // bubbles to the canvas — skip that bubbled click to avoid a double anchor.
+  const skipNextCanvasClick = useRef(false);
+
+  const localPoint = (e: React.MouseEvent | MouseEvent) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  // Canvas click while in draw mode routes a wire anchor
+  const handleCanvasClick = (e: React.MouseEvent) => {
+    if (skipNextCanvasClick.current) {
+      skipNextCanvasClick.current = false;
+      return;
+    }
+    if (!drawMode) {
+      setSelectedId(null);
+      setSelectedWireId(null);
+      return;
+    }
+    const pt = localPoint(e);
+    if (!wireStart) {
+      setWireStart(pt);
+    } else {
+      setUserWires((prev) => [
+        ...prev,
+        {
+          id: `wire-${Date.now().toString(36)}`,
+          x1: wireStart.x,
+          y1: wireStart.y,
+          x2: pt.x,
+          y2: pt.y,
+          color: drawColor,
+        },
+      ]);
+      setWireStart(null);
+    }
+  };
+
+  const removeWire = (id: string) => {
+    setUserWires((prev) => prev.filter((w) => w.id !== id));
+    setSelectedWireId(null);
+  };
+
   // Position of Arduino Uno Board on the canvas (scaled down to fit workbench)
   const [unoPos, setUnoPos] = useState({ x: 30, y: 50 });
 
   // Handle Dragging
   const handleMouseDown = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+    if (drawMode) {
+      // In draw mode a component click is a wire anchor instead of a drag start
+      skipNextCanvasClick.current = true;
+      handleCanvasClick(e);
+      return;
+    }
     setSelectedId(id);
     const item =
       id === "arduino-uno" ? { x: unoPos.x, y: unoPos.y } : parts.find((p) => p.id === id);
@@ -189,11 +265,11 @@ export function InteractiveBreadboardCanvas({
     };
   }, [handleMouseMove, handleMouseUp]);
 
-  // Add Part
-  const addPart = (type: WokwiComponentType) => {
+  // Add Part — optionally at explicit canvas coordinates (drag-and-drop)
+  const addPart = (type: WokwiComponentType, at?: { x: number; y: number }) => {
     const id = `${type}-${Date.now().toString(36)}`;
-    const randX = 350 + Math.random() * 200;
-    const randY = 60 + Math.random() * 240;
+    const randX = at ? at.x : 350 + Math.random() * 200;
+    const randY = at ? at.y : 60 + Math.random() * 240;
     const color = WIRE_COLORS[Math.floor(Math.random() * WIRE_COLORS.length)]?.stroke ?? "#10b981";
 
     let newPart: CanvasPart;
@@ -347,51 +423,129 @@ export function InteractiveBreadboardCanvas({
           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground mr-1">
             Real Hardware Parts:
           </span>
+          {/* Tool toggle: Select vs Draw wire */}
+          <div className="flex items-center rounded-lg border border-border/70 bg-background p-0.5 mr-1">
+            <button
+              onClick={() => {
+                setDrawMode(false);
+                setWireStart(null);
+              }}
+              aria-pressed={!drawMode}
+              title="Select and move components"
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition",
+                !drawMode
+                  ? "bg-emerald-500/20 text-emerald-300 shadow-inner"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <MousePointer2 className="h-3.5 w-3.5" /> Select
+            </button>
+            <button
+              onClick={() => {
+                setDrawMode((v) => !v);
+                setWireStart(null);
+                setSelectedWireId(null);
+              }}
+              aria-pressed={drawMode}
+              title="Draw a jumper wire between two points"
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition",
+                drawMode
+                  ? "bg-emerald-500/20 text-emerald-300 shadow-inner"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Spline className="h-3.5 w-3.5" /> Draw wire
+            </button>
+          </div>
           <button
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData("text/miow-part", "wokwi-led");
+              e.dataTransfer.effectAllowed = "copy";
+            }}
             onClick={() => addPart("wokwi-led")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted cursor-grab active:cursor-grabbing"
+            title="Click to add, or drag onto the workbench"
           >
             <div className="h-2.5 w-2.5 rounded-full bg-red-500 shadow-sm" />+ LED
           </button>
           <button
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData("text/miow-part", "wokwi-pushbutton");
+              e.dataTransfer.effectAllowed = "copy";
+            }}
             onClick={() => addPart("wokwi-pushbutton")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted cursor-grab active:cursor-grabbing"
+            title="Click to add, or drag onto the workbench"
           >
             <div className="h-2.5 w-2.5 rounded-sm bg-blue-500 shadow-sm" />+ Push Button
           </button>
           <button
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData("text/miow-part", "wokwi-potentiometer");
+              e.dataTransfer.effectAllowed = "copy";
+            }}
             onClick={() => addPart("wokwi-potentiometer")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted cursor-grab active:cursor-grabbing"
+            title="Click to add, or drag onto the workbench"
           >
             <Sliders className="h-3.5 w-3.5 text-amber-500" />+ Potentiometer
           </button>
           <button
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData("text/miow-part", "wokwi-buzzer");
+              e.dataTransfer.effectAllowed = "copy";
+            }}
             onClick={() => addPart("wokwi-buzzer")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted cursor-grab active:cursor-grabbing"
+            title="Click to add, or drag onto the workbench"
           >
             <Volume2 className="h-3.5 w-3.5 text-sky-400" />+ Buzzer
           </button>
           <button
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData("text/miow-part", "wokwi-servo");
+              e.dataTransfer.effectAllowed = "copy";
+            }}
             onClick={() => addPart("wokwi-servo")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted cursor-grab active:cursor-grabbing"
+            title="Click to add, or drag onto the workbench"
           >
             <RotateCcw className="h-3.5 w-3.5 text-rose-400" />+ SG90 Servo
           </button>
           <button
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData("text/miow-part", "wokwi-hc-sr04");
+              e.dataTransfer.effectAllowed = "copy";
+            }}
             onClick={() => addPart("wokwi-hc-sr04")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted cursor-grab active:cursor-grabbing"
+            title="Click to add, or drag onto the workbench"
           >
             <Sparkles className="h-3.5 w-3.5 text-teal-400" />+ Sonar
           </button>
           <button
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData("text/miow-part", "wokwi-resistor");
+              e.dataTransfer.effectAllowed = "copy";
+            }}
             onClick={() => addPart("wokwi-resistor")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted cursor-grab active:cursor-grabbing"
+            title="Click to add, or drag onto the workbench"
           >
             <span className="font-mono text-amber-600 font-bold">220Ω</span>+ Resistor
           </button>
         </div>
 
-        {selectedPart && (
+        {selectedPart && !drawMode && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">
               Selected: <strong className="text-foreground">{selectedPart.label}</strong>
@@ -405,13 +559,81 @@ export function InteractiveBreadboardCanvas({
             </button>
           </div>
         )}
+
+        {drawMode && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-300">
+              {wireStart
+                ? "Click a second point to finish — Esc to cancel"
+                : "Click a point to start the wire"}
+            </span>
+            <div className="flex items-center gap-1">
+              {WIRE_COLORS.map((w) => (
+                <button
+                  key={w.name}
+                  onClick={() => setDrawColor(w.stroke)}
+                  className={cn(
+                    "h-3.5 w-3.5 rounded-full transition-transform",
+                    drawColor === w.stroke
+                      ? "scale-125 ring-2 ring-white"
+                      : "opacity-80 hover:opacity-100",
+                  )}
+                  style={{ backgroundColor: w.stroke }}
+                  title={`${w.name} wire`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {selectedWireId && !drawMode && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              Selected: <strong className="text-foreground">Jumper wire</strong>
+            </span>
+            <button
+              onClick={() => removeWire(selectedWireId)}
+              className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-semibold text-rose-400 hover:bg-rose-500/20 transition"
+              title="Delete wire"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Remove wire
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Interactive Circuit Sandbox with Realistic Jumper Wires */}
       <div
         ref={containerRef}
-        onClick={() => setSelectedId(null)}
-        className="relative min-h-[580px] w-full select-none overflow-hidden rounded-2xl border-2 border-emerald-900/60 bg-[#090d16] shadow-2xl"
+        onClick={handleCanvasClick}
+        onMouseMove={(e) => {
+          if (drawMode && wireStart) setCursorPos(localPoint(e));
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const type = e.dataTransfer.getData("text/miow-part") as WokwiComponentType;
+          if (!type) return;
+          const rect = containerRef.current?.getBoundingClientRect();
+          const x = rect ? e.clientX - rect.left : 350;
+          const y = rect ? e.clientY - rect.top : 60;
+          // Clamp so the dropped part stays inside the workbench
+          addPart(type, {
+            x: Math.max(10, Math.min(x - 35, (rect?.width ?? 800) - 100)),
+            y: Math.max(10, Math.min(y - 35, (rect?.height ?? 580) - 100)),
+          });
+        }}
+        className={cn(
+          "relative min-h-[580px] w-full select-none overflow-hidden rounded-2xl border-2 shadow-2xl",
+          dragOver ? "border-emerald-400 ring-2 ring-emerald-400/40" : "border-emerald-900/60",
+          drawMode && "cursor-crosshair",
+        )}
         style={{
           backgroundImage: `
             radial-gradient(circle, rgba(148, 163, 184, 0.22) 1.5px, transparent 1.5px),
@@ -419,6 +641,7 @@ export function InteractiveBreadboardCanvas({
           `,
           backgroundSize: "28px 28px",
           backgroundPosition: "0 0, 14px 14px",
+          backgroundColor: "#090d16",
         }}
       >
         {/* Real-time SVG JUMPER WIRES connecting Uno to Components */}
@@ -481,6 +704,64 @@ export function InteractiveBreadboardCanvas({
               </g>
             );
           })}
+
+          {/* User-drawn jumper wires (clickable — deletable) */}
+          {userWires.map((w) => {
+            const midX = (w.x1 + w.x2) / 2;
+            const midY = Math.min(w.y1, w.y2) - 30;
+            const pathData = `M ${w.x1} ${w.y1} Q ${midX} ${midY} ${w.x2} ${w.y2}`;
+            const isSelected = w.id === selectedWireId;
+            return (
+              <g
+                key={w.id}
+                onClick={(e) => {
+                  if (drawMode) return;
+                  e.stopPropagation();
+                  setSelectedWireId(w.id);
+                  setSelectedId(null);
+                }}
+                style={{
+                  pointerEvents: drawMode ? "none" : "stroke",
+                  cursor: drawMode ? "inherit" : "pointer",
+                }}
+              >
+                <path
+                  d={pathData}
+                  fill="none"
+                  stroke="#000000"
+                  strokeWidth={isSelected ? "7" : "5"}
+                  strokeOpacity="0.4"
+                  strokeLinecap="round"
+                />
+                <path
+                  d={pathData}
+                  fill="none"
+                  stroke={w.color}
+                  strokeWidth={isSelected ? "4.5" : "3.2"}
+                  strokeLinecap="round"
+                  filter="url(#wire-glow)"
+                />
+                <circle cx={w.x1} cy={w.y1} r="3" fill="#cbd5e1" stroke="#475569" strokeWidth="1" />
+                <circle cx={w.x2} cy={w.y2} r="3" fill="#cbd5e1" stroke="#475569" strokeWidth="1" />
+              </g>
+            );
+          })}
+
+          {/* Live rubber-band preview while routing a wire */}
+          {drawMode && wireStart && cursorPos && (
+            <g style={{ pointerEvents: "none" }}>
+              <path
+                d={`M ${wireStart.x} ${wireStart.y} Q ${(wireStart.x + cursorPos.x) / 2} ${Math.min(wireStart.y, cursorPos.y) - 30} ${cursorPos.x} ${cursorPos.y}`}
+                fill="none"
+                stroke={drawColor}
+                strokeWidth="3"
+                strokeDasharray="6 4"
+                strokeOpacity="0.85"
+                strokeLinecap="round"
+              />
+              <circle cx={wireStart.x} cy={wireStart.y} r="4" fill={drawColor} />
+            </g>
+          )}
         </svg>
 
         {/* Workbench Watermark Badge */}
@@ -715,9 +996,10 @@ export function InteractiveBreadboardCanvas({
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Info className="h-3.5 w-3.5 text-primary" />
         <span>
-          Dynamic Jumper Wires: Drag components to route wires across your circuit. Select any
-          component to choose which Arduino pin (D0–D13 / A0–A5) it connects to or pick a wire
-          color.
+          Select mode: drag components to route wires, click one to set its Arduino pin (D0–D13 /
+          A0–A5) or wire color, and click a wire to remove it. Draw wire mode: click two points to
+          route a new jumper wire (Esc cancels). Parts can be dragged from the palette onto the
+          workbench.
         </span>
       </div>
     </div>

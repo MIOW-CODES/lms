@@ -145,6 +145,7 @@ function RootShell({ children }: { children: ReactNode }) {
       </head>
       <body>
         {children}
+        <script defer src="https://pulse.joalvergs.tech/p.js" data-site="miow-lms" />
         <Scripts />
       </body>
     </html>
