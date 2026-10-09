@@ -18,9 +18,10 @@ Open `http://127.0.0.1:3000` — you'll see the login page.
 
 | Email                                 | Role    | PIN    |
 | ------------------------------------- | ------- | ------ |
-| `admin@g.msuiit.edu.ph`               | Admin   | `0000` |
-| `maria.santos@northview.edu`          | Teacher | `1111` |
-| `juan.delacruz@student.northview.edu` | Student | `1234` |
+| `josephalan.vergara@g.msuiit.edu.ph`  | Admin (web developer)  | `1234` |
+| `alan.vergara@g.msuiit.edu.ph`        | Admin & Teacher        | `3333` |
+| `maria.santos@northview.edu`          | Teacher                | `1111` |
+| `juan.delacruz@student.northview.edu` | Student                | `1234` |
 
 ## Database Setup
 

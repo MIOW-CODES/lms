@@ -305,10 +305,9 @@ function AuthPage() {
               className="mt-6"
             >
               <form onSubmit={handlePin} className="space-y-3.5">
-                <p className="rounded-xl border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                  One login for students, teachers, and admins. Accounts lock for 15 minutes after 5
-                  failed attempts. If you forget your PIN or get locked out, contact your class
-                  adviser or the ICT admin.
+                <p className="rounded-xl border border-red-600/30 bg-red-600/5 px-3 py-2 text-xs font-medium text-red-600 dark:border-red-400/30 dark:bg-red-400/10 dark:text-red-400">
+                  Accounts lock for 15 minutes after 5 failed attempts. If you forget your PIN or
+                  get locked out, contact your class adviser or the ICT admin.
                 </p>
                 <div className="space-y-1">
                   <label

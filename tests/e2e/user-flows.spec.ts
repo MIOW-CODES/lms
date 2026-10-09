@@ -418,44 +418,49 @@ const describeRealDB =
 describeRealDB("Real PIN login", () => {
   test.setTimeout(60000);
 
-  test("admin logs in via PIN and sees Campus Overview", async ({ page }) => {
+  /** Hydration-safe PIN login: retries tab click + fills until the submit button enables. */
+  async function pinLogin(page: Page, id: string, pin: string) {
     await page.goto("/auth");
     await page.evaluate(() => localStorage.clear());
     await page.goto("/auth");
-    await page.waitForTimeout(1000);
-    await page.getByRole("button", { name: /PIN Login/ }).click();
-    await page.waitForTimeout(500);
-    await page.locator("#login-id").fill("admin@g.msuiit.edu.ph");
-    await page.locator("#login-pin").fill("0000");
-    await page.getByRole("button", { name: /Sign In/ }).click();
+    for (let i = 0; i < 20; i++) {
+      try {
+        await page.locator("#auth-tab-pin").click({ timeout: 2000 });
+        await page.waitForTimeout(150);
+        await page.locator("#login-id").fill(id, { timeout: 2000 });
+        await page.locator("#login-pin").fill(pin, { timeout: 2000 });
+        const btn = page.locator("#auth-panel-pin button[type=submit]");
+        if (await btn.isEnabled()) {
+          await btn.click({ timeout: 5000 });
+          return;
+        }
+      } catch {
+        // not hydrated yet — retry
+      }
+      await page.waitForTimeout(500);
+    }
+    throw new Error("PIN login form never became ready");
+  }
+
+  test("admin logs in via PIN and sees Campus Overview", async ({ page }) => {
+    await pinLogin(page, "josephalan.vergara@g.msuiit.edu.ph", "1234");
     await page.waitForURL(/\/dashboard\/admin/, { timeout: 20000 });
-    await expect(page.locator("body")).toContainText("Campus Overview", { timeout: 15000 });
+    await expect(page.locator("body")).toContainText(/Admin Console|Good morning/i, {
+      timeout: 15000,
+    });
   });
 
   test("teacher logs in via PIN", async ({ page }) => {
-    await page.goto("/auth");
-    await page.evaluate(() => localStorage.clear());
-    await page.goto("/auth");
-    await page.waitForTimeout(1000);
-    await page.getByRole("button", { name: /PIN Login/ }).click();
-    await page.waitForTimeout(500);
-    await page.locator("#login-id").fill("alan.vergara@g.msuiit.edu.ph");
-    await page.locator("#login-pin").fill("3333");
-    await page.getByRole("button", { name: /Sign In/ }).click();
-    await page.waitForURL(/\/dashboard\/teacher/, { timeout: 20000 });
-    await expect(page.locator("body")).toContainText("Teacher Dashboard", { timeout: 15000 });
+    await pinLogin(page, "jose.ramirez@northview.edu", "2222");
+    // Teachers land on the shared admin console courses workspace (dashboardPathFor).
+    await page.waitForURL(/\/dashboard\/admin\/courses/, { timeout: 20000 });
+    await expect(page.locator("body")).toContainText(/Teacher Portal|Courses/i, {
+      timeout: 15000,
+    });
   });
 
   test("student logs in via PIN", async ({ page }) => {
-    await page.goto("/auth");
-    await page.evaluate(() => localStorage.clear());
-    await page.goto("/auth");
-    await page.waitForTimeout(1000);
-    await page.getByRole("button", { name: /PIN Login/ }).click();
-    await page.waitForTimeout(500);
-    await page.locator("#login-id").fill("josephalan.vergara@g.msuiit.edu.ph");
-    await page.locator("#login-pin").fill("1234");
-    await page.getByRole("button", { name: /Sign In/ }).click();
+    await pinLogin(page, "charmine.benejol@g.msuiit.edu.ph", "2025-2342");
     await page.waitForURL(/\/dashboard\/student/, { timeout: 20000 });
     await expect(page.locator("body")).toContainText(/Student Dashboard|Welcome/i, {
       timeout: 15000,
@@ -463,15 +468,7 @@ describeRealDB("Real PIN login", () => {
   });
 
   test("student can login via student_id", async ({ page }) => {
-    await page.goto("/auth");
-    await page.evaluate(() => localStorage.clear());
-    await page.goto("/auth");
-    await page.waitForTimeout(1000);
-    await page.getByRole("button", { name: /PIN Login/ }).click();
-    await page.waitForTimeout(500);
-    await page.locator("#login-id").fill("2026-0000");
-    await page.locator("#login-pin").fill("1234");
-    await page.getByRole("button", { name: /Sign In/ }).click();
+    await pinLogin(page, "2025-2342", "2025-2342");
     await page.waitForURL(/\/dashboard\/student/, { timeout: 20000 });
   });
 });
