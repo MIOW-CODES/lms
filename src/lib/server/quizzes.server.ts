@@ -49,19 +49,26 @@ function shuffleInPlace<T>(arr: T[]): T[] {
  *
  * Pure and exported for unit testing.
  */
-export function selectQuestionBank<T extends { id: string }>(
+export function selectQuestionBank<T extends { id: string; required?: boolean }>(
   all: T[],
   count: number,
   usedIds: Iterable<string>,
 ): T[] {
   if (count <= 0 || all.length <= count) return all;
+  // Pinned items (e.g. a fixed exam section like Part I pictures or Part IV
+  // problem solving) are never dropped from a draw: reserve their slots first,
+  // then fill the remainder from the flexible pool with unseen-first order.
+  const pinned = all.filter((q) => q.required);
+  if (pinned.length >= count) return shuffleInPlace([...pinned]).slice(0, count);
+  const pool = pinned.length ? all.filter((q) => !q.required) : all;
+  const need = count - pinned.length;
   const used = new Set(usedIds);
   const unused: T[] = [];
   const seen: T[] = [];
-  for (const q of all) (used.has(q.id) ? seen : unused).push(q);
+  for (const q of pool) (used.has(q.id) ? seen : unused).push(q);
   shuffleInPlace(unused);
   shuffleInPlace(seen);
-  return [...unused, ...seen].slice(0, count);
+  return [...pinned, ...unused, ...seen].slice(0, need + pinned.length);
 }
 
 export async function getQuizPublic(id: string, studentId?: string) {
@@ -82,7 +89,7 @@ export async function getQuizPublic(id: string, studentId?: string) {
   let questions = await unwrap<any[]>(
     db
       .from("quiz_questions")
-      .select("id, quiz_id, question, options, position")
+      .select("id, quiz_id, question, options, position, image_url, lab_task, required")
       .eq("quiz_id", id)
       .order("position"),
   );
@@ -184,17 +191,22 @@ export function gradeEssay(answer: string, rubric: string): boolean {
 async function scoreQuiz(quiz_id: string, answers: Record<string, string>, questionIds?: string[]) {
   let query = db
     .from("quiz_questions")
-    .select("id, question, options, correct_answer")
+    .select("id, question, options, correct_answer, image_url")
     .eq("quiz_id", quiz_id)
     .order("position");
   // If question_ids provided (question bank), only score those questions
   if (questionIds && questionIds.length > 0) {
     query = query.in("id", questionIds);
   }
-  const questions =
-    await unwrap<Array<{ id: string; question: string; options: unknown; correct_answer: string }>>(
-      query,
-    );
+  const questions = await unwrap<
+    Array<{
+      id: string;
+      question: string;
+      options: unknown;
+      correct_answer: string;
+      image_url: string | null;
+    }>
+  >(query);
   const norm = (s: string) =>
     s
       .trim()
@@ -217,6 +229,7 @@ async function scoreQuiz(quiz_id: string, answers: Record<string, string>, quest
       chosen,
       correct_answer: key,
       correct,
+      image_url: (q.image_url as string | null) ?? null,
     };
   });
   const score = results.filter((r) => r.correct).length;
@@ -297,6 +310,7 @@ type ScoredResult = {
   chosen: string | null;
   correct_answer: string;
   correct: boolean;
+  image_url?: string | null;
 };
 
 function effectiveScore(

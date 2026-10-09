@@ -75,6 +75,44 @@ describe("selectQuestionBank", () => {
       }
     }
   });
+
+  it("always includes required (pinned) questions in every draw", () => {
+    const withPinned = [
+      ...pool.slice(0, 8),
+      { id: "pin1", required: true },
+      { id: "pin2", required: true },
+      { id: "pin3", required: true },
+    ];
+    for (let run = 0; run < 25; run++) {
+      const picked = selectQuestionBank(withPinned, 5, []).map((q) => q.id);
+      expect(picked).toHaveLength(5);
+      expect(picked).toContain("pin1");
+      expect(picked).toContain("pin2");
+      expect(picked).toContain("pin3");
+      expect(new Set(picked).size).toBe(5);
+    }
+  });
+
+  it("keeps required questions on retakes even when already seen", () => {
+    const withPinned = [...pool.slice(0, 6), { id: "pin1", required: true }];
+    const allUsed = withPinned.map((q) => q.id);
+    const picked = selectQuestionBank(withPinned, 4, allUsed).map((q) => q.id);
+    expect(picked).toHaveLength(4);
+    expect(picked).toContain("pin1");
+  });
+
+  it("returns only required questions (shuffled) when they fill the draw", () => {
+    const withPinned = [
+      ...pool,
+      { id: "pin1", required: true },
+      { id: "pin2", required: true },
+      { id: "pin3", required: true },
+    ];
+    const picked = selectQuestionBank(withPinned, 3, [])
+      .map((q) => q.id)
+      .sort();
+    expect(picked).toEqual(["pin1", "pin2", "pin3"]);
+  });
 });
 
 /* ---------- parseKeywordCategories ---------- */

@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Eye,
@@ -16,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { setAssessmentMode } from "@/lib/assessment-mode";
 import { useExamLock } from "@/hooks/useExamLock";
+import { ArduinoLab } from "@/components/arduino-lab";
 import {
   useAntiCheat,
   integrityLabel,
@@ -119,6 +121,8 @@ function QuizzesPage() {
   const [questions, setQuestions] = useState<QuizQuestionPublic[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [idx, setIdx] = useState(0);
+  // Collapsible Virtual Arduino Lab panel for problem-solving (lab_task) items.
+  const [labOpen, setLabOpen] = useState(true);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [result, setResult] = useState<QuizSuccess | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -511,6 +515,13 @@ function QuizzesPage() {
                         {i + 1}. {r.question}
                       </p>
                     </div>
+                    {r.image_url && (
+                      <img
+                        src={r.image_url}
+                        alt="Question illustration"
+                        className="mt-2 max-h-40 rounded-lg border border-border object-contain"
+                      />
+                    )}
                     {r.options.length === 0 ? (
                       <div className="mt-2 space-y-1.5 text-xs">
                         <p className="rounded-lg border border-border px-3 py-1.5 text-muted-foreground">
@@ -696,14 +707,28 @@ function QuizzesPage() {
                 <p className="mb-3 text-sm font-semibold">
                   {idx + 1}. {current.question}
                 </p>
+                {current.image_url && (
+                  <img
+                    src={current.image_url}
+                    alt="Question illustration"
+                    className="mx-auto mb-3 max-h-56 rounded-lg border border-border bg-background object-contain"
+                  />
+                )}
                 {current.options.length === 0 ? (
                   // Fill-in-the-blank and essay items have no options — free text.
                   <textarea
                     value={answers[current.id] ?? ""}
                     onChange={(e) => setAnswers((a) => ({ ...a, [current.id]: e.target.value }))}
-                    placeholder="Type your answer here…"
-                    rows={3}
-                    className="w-full rounded-xl border border-input bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                    placeholder={
+                      current.lab_task
+                        ? "Type or paste your final code / circuit description here…"
+                        : "Type your answer here…"
+                    }
+                    rows={current.lab_task ? 8 : 3}
+                    className={cn(
+                      "w-full rounded-xl border border-input bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring",
+                      current.lab_task && "font-mono",
+                    )}
                   />
                 ) : (
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -721,6 +746,28 @@ function QuizzesPage() {
                         {opt}
                       </button>
                     ))}
+                  </div>
+                )}
+                {current.lab_task && (
+                  <div className="mt-4 overflow-hidden rounded-xl border border-primary/30">
+                    <button
+                      type="button"
+                      onClick={() => setLabOpen((o) => !o)}
+                      className="flex w-full items-center justify-between gap-2 bg-primary/5 px-4 py-3 text-left text-sm font-semibold hover:bg-primary/10"
+                    >
+                      <span>🧪 Virtual Arduino Lab — build &amp; test your solution here</span>
+                      <ChevronDown
+                        className={cn(
+                          "h-4 w-4 shrink-0 transition-transform",
+                          labOpen && "rotate-180",
+                        )}
+                      />
+                    </button>
+                    {labOpen && (
+                      <div className="max-h-[70vh] overflow-y-auto border-t border-border p-3">
+                        <ArduinoLab />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

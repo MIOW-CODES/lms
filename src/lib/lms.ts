@@ -366,6 +366,12 @@ export interface QuizQuestion {
   options: string[];
   correct_answer: string;
   position: number;
+  /** Question media — URL or data URL rendered above the answer area. */
+  image_url?: string | null;
+  /** Embeds the Virtual Arduino Lab (code + breadboard) for this task. */
+  lab_task?: boolean;
+  /** Always included when an attempt draws the question bank (fixed sections). */
+  required?: boolean;
 }
 
 /** Quiz question as served to students — the answer key stays on the server. */
@@ -436,6 +442,7 @@ export interface QuizResultItem {
   chosen: string | null;
   correct_answer: string;
   correct: boolean;
+  image_url?: string | null;
 }
 
 /** Attempt state for one worksheet, for the signed-in student. */
