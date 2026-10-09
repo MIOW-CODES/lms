@@ -24,6 +24,13 @@ export const Route = createFileRoute("/api/maintenance/repair-roster")({
       POST: async ({ request }) => {
         if (!authorized(request)) return new Response("Not found", { status: 404 });
         try {
+          const url = new URL(request.url);
+          const action = url.searchParams.get("action") ?? "";
+          if (action === "iae106" || action === "seed_iae106") {
+            const { seedIae106CourseAndQuizzes } = await import("@/lib/server/seed-iae106.server");
+            const summary = await seedIae106CourseAndQuizzes();
+            return Response.json({ ok: true, summary });
+          }
           const { repairTve100Roster } = await import("@/lib/server/roster-repair.server");
           const summary = await repairTve100Roster();
           return Response.json({ ok: true, summary });
@@ -34,6 +41,13 @@ export const Route = createFileRoute("/api/maintenance/repair-roster")({
       GET: async ({ request }) => {
         if (!authorized(request)) return new Response("Not found", { status: 404 });
         try {
+          const url = new URL(request.url);
+          const action = url.searchParams.get("action") ?? "";
+          if (action === "iae106" || action === "seed_iae106") {
+            const { seedIae106CourseAndQuizzes } = await import("@/lib/server/seed-iae106.server");
+            const summary = await seedIae106CourseAndQuizzes();
+            return Response.json({ ok: true, summary });
+          }
           const { repairTve100Roster } = await import("@/lib/server/roster-repair.server");
           const summary = await repairTve100Roster();
           return Response.json({ ok: true, summary });
