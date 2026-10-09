@@ -376,7 +376,8 @@ function AuthPage() {
                     </button>
                   </div>
                   <p id="login-pin-help" className="text-[11px] text-muted-foreground">
-                    Your 4-digit PIN, or your account password.
+                    Junior High (Grade 7–10) default PIN is 1234. College default PIN is your
+                    Student ID number.
                   </p>
                 </div>
                 <div
@@ -384,14 +385,22 @@ function AuthPage() {
                   hidden={!showPinHelp}
                   className="space-y-2 rounded-xl border border-border bg-muted/50 px-3.5 py-3 text-xs"
                 >
-                  <p className="font-semibold text-foreground">Forgot or locked PIN?</p>
+                  <p className="font-semibold text-foreground">Forgot or default PIN?</p>
                   <ol className="list-decimal space-y-1 pl-4 text-muted-foreground">
                     <li>
-                      First try your default PIN — your 4-digit ID code or birth month and day
-                      (MMDD).
+                      <strong>Junior High (Grade 7–10):</strong> default PIN is{" "}
+                      <span className="font-mono font-medium text-foreground">1234</span>.
                     </li>
-                    <li>If your account is locked, the lock clears after 15 minutes.</li>
-                    <li>To reset your PIN, contact your class adviser or the ICT admin.</li>
+                    <li>
+                      <strong>College students:</strong> default PIN is your{" "}
+                      <span className="font-mono font-medium text-foreground">Student ID</span>{" "}
+                      (e.g. 2025-2517).
+                    </li>
+                    <li>
+                      If your account is locked after 5 failed attempts, the lock automatically
+                      clears after 15 minutes.
+                    </li>
+                    <li>To reset a changed PIN, contact your class adviser or ICT admin.</li>
                   </ol>
                   <p className="text-muted-foreground">
                     Email the MIOW Admin Office:{" "}
