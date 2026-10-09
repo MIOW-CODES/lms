@@ -31,10 +31,9 @@ export async function seedIae106CourseAndQuizzes(): Promise<SeedIae106Result> {
     .order("role", { ascending: false })
     .limit(1);
 
+  const teacherRows = (teacherData as Array<{ id: string }> | null) ?? [];
   const teacherId =
-    teacherData && teacherData.length > 0
-      ? (teacherData[0] as { id: string }).id
-      : "b0000000-0000-4000-8000-000000000003";
+    teacherRows.length > 0 ? teacherRows[0]!.id : "b0000000-0000-4000-8000-000000000003";
 
   // 2. Check if course IAE 106 already exists
   const { data: existingCourseData } = await db
@@ -713,7 +712,9 @@ export async function seedIae106CourseAndQuizzes(): Promise<SeedIae106Result> {
       .select("id")
       .eq("quiz_id", quizId);
 
-    if (!existingQuestions || existingQuestions.length === 0) {
+    const qRows = (existingQuestions as Array<{ id: string }> | null) ?? [];
+
+    if (qRows.length === 0) {
       const qInserts = qDef.questions.map((q, idx) => ({
         quiz_id: quizId,
         question: q.question,
@@ -730,7 +731,7 @@ export async function seedIae106CourseAndQuizzes(): Promise<SeedIae106Result> {
       }
       questionsCreated += qInserts.length;
     } else {
-      questionsCreated += existingQuestions.length;
+      questionsCreated += qRows.length;
     }
   }
 
@@ -742,9 +743,10 @@ export async function seedIae106CourseAndQuizzes(): Promise<SeedIae106Result> {
     .eq("role", "student")
     .is("deleted_at", null);
 
+  const studentRows = (eligibleStudents as Array<{ id: string }> | null) ?? [];
   let enrollmentsAdded = 0;
-  if (eligibleStudents && eligibleStudents.length > 0) {
-    for (const s of eligibleStudents as Array<{ id: string }>) {
+  if (studentRows.length > 0) {
+    for (const s of studentRows) {
       const { error: enrErr } = await db
         .from("enrollments")
         .upsert(
