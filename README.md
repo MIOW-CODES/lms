@@ -14,14 +14,15 @@ bun run dev
 
 Open `http://127.0.0.1:3000` — you'll see the login page.
 
-### Seed PINs (test accounts)
+### Default Credentials
 
-| Email                                 | Role    | PIN    |
-| ------------------------------------- | ------- | ------ |
-| `josephalan.vergara@g.msuiit.edu.ph`  | Admin (web developer)  | `1234` |
-| `alan.vergara@g.msuiit.edu.ph`        | Admin & Teacher        | `3333` |
-| `maria.santos@northview.edu`          | Teacher                | `1111` |
-| `juan.delacruz@student.northview.edu` | Student                | `1234` |
+| Role / Level                         | Identifier                                    | Default PIN                   |
+| ------------------------------------ | --------------------------------------------- | ----------------------------- |
+| Junior High (Grade 7–10)             | Student ID (e.g. `2026-0001`) or school email | `1234`                        |
+| College (e.g. Section B8)            | Student ID (e.g. `2025-2517`) or school email | Student ID (e.g. `2025-2517`) |
+| `josephalan.vergara@g.msuiit.edu.ph` | Admin (web developer)                         | `1234`                        |
+| `alan.vergara@g.msuiit.edu.ph`       | Admin & Teacher                               | `3333`                        |
+| `maria.santos@northview.edu`         | Teacher                                       | `1111`                        |
 
 ## Database Setup
 
