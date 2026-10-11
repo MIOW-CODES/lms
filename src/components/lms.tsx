@@ -14,6 +14,7 @@ export {
   FadeIn,
   ProgressBar,
   EmptyState,
+  LoadError,
   FilterTabs,
   courseStyle,
   COURSE_STYLE,

@@ -9,7 +9,15 @@ import {
   updateQuestion,
   type QuestionBankQuestion,
 } from "@/lib/lms";
-import { AppShell, Badge, Card, EmptyState, staffNav, useProfile } from "@/components/lms";
+import {
+  AppShell,
+  Badge,
+  Card,
+  EmptyState,
+  LoadError,
+  staffNav,
+  useProfile,
+} from "@/components/lms";
 import { cn } from "@/lib/utils";
 
 interface EditForm {
@@ -40,21 +48,34 @@ export function QuestionBankPage() {
   const profile = useProfile(["admin", "teacher"]);
   const qc = useQueryClient();
 
-  const { data: courses } = useQuery({
+  const { data: courses, isError: coursesFailed } = useQuery({
     queryKey: ["courses"],
     queryFn: listCourses,
     enabled: !!profile,
   });
-  const { data: quizzes } = useQuery({
+  const { data: quizzes, isError: quizzesFailed } = useQuery({
     queryKey: ["quizzes"],
     queryFn: listQuizzes,
     enabled: !!profile,
   });
-  const { data: rows, isLoading } = useQuery({
+  const {
+    data: rows,
+    isLoading,
+    isError: rowsFailed,
+  } = useQuery({
     queryKey: ["question-bank"],
     queryFn: () => listQuestionBank(),
     enabled: !!profile,
   });
+  // Any failed load ends the loading state with a visible error + retry —
+  // otherwise a rejected server call left this page on "Loading questions…" /
+  // a misleading empty state forever.
+  const loadFailed = coursesFailed || quizzesFailed || rowsFailed;
+  const retryLoads = () => {
+    qc.invalidateQueries({ queryKey: ["courses"] });
+    qc.invalidateQueries({ queryKey: ["quizzes"] });
+    qc.invalidateQueries({ queryKey: ["question-bank"] });
+  };
 
   const [courseId, setCourseId] = useState(""); // "" = all courses
   const [quizId, setQuizId] = useState(""); // "" = all worksheets
@@ -247,7 +268,9 @@ export function QuestionBankPage() {
         </div>
       </div>
 
-      {isLoading ? (
+      {loadFailed ? (
+        <LoadError what="the question bank" onRetry={retryLoads} />
+      ) : isLoading ? (
         <Card className="p-6 text-sm text-muted-foreground">Loading questions…</Card>
       ) : groups.length === 0 ? (
         <EmptyState

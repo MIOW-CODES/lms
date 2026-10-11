@@ -15,7 +15,15 @@ import {
   type Course,
   type TosItem,
 } from "@/lib/lms";
-import { AppShell, Card, EmptyState, Modal, staffNav, useProfile } from "@/components/lms";
+import {
+  AppShell,
+  Card,
+  EmptyState,
+  LoadError,
+  Modal,
+  staffNav,
+  useProfile,
+} from "@/components/lms";
 import { cn } from "@/lib/utils";
 
 /** Bloom's taxonomy levels allowed for a TOS item (mirrors the server enum). */
@@ -102,7 +110,12 @@ export function TosView({
   const [genOpen, setGenOpen] = useState(false);
   const [genSelected, setGenSelected] = useState<Set<string>>(new Set());
 
-  const { data: tosRows, isLoading: tosLoading } = useQuery({
+  const {
+    data: tosRows,
+    isLoading: tosLoading,
+    isError: tosFailed,
+    refetch: refetchTos,
+  } = useQuery({
     queryKey: ["course-tos", course.id],
     queryFn: () => listCourseTos(course.id),
     enabled: !!course.id,
@@ -352,7 +365,9 @@ export function TosView({
         </label>
       </Card>
 
-      {tosLoading ? (
+      {tosFailed ? (
+        <LoadError what="this course's TOS" onRetry={() => void refetchTos()} />
+      ) : tosLoading ? (
         <Card className="p-6 text-sm text-muted-foreground">Loading TOS…</Card>
       ) : !draft || draft.items.length === 0 ? (
         <EmptyState
@@ -536,7 +551,11 @@ function sanitizeCount(value: string): number {
 /** Full-page TOS route body (teacher + admin): course picker + TosView. */
 export function TosPage() {
   const profile = useProfile(["admin", "teacher"]);
-  const { data: courses } = useQuery({
+  const {
+    data: courses,
+    isError: coursesFailed,
+    refetch: refetchCourses,
+  } = useQuery({
     queryKey: ["courses"],
     queryFn: listCourses,
     enabled: !!profile,
@@ -566,7 +585,9 @@ export function TosPage() {
       </p>
 
       {!course ? (
-        courses === undefined ? (
+        coursesFailed ? (
+          <LoadError what="your courses" onRetry={() => void refetchCourses()} />
+        ) : courses === undefined ? (
           <Card className="p-6 text-sm text-muted-foreground">Loading courses…</Card>
         ) : (
           <EmptyState title="No courses yet" sub="Create a course before building a TOS." />

@@ -641,3 +641,30 @@ export function LoadingSkeleton({ rows = 5 }: { rows?: number }) {
     </div>
   );
 }
+
+/* ---------- Query Load Error ---------- */
+
+/**
+ * Terminal state for a failed data load — shown instead of an endless loading
+ * placeholder so a rejected server call (expired session, network error, …)
+ * is visible and recoverable via retry.
+ */
+export function LoadError({ what, onRetry }: { what: string; onRetry?: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-card/40 p-10 text-center backdrop-blur-sm">
+      <p className="font-semibold">Couldn't load {what}</p>
+      <p className="text-sm text-muted-foreground">
+        Something went wrong while fetching this data. Try again — if it keeps happening, sign out
+        and back in.
+      </p>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+        >
+          Try again
+        </button>
+      )}
+    </div>
+  );
+}

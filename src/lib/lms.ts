@@ -724,7 +724,14 @@ export async function refreshSessionProfile(): Promise<Profile | null> {
     const fresh = await refreshSessionFn({ data: { token: current.session_token } });
     if (!fresh) return null;
     return updateSessionProfile(fresh);
-  } catch {
+  } catch (e) {
+    // The server rejected the cached token (expired, revoked, or signed with a
+    // rotated secret). Keeping the dead session left the shell looking signed-in
+    // while every gated call failed — pages hung on their loading states with no
+    // error anywhere. Drop the session so useProfile's sync() redirects to
+    // sign-in and the user can recover. Only "Unauthorized" triggers this;
+    // transient failures keep the cached session.
+    if (e instanceof Error && e.message === "Unauthorized") saveSession(null);
     return null;
   }
 }
