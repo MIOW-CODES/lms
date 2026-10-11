@@ -177,52 +177,70 @@ interface UnoTerminal {
   label: string;
   mmX: number;
   mmY: number;
+  /**
+   * Vertical stagger in px. Header pins sit at a 2.54mm (≈9.6px) pitch —
+   * tighter than the 26px touch hit area — so alternating pins are nudged
+   * up/down (two interleaved rows) to keep every terminal clickable.
+   */
+  yNudge: number;
 }
 
-const UNO_TERMINALS: UnoTerminal[] = [
-  ...[13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((n) => ({
-    key: `uno-D${n}`,
-    pin: n as UnoPinRef | "GND2",
-    label: `${n}`,
-    mmX: UNO_DIGITAL_MM[n]!,
-    mmY: UNO_TOP_Y_MM,
-  })),
-  {
-    key: "uno-3V3",
-    pin: "3V3" as UnoPinRef | "GND2",
-    label: "3.3V",
-    mmX: UNO_POWER_MM["3V3"]!,
-    mmY: UNO_BOTTOM_Y_MM,
-  },
-  {
-    key: "uno-5V",
-    pin: "5V" as UnoPinRef | "GND2",
-    label: "5V",
-    mmX: UNO_POWER_MM["5V"]!,
-    mmY: UNO_BOTTOM_Y_MM,
-  },
-  {
-    key: "uno-GND",
-    pin: "GND" as UnoPinRef | "GND2",
-    label: "GND",
-    mmX: UNO_POWER_MM["GND"]!,
-    mmY: UNO_BOTTOM_Y_MM,
-  },
-  {
-    key: "uno-GND2",
-    pin: "GND2" as UnoPinRef | "GND2",
-    label: "GND",
-    mmX: UNO_POWER_MM["GND2"]!,
-    mmY: UNO_BOTTOM_Y_MM,
-  },
-  ...[0, 1, 2, 3, 4, 5].map((a) => ({
-    key: `uno-A${a}`,
-    pin: (14 + a) as UnoPinRef | "GND2",
-    label: `A${a}`,
-    mmX: UNO_ANALOG_MM[a]!,
-    mmY: UNO_BOTTOM_Y_MM,
-  })),
-];
+function buildUnoTerminals(): UnoTerminal[] {
+  const stagger = (arr: Array<Omit<UnoTerminal, "yNudge">>): UnoTerminal[] =>
+    arr.map((t, i) => ({ ...t, yNudge: i % 2 === 0 ? -8 : 8 }));
+  return [
+    ...stagger(
+      [13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((n) => ({
+        key: `uno-D${n}`,
+        pin: n as UnoPinRef | "GND2",
+        label: `${n}`,
+        mmX: UNO_DIGITAL_MM[n]!,
+        mmY: UNO_TOP_Y_MM,
+      })),
+    ),
+    ...stagger([
+      {
+        key: "uno-3V3",
+        pin: "3V3" as UnoPinRef | "GND2",
+        label: "3.3V",
+        mmX: UNO_POWER_MM["3V3"]!,
+        mmY: UNO_BOTTOM_Y_MM,
+      },
+      {
+        key: "uno-5V",
+        pin: "5V" as UnoPinRef | "GND2",
+        label: "5V",
+        mmX: UNO_POWER_MM["5V"]!,
+        mmY: UNO_BOTTOM_Y_MM,
+      },
+      {
+        key: "uno-GND",
+        pin: "GND" as UnoPinRef | "GND2",
+        label: "GND",
+        mmX: UNO_POWER_MM["GND"]!,
+        mmY: UNO_BOTTOM_Y_MM,
+      },
+      {
+        key: "uno-GND2",
+        pin: "GND2" as UnoPinRef | "GND2",
+        label: "GND",
+        mmX: UNO_POWER_MM["GND2"]!,
+        mmY: UNO_BOTTOM_Y_MM,
+      },
+    ]),
+    ...stagger(
+      [0, 1, 2, 3, 4, 5].map((a) => ({
+        key: `uno-A${a}`,
+        pin: (14 + a) as UnoPinRef | "GND2",
+        label: `A${a}`,
+        mmX: UNO_ANALOG_MM[a]!,
+        mmY: UNO_BOTTOM_Y_MM,
+      })),
+    ),
+  ];
+}
+
+const UNO_TERMINALS: UnoTerminal[] = buildUnoTerminals();
 
 /** Wire endpoint for a Uno terminal key ("GND2" shares the GND net). */
 function unoTerminalEndpoint(t: UnoTerminal): WireEndpoint {
@@ -241,6 +259,26 @@ function wirePath(a: { x: number; y: number }, b: { x: number; y: number }): str
   if (Math.abs(dx) < 6) return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
   const sag = Math.min(80, 26 + Math.abs(dx) * 0.16 + Math.abs(dy) * 0.06);
   return `M ${a.x} ${a.y} C ${a.x + dx * 0.28} ${a.y + sag} ${b.x - dx * 0.28} ${b.y + sag} ${b.x} ${b.y}`;
+}
+
+function nextLabel(list: CanvasPart[], type: WokwiComponentType): string {
+  const prefix =
+    type === "wokwi-led"
+      ? "LED"
+      : type === "wokwi-pushbutton"
+        ? "button"
+        : type === "wokwi-potentiometer"
+          ? "pot"
+          : type === "wokwi-buzzer"
+            ? "buzzer"
+            : type === "wokwi-servo"
+              ? "servo"
+              : type === "wokwi-hc-sr04"
+                ? "sonar"
+                : "resistor";
+  let n = 1;
+  while (list.some((p) => p.label === `${prefix}${n}`)) n += 1;
+  return `${prefix}${n}`;
 }
 
 interface InteractiveBreadboardCanvasProps {
@@ -293,9 +331,9 @@ export function InteractiveBreadboardCanvas({
 
   /* ---------- Terminal registry (key → canvas coordinate) ---------- */
   const unoCoord = useCallback(
-    (t: { mmX: number; mmY: number }) => ({
+    (t: { mmX: number; mmY: number; yNudge?: number }) => ({
       x: unoPos.x + (t.mmX + 4) * MM,
-      y: unoPos.y + t.mmY * MM,
+      y: unoPos.y + t.mmY * MM + (t.yNudge ?? 0),
     }),
     [unoPos],
   );
@@ -372,18 +410,36 @@ export function InteractiveBreadboardCanvas({
       return;
     }
     const seededIds = new Set(task.parts.map((sp) => `task-${sp.key}`));
-    setParts((prev) => [
-      ...prev.filter((p) => !p.id.startsWith("task-")),
-      ...task.parts.map<CanvasPart>((sp) => ({
-        id: `task-${sp.key}`,
-        type: sp.type,
-        x: sp.x,
-        y: sp.y,
-        label: sp.label,
-        color: sp.color,
-        value: sp.type === "wokwi-potentiometer" ? 512 : sp.type === "wokwi-hc-sr04" ? 25 : 0,
-      })),
-    ]);
+    setParts((prev) => {
+      const kept = prev.filter((p) => !p.id.startsWith("task-"));
+      // Seeded labels stay unique against parts the student already placed,
+      // and seed positions shift when they would land on top of one.
+      const all: CanvasPart[] = [...kept];
+      const seeded = task.parts.map<CanvasPart>((sp) => {
+        let { x, y } = sp;
+        for (let i = 0; i < 8; i += 1) {
+          const collides = all.some((p) => Math.abs(p.x - x) < 120 && Math.abs(p.y - y) < 130);
+          if (!collides) break;
+          y += 180;
+          if (y > 460) {
+            y = 70;
+            x += 150;
+          }
+        }
+        const part: CanvasPart = {
+          id: `task-${sp.key}`,
+          type: sp.type,
+          x,
+          y,
+          label: nextLabel(all, sp.type),
+          color: sp.color,
+          value: sp.type === "wokwi-potentiometer" ? 512 : sp.type === "wokwi-hc-sr04" ? 25 : 0,
+        };
+        all.push(part);
+        return part;
+      });
+      return [...kept, ...seeded];
+    });
     // Drop any wires that pointed at task parts from a previously selected task
     setWires((prev) =>
       prev.filter((wr) =>
@@ -568,26 +624,6 @@ export function InteractiveBreadboardCanvas({
   };
 
   /* ---------- Palette ---------- */
-  const nextLabel = (list: CanvasPart[], type: WokwiComponentType): string => {
-    const prefix =
-      type === "wokwi-led"
-        ? "LED"
-        : type === "wokwi-pushbutton"
-          ? "button"
-          : type === "wokwi-potentiometer"
-            ? "pot"
-            : type === "wokwi-buzzer"
-              ? "buzzer"
-              : type === "wokwi-servo"
-                ? "servo"
-                : type === "wokwi-hc-sr04"
-                  ? "sonar"
-                  : "resistor";
-    let n = 1;
-    while (list.some((p) => p.label === `${prefix}${n}`)) n += 1;
-    return `${prefix}${n}`;
-  };
-
   const addPart = (type: WokwiComponentType, at?: { x: number; y: number }) => {
     const layout = PART_LAYOUTS[type];
     setParts((prev) => {
@@ -654,6 +690,8 @@ export function InteractiveBreadboardCanvas({
     label: string,
     accent = "#94a3b8",
     onDown?: (e: React.PointerEvent) => void,
+    testid?: string,
+    stub?: { x1: number; y1: number; x2: number; y2: number },
   ) => {
     const isHover = hoverKey === key;
     const isPending = pendingKey === key;
@@ -661,6 +699,18 @@ export function InteractiveBreadboardCanvas({
     const r = isPending || isSnap ? 7.5 : isHover ? 6.5 : 5;
     return (
       <g key={key}>
+        {stub && (
+          <line
+            x1={stub.x1}
+            y1={stub.y1}
+            x2={stub.x2}
+            y2={stub.y2}
+            stroke="#475569"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            style={{ pointerEvents: "none" }}
+          />
+        )}
         <circle
           cx={coord.x}
           cy={coord.y}
@@ -695,6 +745,7 @@ export function InteractiveBreadboardCanvas({
           r={13}
           fill="transparent"
           data-term-key={key}
+          data-testid={testid}
           onPointerDown={(e) => onDown?.(e)}
           onClick={(e) => handleTerminalClick(e, key)}
           onPointerEnter={() => setHoverKey(key)}
@@ -1220,18 +1271,45 @@ export function InteractiveBreadboardCanvas({
           <svg className="pointer-events-none absolute inset-0 h-full w-full z-40">
             {/* Uno header terminals */}
             {UNO_TERMINALS.map((t) =>
-              renderTerminal(t.key, unoCoord(t), t.label, "#cbd5e1", (e) =>
-                handleTerminalDown(e, t.key),
+              renderTerminal(
+                t.key,
+                unoCoord(t),
+                t.label,
+                "#cbd5e1",
+                (e) => handleTerminalDown(e, t.key),
+                `term-${t.key}`,
               ),
             )}
 
-            {/* Part terminals */}
+            {/* Part terminals (with short stub leads into the part body) */}
             {parts.map((p) =>
               PART_LAYOUTS[p.type].terminals.map((t) => {
                 const coord = partTerminalCoord(p.id, t.id);
                 if (!coord) return null;
-                return renderTerminal(`part-${p.id}-${t.id}`, coord, t.label, "#a5b4fc", (e) =>
-                  handleTerminalDown(e, `part-${p.id}-${t.id}`),
+                const layout = PART_LAYOUTS[p.type];
+                const ex = p.x + layout.el.x;
+                const ey = p.y + layout.el.y;
+                const target = {
+                  x: Math.max(ex, Math.min(coord.x, ex + layout.el.w)),
+                  y: Math.max(ey, Math.min(coord.y, ey + layout.el.h)),
+                };
+                const dx = target.x - coord.x;
+                const dy = target.y - coord.y;
+                const len = Math.hypot(dx, dy) || 1;
+                const stub = {
+                  x1: coord.x + (dx / len) * 8,
+                  y1: coord.y + (dy / len) * 8,
+                  x2: target.x,
+                  y2: target.y,
+                };
+                return renderTerminal(
+                  `part-${p.id}-${t.id}`,
+                  coord,
+                  t.label,
+                  "#a5b4fc",
+                  (e) => handleTerminalDown(e, `part-${p.id}-${t.id}`),
+                  `term-part-${p.label}-${t.id}`,
+                  stub,
                 );
               }),
             )}
