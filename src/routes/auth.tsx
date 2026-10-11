@@ -56,6 +56,13 @@ function AuthPage() {
   const [showPinHelp, setShowPinHelp] = useState(false);
   const [busy, setBusy] = useState(false);
   const modeTabs = useRef<Partial<Record<Mode, HTMLButtonElement | null>>>({});
+  // Live DOM refs for the sign-in inputs. Browser/password-manager autofill
+  // can populate the fields without firing React onChange (mobile autofill
+  // in particular), which would leave the controlled state empty and keep
+  // the Sign In button disabled ("sign in is disabled"). Reading the values
+  // from the DOM at submit time makes autofilled sign-ins work.
+  const loginInputRef = useRef<HTMLInputElement | null>(null);
+  const pinInputRef = useRef<HTMLInputElement | null>(null);
 
   // Non-critical kiosk chrome: a transient backend blip must never take the
   // sign-in page down, so this query degrades to an empty list instead of
@@ -115,10 +122,21 @@ function AuthPage() {
   const handlePin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
-    dbg("auth", "PIN login clicked", { login: login.trim(), pinLength: pin.trim().length });
+    // Read the live DOM values first: password-manager autofill on mobile can
+    // fill the inputs without firing React onChange, leaving the controlled
+    // state empty while the fields display filled values.
+    const loginValue = (loginInputRef.current?.value ?? login).trim();
+    const pinValue = (pinInputRef.current?.value ?? pin).trim();
+    if (!loginValue || !pinValue) {
+      toast.error("Enter your account ID and PIN to sign in.");
+      return;
+    }
+    if (loginValue !== login) setLogin(loginValue);
+    if (pinValue !== pin) setPin(pinValue);
+    dbg("auth", "PIN login clicked", { login: loginValue, pinLength: pinValue.length });
     setBusy(true);
     try {
-      const res = await pinLogin(login.trim(), pin.trim());
+      const res = await pinLogin(loginValue, pinValue);
       dbg("auth", "pinLogin result", {
         ok: res.ok,
         reason: "reason" in res ? res.reason : undefined,
@@ -318,6 +336,7 @@ function AuthPage() {
                   </label>
                   <input
                     id="login-id"
+                    ref={loginInputRef}
                     value={login}
                     onChange={(e) => setLogin(e.target.value)}
                     placeholder="e.g. 2026-0042 or juan.delacruz"
@@ -352,6 +371,7 @@ function AuthPage() {
                   <div className="relative">
                     <input
                       id="login-pin"
+                      ref={pinInputRef}
                       value={pin}
                       onChange={(e) => setPin(e.target.value)}
                       placeholder="Enter your PIN or password"
@@ -416,7 +436,7 @@ function AuthPage() {
                 </div>
                 <button
                   type="submit"
-                  disabled={busy || !login.trim() || !pin}
+                  disabled={busy}
                   className="h-11 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
                 >
                   Sign In
