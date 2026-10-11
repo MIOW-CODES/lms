@@ -25,6 +25,25 @@ function fakeProfile(role: "admin" | "teacher" | "student") {
 }
 
 async function seedSession(page: Page, role: "admin" | "teacher" | "student") {
+  // The app deliberately drops sessions whose token the server rejects (a dead
+  // token left the shell looking signed-in while every gated call failed), and
+  // these UI tests seed a synthetic session that no server would accept. Fail
+  // the token-only server calls (session refresh et al.) at the network
+  // instead: transient failures keep the cached session, so the dashboards
+  // render exactly as they would with a live login.
+  await page.route("**/*", async (route) => {
+    const req = route.request();
+    if (req.method() === "POST" && req.url().includes("/_serverFn/")) {
+      const body = req.postData() ?? "";
+      // Token-only payloads serialize as {"k":["token"]}; richer calls carry
+      // extra keys (e.g. {"k":["table","token"]}) and pass through untouched.
+      if (body.includes('"k":["token"]')) {
+        await route.abort("failed");
+        return;
+      }
+    }
+    await route.continue();
+  });
   await page.goto("/");
   await page.evaluate(
     ({ key, profile }: { key: string; profile: ReturnType<typeof fakeProfile> }) => {
