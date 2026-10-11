@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
@@ -29,6 +29,8 @@ export function ClassRecord({
   courseCode: string;
   roster: Profile[];
 }) {
+  const [section, setSection] = useState("all");
+
   const { data: quizzes } = useQuery({
     queryKey: ["quizzes"],
     queryFn: listQuizzes,
@@ -115,10 +117,20 @@ export function ClassRecord({
     return assignmentScores?.get(assignmentId)?.get(studentId) ?? null;
   };
 
+  // Distinct sections across enrolled students, for the section filter.
+  const sections = useMemo(
+    () => [...new Set(roster.map((s) => s.section).filter((x): x is string => !!x))].sort(),
+    [roster],
+  );
+  const sectionRoster = useMemo(
+    () => (section === "all" ? roster : roster.filter((s) => s.section === section)),
+    [roster, section],
+  );
+
   const rows = useMemo(() => {
     // cellScore closes over quizScores/assignmentScores, which are both in the
     // dependency list below — so the memo recomputes whenever scores change.
-    return roster.map((s) => {
+    return sectionRoster.map((s) => {
       let obtained = 0;
       let possible = 0;
       const cells = columns.map((col) => {
@@ -133,7 +145,7 @@ export function ClassRecord({
       return { student: s, cells, obtained, possible, pct };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roster, columns, quizScores, assignmentScores]);
+  }, [sectionRoster, columns, quizScores, assignmentScores]);
 
   const hasData = columns.length > 0 && roster.length > 0;
 
@@ -163,7 +175,10 @@ export function ClassRecord({
       r.pct != null ? gradeRemarks(r.pct) : "",
     ]);
     const blob = buildXlsx([{ name: "Class Record", rows: [header, ...body] }]);
-    downloadBlob(blob, `${courseCode || "class"}-class-record.xlsx`);
+    downloadBlob(
+      blob,
+      `${courseCode || "class"}-class-record${section === "all" ? "" : `-${section}`}.xlsx`,
+    );
     toast.success("Excel exported.");
   };
 
@@ -198,7 +213,10 @@ export function ClassRecord({
     );
     const csv = [header.map((h) => `"${h}"`).join(","), ...lines].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    downloadBlob(blob, `${courseCode || "class"}-class-record.csv`);
+    downloadBlob(
+      blob,
+      `${courseCode || "class"}-class-record${section === "all" ? "" : `-${section}`}.csv`,
+    );
     toast.success("CSV exported.");
   };
 
@@ -215,12 +233,29 @@ export function ClassRecord({
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {sections.length > 0 && (
+          <select
+            value={section}
+            onChange={(e) => setSection(e.target.value)}
+            aria-label="Filter by section"
+            className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="all">All sections</option>
+            {sections.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        )}
         <p className="text-xs text-muted-foreground">
-          {columns.length} assessment{columns.length !== 1 ? "s" : ""} · {roster.length} student
-          {roster.length !== 1 ? "s" : ""}
+          {columns.length} assessment{columns.length !== 1 ? "s" : ""} ·{" "}
+          {section === "all"
+            ? `${roster.length} student${roster.length !== 1 ? "s" : ""}`
+            : `${rows.length} of ${roster.length} student${roster.length !== 1 ? "s" : ""}`}
         </p>
-        <div className="flex gap-2">
+        <div className="ml-auto flex gap-2">
           <button
             onClick={exportCsv}
             className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold hover:bg-muted"

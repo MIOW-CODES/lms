@@ -40,32 +40,43 @@ const cellInput =
   "h-9 w-full rounded-lg border border-input bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring";
 
 /**
- * Staff question bank: every quiz question with course context, filterable by
+ * Question bank table: every quiz question with course context, filterable by
  * course and worksheet, searchable, with inline editing of the stem, options,
  * answer key and flags. Includes answer keys — staff-only.
+ *
+ * Pass `courseId` to lock the bank to one course (course-workspace embed); the
+ * course selector is then hidden and the rows load scoped to that course.
  */
-export function QuestionBankPage() {
-  const profile = useProfile(["admin", "teacher"]);
+export function QuestionBank({
+  courseId: fixedCourseId,
+  enabled = true,
+}: {
+  /** Lock the bank to one course and hide the course selector. */
+  courseId?: string;
+  /** Gate data fetching (the standalone page waits for the staff profile). */
+  enabled?: boolean;
+}) {
   const qc = useQueryClient();
+  const showCourseFilter = !fixedCourseId;
 
   const { data: courses, isError: coursesFailed } = useQuery({
     queryKey: ["courses"],
     queryFn: listCourses,
-    enabled: !!profile,
+    enabled: enabled && showCourseFilter,
   });
   const { data: quizzes, isError: quizzesFailed } = useQuery({
     queryKey: ["quizzes"],
     queryFn: listQuizzes,
-    enabled: !!profile,
+    enabled,
   });
   const {
     data: rows,
     isLoading,
     isError: rowsFailed,
   } = useQuery({
-    queryKey: ["question-bank"],
-    queryFn: () => listQuestionBank(),
-    enabled: !!profile,
+    queryKey: fixedCourseId ? ["question-bank", fixedCourseId] : ["question-bank"],
+    queryFn: () => listQuestionBank(fixedCourseId),
+    enabled,
   });
   // Any failed load ends the loading state with a visible error + retry —
   // otherwise a rejected server call left this page on "Loading questions…" /
@@ -77,7 +88,8 @@ export function QuestionBankPage() {
     qc.invalidateQueries({ queryKey: ["question-bank"] });
   };
 
-  const [courseId, setCourseId] = useState(""); // "" = all courses
+  const [courseFilter, setCourseFilter] = useState(""); // "" = all courses
+  const courseId = fixedCourseId ?? courseFilter;
   const [quizId, setQuizId] = useState(""); // "" = all worksheets
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -204,36 +216,24 @@ export function QuestionBankPage() {
   const removeOption = (idx: number) =>
     setForm((f) => (f ? { ...f, options: f.options.filter((_, i) => i !== idx) } : f));
 
-  if (!profile) return null;
-
   return (
-    <AppShell
-      nav={staffNav(profile.role)}
-      profile={profile}
-      subtitle={profile.role === "admin" ? "MIOW Admin Console" : "MIOW Teacher Portal"}
-    >
-      <div className="mb-1 flex flex-wrap items-center gap-2">
-        <h1 className="font-display text-2xl font-bold sm:text-3xl">Question Bank</h1>
-      </div>
-      <p className="mb-6 mt-1 text-sm text-muted-foreground">
-        Every worksheet question across your courses, with answer keys. Edit stems, options, answer
-        keys and flags in place — changes apply to the live worksheet immediately.
-      </p>
-
+    <div>
       <div className="mb-5 flex flex-wrap gap-3">
-        <select
-          value={courseId}
-          onChange={(e) => setCourseId(e.target.value)}
-          aria-label="Filter by course"
-          className="h-11 min-w-56 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-        >
-          <option value="">All courses</option>
-          {(courses ?? []).map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.code} — {c.title} (G{c.grade_level})
-            </option>
-          ))}
-        </select>
+        {showCourseFilter && (
+          <select
+            value={courseFilter}
+            onChange={(e) => setCourseFilter(e.target.value)}
+            aria-label="Filter by course"
+            className="h-11 min-w-56 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">All courses</option>
+            {(courses ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.code} — {c.title} (G{c.grade_level})
+              </option>
+            ))}
+          </select>
+        )}
         <select
           value={quizId}
           onChange={(e) => setQuizId(e.target.value)}
@@ -277,7 +277,9 @@ export function QuestionBankPage() {
           title="No questions found"
           sub={
             search || courseId || quizId
-              ? "Try a different course, worksheet or search term."
+              ? showCourseFilter
+                ? "Try a different course, worksheet or search term."
+                : "Try a different worksheet or search term."
               : "Questions appear here as soon as worksheets are created."
           }
         />
@@ -470,6 +472,33 @@ export function QuestionBankPage() {
           </table>
         </Card>
       )}
+    </div>
+  );
+}
+
+/**
+ * Staff question bank page: every quiz question across the staff member's
+ * courses, with answer keys. Wraps the reusable bank table in the app shell.
+ */
+export function QuestionBankPage() {
+  const profile = useProfile(["admin", "teacher"]);
+
+  if (!profile) return null;
+
+  return (
+    <AppShell
+      nav={staffNav(profile.role)}
+      profile={profile}
+      subtitle={profile.role === "admin" ? "MIOW Admin Console" : "MIOW Teacher Portal"}
+    >
+      <div className="mb-1 flex flex-wrap items-center gap-2">
+        <h1 className="font-display text-2xl font-bold sm:text-3xl">Question Bank</h1>
+      </div>
+      <p className="mb-6 mt-1 text-sm text-muted-foreground">
+        Every worksheet question across your courses, with answer keys. Edit stems, options, answer
+        keys and flags in place — changes apply to the live worksheet immediately.
+      </p>
+      <QuestionBank enabled={!!profile} />
     </AppShell>
   );
 }

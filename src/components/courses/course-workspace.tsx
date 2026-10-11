@@ -5,6 +5,7 @@ import {
   ClipboardList,
   FileQuestion,
   FileSpreadsheet,
+  Library,
   Plus,
   Search,
   Table,
@@ -18,6 +19,7 @@ import { UserAvatar } from "@/components/ui-elements";
 import { WorksheetsSection } from "@/components/courses/worksheets-section";
 import { AssignmentsSection } from "@/components/courses/assignments-section";
 import { ClassRecord } from "@/components/courses/class-record";
+import { QuestionBank } from "@/components/courses/question-bank";
 import { TosView } from "@/components/courses/tos-view";
 import { EnrollStudentsModal } from "@/components/courses/enroll-students-modal";
 import { MeetingsPanel } from "@/components/courses/meetings-panel";
@@ -132,18 +134,32 @@ export function CourseRoster({
   loading?: boolean;
 }) {
   const [search, setSearch] = useState("");
+  const [section, setSection] = useState("all");
   const [enrollOpen, setEnrollOpen] = useState(false);
+
+  // Distinct sections across enrolled students, for the section filter.
+  const sections = useMemo(
+    () => [...new Set(roster.map((s) => s.section).filter((x): x is string => !!x))].sort(),
+    [roster],
+  );
+  const sectionRoster = useMemo(
+    () => (section === "all" ? roster : roster.filter((s) => s.section === section)),
+    [roster, section],
+  );
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return roster;
-    return roster.filter(
+    if (!q) return sectionRoster;
+    return sectionRoster.filter(
       (s) =>
         s.full_name.toLowerCase().includes(q) ||
         (s.student_id ?? "").toLowerCase().includes(q) ||
         (s.email ?? "").toLowerCase().includes(q),
     );
-  }, [roster, search]);
+  }, [sectionRoster, search]);
+
+  // Show the filtered count while a search or section filter is active.
+  const filtering = section !== "all" || search.trim() !== "";
 
   return (
     <Card className="p-4">
@@ -153,12 +169,29 @@ export function CourseRoster({
           <p className="text-xs text-muted-foreground">
             {loading ? (
               <span className="inline-block h-3.5 w-24 animate-pulse rounded bg-muted align-middle" />
+            ) : filtering ? (
+              `${visible.length} of ${roster.length} learner${roster.length !== 1 ? "s" : ""}`
             ) : (
               `${roster.length} learner${roster.length !== 1 ? "s" : ""} in this course`
             )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {sections.length > 0 && (
+            <select
+              value={section}
+              onChange={(e) => setSection(e.target.value)}
+              aria-label="Filter by section"
+              className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="all">All sections</option>
+              {sections.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          )}
           <label className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -188,7 +221,7 @@ export function CourseRoster({
         <p className="mt-4 rounded-xl border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
           {roster.length === 0
             ? "No students enrolled yet — use “Enroll students” to add existing learners."
-            : "No students match your search."}
+            : "No students match your search or section filter."}
         </p>
       ) : (
         <ul className="mt-4 grid gap-1.5 sm:grid-cols-2">
@@ -284,6 +317,7 @@ export function StaffCourseWorkspace({
     },
     { id: "class", label: "Class Record", icon: <FileSpreadsheet className="h-4 w-4" /> },
     { id: "tos", label: "TOS", icon: <Table className="h-4 w-4" /> },
+    { id: "bank", label: "Question Bank", icon: <Library className="h-4 w-4" /> },
     {
       id: "roster",
       label: "Students",
@@ -366,6 +400,8 @@ export function StaffCourseWorkspace({
         ))}
 
       {tab === "tos" && <TosView course={course} />}
+
+      {tab === "bank" && <QuestionBank courseId={course.id} />}
 
       {tab === "roster" && (
         <CourseRoster
