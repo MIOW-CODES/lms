@@ -14,6 +14,7 @@ import {
   attendancePercent,
   attendanceStreak,
   daysUntil,
+  enrollmentsForStudent,
   fmtDate,
   formatFileSize,
   listAnnouncements,
@@ -97,6 +98,11 @@ function StudentDashboard() {
     },
     enabled: !!profile,
   });
+  const { data: enrolledCourseIds, isLoading: enrollmentsLoading } = useQuery({
+    queryKey: ["enrollments", "student", profile?.id],
+    queryFn: () => enrollmentsForStudent(profile!.id),
+    enabled: !!profile?.id,
+  });
 
   if (!profile) return null;
   const isLoading =
@@ -105,11 +111,13 @@ function StudentDashboard() {
     assignmentsLoading ||
     submissionsLoading ||
     announcementsLoading ||
-    logsLoading;
+    logsLoading ||
+    enrollmentsLoading;
 
-  const myCourses = (courses ?? []).filter(
-    (c) => String(c.grade_level) === String(profile.grade_level),
-  );
+  const myCourses = (courses ?? []).filter((c) => {
+    const enrolled = new Set(enrolledCourseIds ?? []);
+    return enrolled.has(c.id) || String(c.grade_level) === String(profile.grade_level);
+  });
   const courseIds = new Set(myCourses.map((c) => c.id));
   const submittedIds = new Set(
     (submissions ?? []).filter((s) => s.status !== "pending").map((s) => s.assignment_id),
