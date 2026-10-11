@@ -49,6 +49,45 @@ export async function createSessionToken(
   return `${payload}.${sig}`;
 }
 
+/**
+ * JTI carried by a signed token (or null for legacy tokens issued without one).
+ * The session-scoped role view is keyed by jti, so callers that need to address
+ * the session row use this instead of re-implementing the payload parse.
+ */
+export function sessionJti(token: string): string | null {
+  const payloadPart = token.split(".")[0];
+  if (!payloadPart) return null;
+  try {
+    const body = JSON.parse(Buffer.from(payloadPart, "base64url").toString()) as { jti?: unknown };
+    return typeof body.jti === "string" && body.jti ? body.jti : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Write the session-scoped role view (allowlisted test account only — the
+ * caller enforces the email allowlist). Only the CURRENT session row is
+ * touched, so every fresh login starts from the real role again. Returns
+ * false when the session row is missing or already revoked.
+ */
+export async function setSessionRoleView(
+  jti: string,
+  profileId: string,
+  view: string,
+): Promise<boolean> {
+  const updated = await unwrap<Array<{ jti: string }>>(
+    db
+      .from("sessions")
+      .update({ role_view: view })
+      .eq("jti", jti)
+      .eq("profile_id", profileId)
+      .is("revoked_at", null)
+      .select("jti"),
+  );
+  return Array.isArray(updated) && updated.length > 0;
+}
+
 export function verifySessionToken(token: string): string {
   const [payload, sig] = token.split(".");
   if (!payload || !sig) throw new Error("Unauthorized");

@@ -20,6 +20,10 @@ export interface QuestionBankRow {
   lab_task: boolean;
   required: boolean;
   created_at: string;
+  /** Worksheet context (question_bank view) — title/ordering/soft-delete state. */
+  quiz_title: string | null;
+  quiz_created_at: string | null;
+  quiz_deleted_at: string | null;
 }
 
 export interface QuestionPatch {
@@ -34,7 +38,13 @@ export interface QuestionPatch {
 /** Defensive normalization (jsonb comes back parsed on both backends). */
 function normalizeRow(r: any): QuestionBankRow {
   const options = typeof r.options === "string" ? safeParse(r.options) : r.options;
-  return { ...(r as QuestionBankRow), options: Array.isArray(options) ? options : [] };
+  return {
+    ...(r as QuestionBankRow),
+    options: Array.isArray(options) ? options : [],
+    quiz_title: r.quiz_title ?? null,
+    quiz_created_at: r.quiz_created_at ?? null,
+    quiz_deleted_at: r.quiz_deleted_at ?? null,
+  };
 }
 
 function safeParse(s: string): unknown {

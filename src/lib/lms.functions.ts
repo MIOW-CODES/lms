@@ -147,6 +147,15 @@ export const refreshSessionFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.session.parse(data))
   .handler(async ({ data }) => server.requireSession(data.token));
 
+// Test-account role view switch (allowlist-guarded). The server checks the
+// SESSION's real profile email against a hard allowlist and throws "Forbidden"
+// for every other account — ordinary teachers/admins can never call it. The
+// chosen view is stored on the caller's session row only; the real role in the
+// DB never changes, and a fresh login starts back at the real role.
+export const setTestRoleViewFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.roleView.parse(data))
+  .handler(async ({ data }) => server.setTestRoleView(data.token, data.view));
+
 /* ---------- Announcements ---------- */
 
 // Public: the kiosk sign-in screen shows the announcements ticker.

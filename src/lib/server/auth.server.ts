@@ -2,26 +2,31 @@
 // Auth guards — session resolution with role checks.
 import { db } from "@/integrations/db/client.server";
 import { unwrap } from "@/lib/server/utils.server";
-import { verifySessionToken } from "@/lib/server/sessions.server";
+import { verifySessionToken, sessionJti } from "@/lib/server/sessions.server";
 import { getProfileById } from "@/lib/server/profiles.server";
+import { applyRoleView, isTestAccount } from "@/lib/role-view";
 
-/** Verify the caller's token and load their real profile. Throws if invalid. */
+/**
+ * Verify the caller's token and load their profile. Throws if invalid.
+ *
+ * Role-view shim: the allowlisted demo test account can pick a portal view
+ * (teacher/admin/student) stored on ITS session row (sessions.role_view). The
+ * view is applied here — the single session read path every guard goes
+ * through — so all guards consistently honor it, and ONLY for that email
+ * (see applyRoleView). The real profiles.role never changes.
+ */
 export async function requireSession(token: string) {
   const id = verifySessionToken(token);
   // jti revocation check — legacy tokens without jti skip DB check (compat)
+  let storedRoleView: string | null = null;
   try {
-    const payloadPart = token.split(".")[0];
-    if (payloadPart) {
-      const body = JSON.parse(Buffer.from(payloadPart, "base64url").toString()) as {
-        jti?: unknown;
-      };
-      const jti = body?.jti;
-      if (typeof jti === "string" && jti) {
-        const row = await unwrap<any>(
-          db.from("sessions").select("revoked_at").eq("jti", jti).maybeSingle(),
-        );
-        if (!row || (row as any).revoked_at) throw new Error("Unauthorized");
-      }
+    const jti = sessionJti(token);
+    if (jti) {
+      const row = await unwrap<any>(
+        db.from("sessions").select("revoked_at, role_view").eq("jti", jti).maybeSingle(),
+      );
+      if (!row || (row as any).revoked_at) throw new Error("Unauthorized");
+      storedRoleView = (row as any).role_view ?? null;
     }
   } catch (e: any) {
     if (e?.message === "Unauthorized") throw e;
@@ -31,7 +36,7 @@ export async function requireSession(token: string) {
   }
   const profile = await getProfileById(id);
   if (!profile) throw new Error("Unauthorized");
-  return profile;
+  return applyRoleView(profile, storedRoleView);
 }
 
 /** Caller must be a teacher or admin. */
@@ -48,11 +53,17 @@ export async function requireAdmin(token: string) {
   return profile;
 }
 
-/** Caller must be a teacher. */
+/**
+ * Caller must be a teacher. Students are always rejected; admins keep being
+ * rejected too (gradebook/settings mutations are teacher-owned) — EXCEPT the
+ * allowlisted test account acting from its admin view, which exercises
+ * teacher-only paths on top of the admin console (role-view shim).
+ */
 export async function requireTeacher(token: string) {
   const profile = await requireSession(token);
-  if (profile.role !== "teacher") throw new Error("Forbidden");
-  return profile;
+  if (profile.role === "teacher") return profile;
+  if (profile.role === "admin" && isTestAccount(profile.email)) return profile;
+  throw new Error("Forbidden");
 }
 
 /** Caller must be the given student, or staff. */

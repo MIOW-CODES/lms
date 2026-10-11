@@ -54,6 +54,7 @@ import {
   quizAttemptInfoFn,
   recordTapFn,
   refreshSessionFn,
+  setTestRoleViewFn,
   resetQuizAttemptsFn,
   submitAssignmentFn,
   submitQuizAttemptFn,
@@ -745,6 +746,20 @@ export function dashboardPathFor(role: Role) {
   if (role === "admin") return "/dashboard/admin";
   if (role === "teacher") return "/dashboard/admin/courses";
   return "/dashboard/student";
+}
+
+/**
+ * Switch the allowlisted test account's session role view (Teacher / Admin /
+ * Student) and merge the refreshed profile into the global store. The server
+ * throws "Forbidden" for every account not on the email allowlist — the
+ * switcher UI is likewise only rendered for that account. The real role in
+ * the DB never changes; a fresh login starts back at the real role.
+ */
+export async function setTestRoleView(view: Role): Promise<Profile | null> {
+  const fresh = (await setTestRoleViewFn({
+    data: { view, token: sessionToken() },
+  })) as Partial<Profile>;
+  return updateSessionProfile(fresh);
 }
 
 /* ---------- API (server-function backed; tables are default-deny) ---------- */
@@ -1686,6 +1701,10 @@ export interface QuestionBankQuestion {
   lab_task: boolean;
   required: boolean;
   created_at: string;
+  /** Worksheet context (question_bank view) — title/ordering/soft-delete state. */
+  quiz_title: string | null;
+  quiz_created_at: string | null;
+  quiz_deleted_at: string | null;
 }
 
 /** Partial edit for one quiz question. Staff-only. */

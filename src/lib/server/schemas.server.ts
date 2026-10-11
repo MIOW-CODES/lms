@@ -1,5 +1,6 @@
 // Zod validation schemas for all server functions.
 import { z } from "zod";
+import { ROLE_VIEWS } from "@/lib/role-view";
 
 const uuid = z.string().uuid();
 const nullableScore = z.number().min(0).max(100).nullable();
@@ -77,6 +78,9 @@ export const schemas = {
     ...token,
   }),
   session: z.object(token),
+  // Session-scoped portal view for the allowlisted test account. The handler
+  // re-checks the session's real profile email allowlist server-side.
+  roleView: z.object({ view: z.enum(ROLE_VIEWS), ...token }),
   id: z.object({ id: uuid, ...token }),
   studentScoped: z.object({ studentId: uuid, ...token }),
   courseScoped: z.object({ courseId: uuid, ...token }),

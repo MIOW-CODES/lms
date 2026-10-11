@@ -18,7 +18,18 @@ import {
   staffNav,
   useProfile,
 } from "@/components/lms";
+import { compareWorksheetOrder } from "@/lib/question-bank-groups";
 import { cn } from "@/lib/utils";
+
+/** One worksheet summary chip — derived from the bank rows themselves. */
+interface WorksheetSummary {
+  quiz_id: string;
+  title: string;
+  course_code: string | null;
+  archived: boolean;
+  created_at: string | null;
+  count: number;
+}
 
 interface EditForm {
   question: string;
@@ -96,29 +107,51 @@ export function QuestionBank({
   const [form, setForm] = useState<EditForm | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Soft-deleted quizzes still appear in the question_bank view — drop their
-  // rows here so the bank matches the live worksheet list.
-  const liveQuizIds = useMemo(() => new Set((quizzes ?? []).map((q) => q.id)), [quizzes]);
+  // Title fallback for rows whose view columns predate the worksheet-context
+  // migration; ordering/soft-delete state comes from the question_bank view.
   const quizById = useMemo(() => {
     const m = new Map<string, string>();
     (quizzes ?? []).forEach((q) => m.set(q.id, q.title));
     return m;
   }, [quizzes]);
 
-  const liveRows = useMemo(
-    () => (rows ?? []).filter((r) => liveQuizIds.has(r.quiz_id)),
-    [rows, liveQuizIds],
+  // All rows in scope (the fixed course, or every course on the standalone
+  // page). Questions on archived (soft-deleted) worksheets stay visible —
+  // badged and sorted last — so per-worksheet coverage is complete at a glance.
+  const courseRows = useMemo(
+    () => (rows ?? []).filter((r) => !courseId || r.course_id === courseId),
+    [rows, courseId],
   );
 
-  const courseQuizzes = useMemo(
-    () => (quizzes ?? []).filter((q) => !courseId || q.course_id === courseId),
-    [quizzes, courseId],
-  );
+  // One chip per worksheet with its question count — drives the summary strip
+  // and the group order so chips and group headers always agree.
+  const worksheets = useMemo(() => {
+    const map = new Map<string, WorksheetSummary>();
+    for (const r of courseRows) {
+      const title = (r.quiz_title ?? "").trim() || quizById.get(r.quiz_id) || "Worksheet";
+      const w = map.get(r.quiz_id) ?? {
+        quiz_id: r.quiz_id,
+        title,
+        course_code: r.course_code,
+        archived: !!r.quiz_deleted_at,
+        created_at: r.quiz_created_at,
+        count: 0,
+      };
+      w.count += 1;
+      map.set(r.quiz_id, w);
+    }
+    return [...map.values()].sort(compareWorksheetOrder);
+  }, [courseRows, quizById]);
+
+  const worksheetOrder = useMemo(() => {
+    const m = new Map<string, number>();
+    worksheets.forEach((w, i) => m.set(w.quiz_id, i));
+    return m;
+  }, [worksheets]);
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return liveRows
-      .filter((r) => !courseId || r.course_id === courseId)
+    return courseRows
       .filter((r) => !quizId || r.quiz_id === quizId)
       .filter(
         (r) =>
@@ -128,10 +161,10 @@ export function QuestionBank({
           r.correct_answer.toLowerCase().includes(q),
       )
       .sort((a, b) => {
-        const t = (quizById.get(a.quiz_id) ?? "").localeCompare(quizById.get(b.quiz_id) ?? "");
+        const t = (worksheetOrder.get(a.quiz_id) ?? 0) - (worksheetOrder.get(b.quiz_id) ?? 0);
         return t !== 0 ? t : a.position - b.position;
       });
-  }, [liveRows, courseId, quizId, search, quizById]);
+  }, [courseRows, quizId, search, worksheetOrder]);
 
   // Grouped by worksheet — a header row whenever the quiz changes.
   const groups = useMemo(() => {
@@ -139,6 +172,7 @@ export function QuestionBank({
       quiz_id: string;
       title: string;
       course_code: string | null;
+      archived: boolean;
       rows: QuestionBankQuestion[];
     }> = [];
     visible.forEach((r) => {
@@ -147,8 +181,9 @@ export function QuestionBank({
       else
         out.push({
           quiz_id: r.quiz_id,
-          title: quizById.get(r.quiz_id) ?? "Worksheet",
+          title: (r.quiz_title ?? "").trim() || quizById.get(r.quiz_id) || "Worksheet",
           course_code: r.course_code,
+          archived: !!r.quiz_deleted_at,
           rows: [r],
         });
     });
@@ -157,8 +192,8 @@ export function QuestionBank({
 
   // Reset the quiz filter when it no longer belongs to the selected course.
   useEffect(() => {
-    if (quizId && !courseQuizzes.some((q) => q.id === quizId)) setQuizId("");
-  }, [courseQuizzes, quizId]);
+    if (quizId && !worksheets.some((w) => w.quiz_id === quizId)) setQuizId("");
+  }, [worksheets, quizId]);
 
   const startEdit = (r: QuestionBankQuestion) => {
     setEditingId(r.id);
@@ -241,9 +276,10 @@ export function QuestionBank({
           className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
         >
           <option value="">All worksheets</option>
-          {courseQuizzes.map((q) => (
-            <option key={q.id} value={q.id}>
-              {q.title}
+          {worksheets.map((w) => (
+            <option key={w.quiz_id} value={w.quiz_id}>
+              {w.title}
+              {w.archived ? " (archived)" : ""}
             </option>
           ))}
         </select>
@@ -267,6 +303,61 @@ export function QuestionBank({
           )}
         </div>
       </div>
+
+      {/* Worksheet summary strip — one chip per worksheet with its question
+          count so coverage is obvious at a glance; clicking a chip filters the
+          table to that worksheet (click again to clear). */}
+      {worksheets.length > 0 && (
+        <div
+          className="mb-5 flex flex-wrap items-center gap-2"
+          role="group"
+          aria-label="Worksheets"
+        >
+          <button
+            type="button"
+            onClick={() => setQuizId("")}
+            aria-pressed={!quizId}
+            className={cn(
+              "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors",
+              !quizId
+                ? "border-primary/40 bg-primary text-primary-foreground shadow-sm"
+                : "border-border/60 bg-muted text-muted-foreground hover:text-foreground",
+            )}
+          >
+            All worksheets
+            <span
+              className={cn(
+                "rounded-full px-1.5 text-[11px]",
+                !quizId ? "bg-primary-foreground/20" : "bg-background/70",
+              )}
+            >
+              {courseRows.length}
+            </span>
+          </button>
+          {worksheets.map((w) => {
+            const active = quizId === w.quiz_id;
+            return (
+              <button
+                key={w.quiz_id}
+                type="button"
+                onClick={() => setQuizId(active ? "" : w.quiz_id)}
+                aria-pressed={active}
+                title={`${w.title} — ${w.count} question${w.count === 1 ? "" : "s"}${w.archived ? " (archived worksheet)" : ""}`}
+                className={cn(
+                  "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors",
+                  active
+                    ? "border-primary/40 bg-primary text-primary-foreground shadow-sm"
+                    : "border-border/60 bg-muted text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <span className="max-w-[14rem] truncate">{w.title}</span>
+                <span>· {w.count}</span>
+                {w.archived && <Badge tone="slate">Archived</Badge>}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {loadFailed ? (
         <LoadError what="the question bank" onRetry={retryLoads} />
@@ -302,6 +393,7 @@ export function QuestionBank({
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-semibold">{g.title}</span>
                       {g.course_code && <Badge tone="slate">{g.course_code}</Badge>}
+                      {g.archived && <Badge tone="amber">Archived worksheet</Badge>}
                       <span className="text-xs text-muted-foreground">
                         {g.rows.length} question{g.rows.length === 1 ? "" : "s"}
                       </span>

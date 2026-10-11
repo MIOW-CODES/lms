@@ -5,9 +5,14 @@
 export {
   createSessionToken,
   verifySessionToken,
+  sessionJti,
+  setSessionRoleView,
   revokeSessions,
   sessionSecret,
 } from "./sessions.server";
+
+// Test-account session role view (allowlist-guarded; see role-view.server.ts).
+export { setTestRoleView } from "./role-view.server";
 
 export {
   requireSession,
