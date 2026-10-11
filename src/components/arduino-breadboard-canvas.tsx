@@ -1,36 +1,24 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
-import {
-  Sparkles,
-  Trash2,
-  Volume2,
-  Sliders,
-  RotateCcw,
-  Zap,
-  Info,
-  Maximize2,
-  Settings2,
-  Activity,
-  Plus,
-  RefreshCw,
-  MousePointer2,
-  Spline,
-} from "lucide-react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { Trash2, Zap, Info, MousePointer2, Spline } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ArduinoBoardState } from "@/lib/arduino-simulator";
+import {
+  resolvePartStates,
+  type ArduinoBoardState,
+  type CircuitPart,
+  type CircuitPartType,
+  type PartVisualState,
+  type UnoPinRef,
+  type WireEndpoint,
+  type WireSpec,
+} from "@/lib/arduino-simulator";
+import type { ArduinoTask, TaskGuide } from "@/lib/arduino-tasks";
 
 // Ensure @wokwi/elements custom elements are registered in browser
 if (typeof window !== "undefined") {
   import("@wokwi/elements").catch(console.error);
 }
 
-export type WokwiComponentType =
-  | "wokwi-led"
-  | "wokwi-pushbutton"
-  | "wokwi-potentiometer"
-  | "wokwi-buzzer"
-  | "wokwi-servo"
-  | "wokwi-hc-sr04"
-  | "wokwi-resistor";
+export type WokwiComponentType = CircuitPartType;
 
 export interface CanvasPart {
   id: string;
@@ -38,11 +26,12 @@ export interface CanvasPart {
   x: number;
   y: number;
   label: string;
-  connectedPin: number; // 0-13 for digital, 14-19 for A0-A5
-  color?: string; // for LED: 'red', 'green', 'blue', 'yellow'
-  value?: number; // state value for input components
-  wireColor?: string; // visual jumper wire color
+  color?: string | undefined; // for LED: 'red', 'green', 'blue', 'yellow'
+  value?: number | undefined; // potentiometer wiper / sonar distance / button pressed
 }
+
+/** Jumper wire snapped pin-to-pin between two real terminals. */
+export type CanvasWire = WireSpec;
 
 // Available jumper wire colors
 const WIRE_COLORS = [
@@ -54,83 +43,244 @@ const WIRE_COLORS = [
   { name: "Blue", stroke: "#3b82f6" },
 ];
 
+/* ────────────────────────────────────────────────────────────
+ * Terminal geometry (Tinkercad-style real terminals)
+ * Offsets are relative to the part's top-left corner.
+ * ──────────────────────────────────────────────────────────── */
+
+interface TerminalDef {
+  id: string;
+  x: number;
+  y: number;
+  label: string;
+}
+
+interface PartLayout {
+  w: number;
+  h: number;
+  /** wokwi element natural size + absolute position inside the box */
+  el: { x: number; y: number; w: number; h: number };
+  terminals: TerminalDef[];
+}
+
+const PART_LAYOUTS: Record<WokwiComponentType, PartLayout> = {
+  "wokwi-led": {
+    w: 96,
+    h: 118,
+    el: { x: 28, y: 22, w: 40, h: 50 },
+    terminals: [
+      { id: "K", x: 30, y: 102, label: "K" },
+      { id: "A", x: 66, y: 102, label: "A" },
+    ],
+  },
+  "wokwi-pushbutton": {
+    w: 132,
+    h: 104,
+    el: { x: 32, y: 26, w: 68, h: 46 },
+    terminals: [
+      { id: "leg1", x: 10, y: 58, label: "leg1" },
+      { id: "leg2", x: 122, y: 58, label: "leg2" },
+    ],
+  },
+  "wokwi-potentiometer": {
+    w: 190,
+    h: 158,
+    el: { x: 42, y: 24, w: 76, h: 76 },
+    terminals: [
+      { id: "VCC", x: 10, y: 44, label: "VCC" },
+      { id: "SIG", x: 180, y: 62, label: "SIG" },
+      { id: "GND", x: 10, y: 104, label: "GND" },
+    ],
+  },
+  "wokwi-buzzer": {
+    w: 116,
+    h: 112,
+    el: { x: 30, y: 22, w: 52, h: 56 },
+    terminals: [
+      { id: "plus", x: 10, y: 46, label: "+" },
+      { id: "minus", x: 10, y: 84, label: "−" },
+    ],
+  },
+  "wokwi-servo": {
+    w: 200,
+    h: 170,
+    el: { x: 20, y: 24, w: 170, h: 119 },
+    terminals: [
+      { id: "signal", x: 10, y: 46, label: "SIG" },
+      { id: "VCC", x: 10, y: 78, label: "VCC" },
+      { id: "GND", x: 10, y: 110, label: "GND" },
+    ],
+  },
+  "wokwi-hc-sr04": {
+    w: 214,
+    h: 172,
+    el: { x: 22, y: 22, w: 170, h: 95 },
+    terminals: [
+      { id: "VCC", x: 38, y: 124, label: "VCC" },
+      { id: "TRIG", x: 88, y: 124, label: "TRIG" },
+      { id: "ECHO", x: 138, y: 124, label: "ECHO" },
+      { id: "GND", x: 188, y: 124, label: "GND" },
+    ],
+  },
+  "wokwi-resistor": {
+    w: 150,
+    h: 72,
+    el: { x: 45, y: 30, w: 60, h: 12 },
+    terminals: [
+      { id: "leg1", x: 12, y: 38, label: "leg1" },
+      { id: "leg2", x: 138, y: 38, label: "leg2" },
+    ],
+  },
+};
+
+/* ────────────────────────────────────────────────────────────
+ * Arduino Uno header pin coordinates
+ * The wokwi-arduino-uno element renders at 72.58mm × 53.34mm
+ * (274.2 × 201.5 px at 96dpi); its pin headers sit at known mm
+ * positions inside the SVG (viewBox origin x = -4mm).
+ * ──────────────────────────────────────────────────────────── */
+
+const MM = 96 / 25.4; // px per mm
+const UNO_W = 72.58 * MM;
+const UNO_H = 53.34 * MM;
+
+// Pin center positions in element-mm space (see @wokwi/elements header groups)
+const UNO_DIGITAL_MM: Record<number, number> = {
+  13: 28.93,
+  12: 31.47,
+  11: 34.01,
+  10: 36.55,
+  9: 39.09,
+  8: 41.63,
+  7: 45.69,
+  6: 48.23,
+  5: 50.77,
+  4: 53.31,
+  3: 55.85,
+  2: 58.39,
+  1: 60.93,
+  0: 63.47,
+};
+const UNO_ANALOG_MM = [50.77, 53.31, 55.85, 58.39, 60.93, 63.47]; // A0..A5
+const UNO_POWER_MM: Record<string, number> = {
+  "3V3": 32.99,
+  "5V": 35.53,
+  GND: 38.07,
+  GND2: 40.61,
+};
+const UNO_TOP_Y_MM = 2.54;
+const UNO_BOTTOM_Y_MM = 50.8;
+
+interface UnoTerminal {
+  key: string;
+  pin: UnoPinRef | "GND2";
+  label: string;
+  mmX: number;
+  mmY: number;
+}
+
+const UNO_TERMINALS: UnoTerminal[] = [
+  ...[13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((n) => ({
+    key: `uno-D${n}`,
+    pin: n as UnoPinRef | "GND2",
+    label: `${n}`,
+    mmX: UNO_DIGITAL_MM[n]!,
+    mmY: UNO_TOP_Y_MM,
+  })),
+  {
+    key: "uno-3V3",
+    pin: "3V3" as UnoPinRef | "GND2",
+    label: "3.3V",
+    mmX: UNO_POWER_MM["3V3"]!,
+    mmY: UNO_BOTTOM_Y_MM,
+  },
+  {
+    key: "uno-5V",
+    pin: "5V" as UnoPinRef | "GND2",
+    label: "5V",
+    mmX: UNO_POWER_MM["5V"]!,
+    mmY: UNO_BOTTOM_Y_MM,
+  },
+  {
+    key: "uno-GND",
+    pin: "GND" as UnoPinRef | "GND2",
+    label: "GND",
+    mmX: UNO_POWER_MM["GND"]!,
+    mmY: UNO_BOTTOM_Y_MM,
+  },
+  {
+    key: "uno-GND2",
+    pin: "GND2" as UnoPinRef | "GND2",
+    label: "GND",
+    mmX: UNO_POWER_MM["GND2"]!,
+    mmY: UNO_BOTTOM_Y_MM,
+  },
+  ...[0, 1, 2, 3, 4, 5].map((a) => ({
+    key: `uno-A${a}`,
+    pin: (14 + a) as UnoPinRef | "GND2",
+    label: `A${a}`,
+    mmX: UNO_ANALOG_MM[a]!,
+    mmY: UNO_BOTTOM_Y_MM,
+  })),
+];
+
+/** Wire endpoint for a Uno terminal key ("GND2" shares the GND net). */
+function unoTerminalEndpoint(t: UnoTerminal): WireEndpoint {
+  return { kind: "uno", pin: t.pin === "GND2" ? "GND" : (t.pin as UnoPinRef) };
+}
+
+function endpointKey(e: WireEndpoint): string {
+  return e.kind === "uno" ? `uno-${e.pin}` : `part-${e.partId}-${e.terminal}`;
+}
+
+/* Clean wire geometry: straight when terminals align, otherwise a
+ * soft cubic bezier with a natural droop (never a cheap straight line). */
+function wirePath(a: { x: number; y: number }, b: { x: number; y: number }): string {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  if (Math.abs(dx) < 6) return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+  const sag = Math.min(80, 26 + Math.abs(dx) * 0.16 + Math.abs(dy) * 0.06);
+  return `M ${a.x} ${a.y} C ${a.x + dx * 0.28} ${a.y + sag} ${b.x - dx * 0.28} ${b.y + sag} ${b.x} ${b.y}`;
+}
+
 interface InteractiveBreadboardCanvasProps {
   boardState: ArduinoBoardState | null;
   isRunning: boolean;
-  onDigitalPinChange?: (pin: number, val: 0 | 1) => void;
-  onAnalogPinChange?: (pinIndex: number, val: number) => void;
+  /** Selected seeded task — places its parts (unwired) + dashed ghost guide */
+  task?: ArduinoTask | null;
+  /** Fires whenever the student's parts/wiring change (drives netlist + summary) */
+  onCircuitChange?: (parts: CircuitPart[], wires: CanvasWire[]) => void;
+}
+
+let wireSeq = 0;
+function nextWireId(): string {
+  wireSeq += 1;
+  return `wire-${Date.now().toString(36)}-${wireSeq}`;
 }
 
 export function InteractiveBreadboardCanvas({
   boardState,
   isRunning,
-  onDigitalPinChange,
-  onAnalogPinChange,
+  task,
+  onCircuitChange,
 }: InteractiveBreadboardCanvasProps) {
-  // Draggable Hardware Components
-  const [parts, setParts] = useState<CanvasPart[]>([
-    {
-      id: "led-13",
-      type: "wokwi-led",
-      x: 380,
-      y: 50,
-      label: "LED (D13)",
-      connectedPin: 13,
-      color: "red",
-      wireColor: "#f43f5e",
-    },
-    {
-      id: "led-12",
-      type: "wokwi-led",
-      x: 480,
-      y: 50,
-      label: "LED (D12)",
-      connectedPin: 12,
-      color: "green",
-      wireColor: "#10b981",
-    },
-    {
-      id: "btn-2",
-      type: "wokwi-pushbutton",
-      x: 380,
-      y: 200,
-      label: "Button (D2)",
-      connectedPin: 2,
-      color: "blue",
-      value: 0,
-      wireColor: "#3b82f6",
-    },
-    {
-      id: "pot-a0",
-      type: "wokwi-potentiometer",
-      x: 520,
-      y: 190,
-      label: "Pot (A0)",
-      connectedPin: 14, // A0
-      value: 512,
-      wireColor: "#f59e0b",
-    },
-    {
-      id: "buzzer-8",
-      type: "wokwi-buzzer",
-      x: 660,
-      y: 50,
-      label: "Buzzer (D8)",
-      connectedPin: 8,
-      wireColor: "#06b6d4",
-    },
-    {
-      id: "servo-9",
-      type: "wokwi-servo",
-      x: 440,
-      y: 340,
-      label: "Servo (D9)",
-      connectedPin: 9,
-      wireColor: "#a855f7",
-    },
-  ]);
-
+  // Parts start EMPTY — students place everything from the palette.
+  const [parts, setParts] = useState<CanvasPart[]>([]);
+  const [wires, setWires] = useState<CanvasWire[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
+  const [unoPos, setUnoPos] = useState({ x: 24, y: 40 });
+
+  /* ---------- Manual pin-to-pin wiring (Tinkercad-style) ---------- */
+  const [drawMode, setDrawMode] = useState(false);
+  const [drawColor, setDrawColor] = useState<string>(WIRE_COLORS[0]?.stroke ?? "#10b981");
+  /** Anchor terminal of the wire being drawn */
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [hoverKey, setHoverKey] = useState<string | null>(null);
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+  const [ghostGuides, setGhostGuides] = useState<TaskGuide[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
     id: string;
@@ -139,92 +289,274 @@ export function InteractiveBreadboardCanvas({
     elemX: number;
     elemY: number;
   } | null>(null);
+  const wireDraggingRef = useRef(false);
 
-  /* ---------- Manual wire drawing (Tinkercad-style pin-to-pin) ---------- */
-  type UserWire = { id: string; x1: number; y1: number; x2: number; y2: number; color: string };
-  const [drawMode, setDrawMode] = useState(false);
-  const [drawColor, setDrawColor] = useState<string>(WIRE_COLORS[0]?.stroke ?? "#10b981");
-  const [wireStart, setWireStart] = useState<{ x: number; y: number } | null>(null);
-  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
-  const [userWires, setUserWires] = useState<UserWire[]>([]);
-  const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState(false);
+  /* ---------- Terminal registry (key → canvas coordinate) ---------- */
+  const unoCoord = useCallback(
+    (t: { mmX: number; mmY: number }) => ({
+      x: unoPos.x + (t.mmX + 4) * MM,
+      y: unoPos.y + t.mmY * MM,
+    }),
+    [unoPos],
+  );
 
-  // Escape cancels an in-progress wire (second Esc exits draw mode)
-  useEffect(() => {
-    if (!drawMode) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (wireStart) setWireStart(null);
-        else setDrawMode(false);
+  const partTerminalCoord = useCallback(
+    (partId: string, terminal: string): { x: number; y: number } | null => {
+      const part = parts.find((p) => p.id === partId);
+      if (!part) return null;
+      const def = PART_LAYOUTS[part.type].terminals.find((t) => t.id === terminal);
+      if (!def) return null;
+      return { x: part.x + def.x, y: part.y + def.y };
+    },
+    [parts],
+  );
+
+  const endpointCoord = useCallback(
+    (e: WireEndpoint): { x: number; y: number } | null => {
+      if (e.kind === "uno") {
+        const t = UNO_TERMINALS.find(
+          (u) => u.pin === e.pin || (e.pin === "GND" && u.pin === "GND2"),
+        );
+        return t ? unoCoord(t) : null;
       }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [drawMode, wireStart]);
+      return partTerminalCoord(e.partId, e.terminal);
+    },
+    [unoCoord, partTerminalCoord],
+  );
 
-  // Component mousedown in draw mode anchors a wire; its click event still
-  // bubbles to the canvas — skip that bubbled click to avoid a double anchor.
-  const skipNextCanvasClick = useRef(false);
+  /* Which endpoint a terminal key refers to */
+  const keyToEndpoint = useCallback(
+    (key: string): WireEndpoint | null => {
+      const unoT = UNO_TERMINALS.find((u) => u.key === key);
+      if (unoT) return unoTerminalEndpoint(unoT);
+      for (const p of parts) {
+        for (const t of PART_LAYOUTS[p.type].terminals) {
+          if (`part-${p.id}-${t.id}` === key) {
+            return { kind: "part", partId: p.id, terminal: t.id };
+          }
+        }
+      }
+      return null;
+    },
+    [parts],
+  );
 
-  const localPoint = (e: React.MouseEvent | MouseEvent) => {
+  /* ---------- Netlist-driven part visuals ---------- */
+  const circuitParts: CircuitPart[] = useMemo(
+    () =>
+      parts.map((p) => ({
+        id: p.id,
+        type: p.type,
+        label: p.label,
+        value: p.value,
+        pressed: p.type === "wokwi-pushbutton" && p.value === 1,
+      })),
+    [parts],
+  );
+
+  const visuals: Record<string, PartVisualState> = useMemo(
+    () => resolvePartStates(circuitParts, wires, boardState),
+    [circuitParts, wires, boardState],
+  );
+
+  const onCircuitChangeRef = useRef(onCircuitChange);
+  onCircuitChangeRef.current = onCircuitChange;
+  useEffect(() => {
+    onCircuitChangeRef.current?.(circuitParts, wires);
+  }, [circuitParts, wires]);
+
+  /* ---------- Seeded task: place parts + dashed ghost guide (no solid wires) ---------- */
+  useEffect(() => {
+    if (!task) {
+      setGhostGuides([]);
+      return;
+    }
+    const seededIds = new Set(task.parts.map((sp) => `task-${sp.key}`));
+    setParts((prev) => [
+      ...prev.filter((p) => !p.id.startsWith("task-")),
+      ...task.parts.map<CanvasPart>((sp) => ({
+        id: `task-${sp.key}`,
+        type: sp.type,
+        x: sp.x,
+        y: sp.y,
+        label: sp.label,
+        color: sp.color,
+        value: sp.type === "wokwi-potentiometer" ? 512 : sp.type === "wokwi-hc-sr04" ? 25 : 0,
+      })),
+    ]);
+    // Drop any wires that pointed at task parts from a previously selected task
+    setWires((prev) =>
+      prev.filter((wr) =>
+        [wr.from, wr.to].every(
+          (e) => e.kind !== "part" || !e.partId.startsWith("task-") || seededIds.has(e.partId),
+        ),
+      ),
+    );
+    setGhostGuides(task.guides);
+  }, [task]);
+
+  /* ---------- Pointer helpers ---------- */
+  const localPoint = (e: React.MouseEvent | MouseEvent | PointerEvent) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
 
-  // Canvas click while in draw mode routes a wire anchor
-  const handleCanvasClick = (e: React.MouseEvent) => {
-    if (skipNextCanvasClick.current) {
-      skipNextCanvasClick.current = false;
-      return;
-    }
-    if (!drawMode) {
-      setSelectedId(null);
-      setSelectedWireId(null);
-      return;
-    }
-    const pt = localPoint(e);
-    if (!wireStart) {
-      setWireStart(pt);
-    } else {
-      setUserWires((prev) => [
-        ...prev,
-        {
-          id: `wire-${Date.now().toString(36)}`,
-          x1: wireStart.x,
-          y1: wireStart.y,
-          x2: pt.x,
-          y2: pt.y,
-          color: drawColor,
-        },
-      ]);
-      setWireStart(null);
-    }
+  /** Terminal key under the cursor (for snapping + drag-release). */
+  const terminalAtPoint = (clientX: number, clientY: number): string | null => {
+    const el = document.elementFromPoint(clientX, clientY);
+    const holder = el?.closest?.("[data-term-key]") as HTMLElement | null;
+    return holder?.dataset["termKey"] ?? null;
   };
 
-  const removeWire = (id: string) => {
-    setUserWires((prev) => prev.filter((w) => w.id !== id));
-    setSelectedWireId(null);
-  };
+  /* ---------- Wire creation ---------- */
+  const endpointsEqual = (a: WireEndpoint, b: WireEndpoint) => endpointKey(a) === endpointKey(b);
 
-  // Position of Arduino Uno Board on the canvas (scaled down to fit workbench)
-  const [unoPos, setUnoPos] = useState({ x: 30, y: 50 });
+  const createWire = useCallback(
+    (fromKey: string, toKey: string) => {
+      const from = keyToEndpoint(fromKey);
+      const to = keyToEndpoint(toKey);
+      if (!from || !to || endpointsEqual(from, to)) return;
+      setWires((prev) => {
+        const dup = prev.some(
+          (w) =>
+            (endpointsEqual(w.from, from) && endpointsEqual(w.to, to)) ||
+            (endpointsEqual(w.from, to) && endpointsEqual(w.to, from)),
+        );
+        if (dup) return prev;
+        return [...prev, { id: nextWireId(), from, to, color: drawColor }];
+      });
+      setPendingKey(null);
+      setCursorPos(null);
+      wireDraggingRef.current = false;
+    },
+    [keyToEndpoint, drawColor],
+  );
 
-  // Handle Dragging
-  const handleMouseDown = (e: React.MouseEvent, id: string) => {
+  /* Escape cancels an in-progress wire (second Esc leaves wire mode) */
+  useEffect(() => {
+    if (!drawMode && !pendingKey) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (pendingKey) {
+          setPendingKey(null);
+          setCursorPos(null);
+          wireDraggingRef.current = false;
+        } else {
+          setDrawMode(false);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawMode, pendingKey]);
+
+  /* Delete/Backspace removes the selected wire (or selected part) */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
+        return;
+      }
+      if (selectedWireId) {
+        e.preventDefault();
+        setWires((prev) => prev.filter((w) => w.id !== selectedWireId));
+        setSelectedWireId(null);
+      } else if (selectedId && selectedId !== "arduino-uno") {
+        e.preventDefault();
+        removeSelected();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWireId, selectedId]);
+
+  /* ---------- Terminal interactions ---------- */
+  const handleTerminalDown = (e: React.PointerEvent, key: string) => {
     e.stopPropagation();
-    if (drawMode) {
-      // In draw mode a component click is a wire anchor instead of a drag start
-      skipNextCanvasClick.current = true;
-      handleCanvasClick(e);
-      return;
+    if (!drawMode) return;
+    if (!pendingKey) {
+      setPendingKey(key);
+      setCursorPos(localPoint(e));
+      wireDraggingRef.current = true;
+    } else if (pendingKey === key) {
+      setPendingKey(null);
+      setCursorPos(null);
+      wireDraggingRef.current = false;
+    } else {
+      createWire(pendingKey, key);
     }
+  };
+
+  const handleTerminalClick = (e: React.MouseEvent, key: string) => {
+    e.stopPropagation();
+    if (!drawMode) {
+      // Select mode: clicking a terminal selects its part
+      const ep = keyToEndpoint(key);
+      if (ep?.kind === "part") {
+        setSelectedId(ep.partId);
+        setSelectedWireId(null);
+      } else {
+        setSelectedId("arduino-uno");
+        setSelectedWireId(null);
+      }
+    }
+  };
+
+  /* ---------- Global pointer move / up (drag + wire routing) ---------- */
+  const handlePointerMove = useCallback((e: PointerEvent) => {
+    if (dragRef.current && containerRef.current) {
+      const { id, startX, startY, elemX, elemY } = dragRef.current;
+      const rect = containerRef.current.getBoundingClientRect();
+      const newX = Math.max(4, Math.min(rect.width - 80, elemX + (e.clientX - startX)));
+      const newY = Math.max(4, Math.min(rect.height - 60, elemY + (e.clientY - startY)));
+      if (id === "arduino-uno") {
+        setUnoPos({ x: newX, y: newY });
+      } else {
+        setParts((prev) => prev.map((p) => (p.id === id ? { ...p, x: newX, y: newY } : p)));
+      }
+    }
+    if (wireDraggingRef.current) {
+      setCursorPos(localPoint(e));
+      setHoverKey(terminalAtPoint(e.clientX, e.clientY));
+    }
+  }, []);
+
+  const handlePointerUp = useCallback(
+    (e: PointerEvent) => {
+      dragRef.current = null;
+      if (wireDraggingRef.current && pendingKey) {
+        const target = terminalAtPoint(e.clientX, e.clientY);
+        if (target && target !== pendingKey) {
+          createWire(pendingKey, target);
+        }
+      }
+      wireDraggingRef.current = false;
+    },
+    [pendingKey, createWire],
+  );
+
+  useEffect(() => {
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [handlePointerMove, handlePointerUp]);
+
+  /* ---------- Part dragging ---------- */
+  const handlePartDown = (e: React.PointerEvent, id: string) => {
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    e.stopPropagation();
     setSelectedId(id);
+    setSelectedWireId(null);
     const item =
       id === "arduino-uno" ? { x: unoPos.x, y: unoPos.y } : parts.find((p) => p.id === id);
     if (!item) return;
-
     dragRef.current = {
       id,
       startX: e.clientX,
@@ -232,188 +564,253 @@ export function InteractiveBreadboardCanvas({
       elemX: item.x,
       elemY: item.y,
     };
+    wireDraggingRef.current = false;
   };
 
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!dragRef.current || !containerRef.current) return;
-    const { id, startX, startY, elemX, elemY } = dragRef.current;
-    const rect = containerRef.current.getBoundingClientRect();
+  /* ---------- Palette ---------- */
+  const nextLabel = (list: CanvasPart[], type: WokwiComponentType): string => {
+    const prefix =
+      type === "wokwi-led"
+        ? "LED"
+        : type === "wokwi-pushbutton"
+          ? "button"
+          : type === "wokwi-potentiometer"
+            ? "pot"
+            : type === "wokwi-buzzer"
+              ? "buzzer"
+              : type === "wokwi-servo"
+                ? "servo"
+                : type === "wokwi-hc-sr04"
+                  ? "sonar"
+                  : "resistor";
+    let n = 1;
+    while (list.some((p) => p.label === `${prefix}${n}`)) n += 1;
+    return `${prefix}${n}`;
+  };
 
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-
-    const newX = Math.max(10, Math.min(rect.width - 100, elemX + dx));
-    const newY = Math.max(10, Math.min(rect.height - 100, elemY + dy));
-
-    if (id === "arduino-uno") {
-      setUnoPos({ x: newX, y: newY });
-    } else {
-      setParts((prev) => prev.map((p) => (p.id === id ? { ...p, x: newX, y: newY } : p)));
-    }
-  }, []);
-
-  const handleMouseUp = useCallback(() => {
-    dragRef.current = null;
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [handleMouseMove, handleMouseUp]);
-
-  // Add Part — optionally at explicit canvas coordinates (drag-and-drop)
   const addPart = (type: WokwiComponentType, at?: { x: number; y: number }) => {
-    const id = `${type}-${Date.now().toString(36)}`;
-    const randX = at ? at.x : 350 + Math.random() * 200;
-    const randY = at ? at.y : 60 + Math.random() * 240;
-    const color = WIRE_COLORS[Math.floor(Math.random() * WIRE_COLORS.length)]?.stroke ?? "#10b981";
-
-    let newPart: CanvasPart;
-    switch (type) {
-      case "wokwi-led":
-        newPart = {
-          id,
-          type,
-          x: randX,
-          y: randY,
-          label: "LED",
-          color: "yellow",
-          connectedPin: 11,
-          wireColor: color,
-        };
-        break;
-      case "wokwi-pushbutton":
-        newPart = {
-          id,
-          type,
-          x: randX,
-          y: randY,
-          label: "Button",
-          color: "red",
-          connectedPin: 3,
-          value: 0,
-          wireColor: color,
-        };
-        break;
-      case "wokwi-potentiometer":
-        newPart = {
-          id,
-          type,
-          x: randX,
-          y: randY,
-          label: "Pot (A1)",
-          connectedPin: 15,
-          value: 0,
-          wireColor: color,
-        };
-        break;
-      case "wokwi-buzzer":
-        newPart = {
-          id,
-          type,
-          x: randX,
-          y: randY,
-          label: "Buzzer",
-          connectedPin: 8,
-          wireColor: color,
-        };
-        break;
-      case "wokwi-servo":
-        newPart = {
-          id,
-          type,
-          x: randX,
-          y: randY,
-          label: "SG90 Servo",
-          connectedPin: 9,
-          wireColor: color,
-        };
-        break;
-      case "wokwi-hc-sr04":
-        newPart = {
-          id,
-          type,
-          x: randX,
-          y: randY,
-          label: "Sonar",
-          connectedPin: 7,
-          value: 25,
-          wireColor: color,
-        };
-        break;
-      default:
-        newPart = {
-          id,
-          type,
-          x: randX,
-          y: randY,
-          label: "Resistor",
-          connectedPin: 13,
-          wireColor: color,
-        };
-    }
-
-    setParts((prev) => [...prev, newPart]);
-    setSelectedId(id);
+    const layout = PART_LAYOUTS[type];
+    setParts((prev) => {
+      const idx = prev.length;
+      const x = at ? at.x : 460 + (idx % 3) * 190;
+      const y = at ? at.y : 60 + Math.floor(idx / 3) * 190;
+      const id = `${type}-${Date.now().toString(36)}-${idx}`;
+      const newPart: CanvasPart = {
+        id,
+        type,
+        x: Math.max(4, Math.min(x, 1080 - layout.w)),
+        y: Math.max(4, Math.min(y, 620 - layout.h)),
+        label: nextLabel(prev, type),
+        color: type === "wokwi-led" ? "red" : type === "wokwi-pushbutton" ? "red" : undefined,
+        value: type === "wokwi-potentiometer" ? 512 : type === "wokwi-hc-sr04" ? 25 : 0,
+      };
+      setSelectedId(id);
+      return [...prev, newPart];
+    });
   };
 
   const removeSelected = () => {
     if (!selectedId || selectedId === "arduino-uno") return;
     setParts((prev) => prev.filter((p) => p.id !== selectedId));
+    // Dangling wires die with their part
+    setWires((prev) =>
+      prev.filter(
+        (w) =>
+          !(w.from.kind === "part" && w.from.partId === selectedId) &&
+          !(w.to.kind === "part" && w.to.partId === selectedId),
+      ),
+    );
     setSelectedId(null);
   };
 
-  const updatePin = (id: string, pin: number) => {
-    setParts((prev) => prev.map((p) => (p.id === id ? { ...p, connectedPin: pin } : p)));
-  };
-
-  const updateWireColor = (id: string, wireColor: string) => {
-    setParts((prev) => prev.map((p) => (p.id === id ? { ...p, wireColor } : p)));
+  const removeWire = (id: string) => {
+    setWires((prev) => prev.filter((w) => w.id !== id));
+    setSelectedWireId(null);
   };
 
   const handlePushButton = (part: CanvasPart) => {
     const nextVal = part.value === 1 ? 0 : 1;
     setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, value: nextVal } : p)));
-    if (onDigitalPinChange) {
-      onDigitalPinChange(part.connectedPin, nextVal);
-    }
   };
 
-  const handlePotInput = (part: CanvasPart, val: number) => {
-    setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, value: val } : p)));
-    const aPin = part.connectedPin >= 14 ? part.connectedPin - 14 : part.connectedPin;
-    if (onAnalogPinChange) {
-      onAnalogPinChange(aPin, val);
-    }
+  const updatePartValue = (part: CanvasPart, value: number) => {
+    setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, value } : p)));
   };
 
-  // Approximate relative coordinate of Arduino header pins on the Uno board (scaled at 0.75x)
-  const getUnoHeaderPinCoord = (pin: number) => {
-    const scale = 0.78;
-    // Board header coordinates relative to top-left of Uno
-    if (pin >= 0 && pin <= 13) {
-      // Digital pins header along top of Uno (D0 on right, D13 on left)
-      const pinOffset = (13 - pin) * 11;
-      return {
-        x: unoPos.x + (145 + pinOffset) * scale,
-        y: unoPos.y + 18 * scale,
-      };
-    } else {
-      // Analog pins header along bottom right of Uno (A0 to A5)
-      const aIndex = pin - 14;
-      const pinOffset = aIndex * 11;
-      return {
-        x: unoPos.x + (195 + pinOffset) * scale,
-        y: unoPos.y + 265 * scale,
-      };
+  /* ---------- Canvas click clears selection ---------- */
+  const handleCanvasClick = () => {
+    if (!drawMode) {
+      setSelectedId(null);
+      setSelectedWireId(null);
     }
   };
 
   const selectedPart = parts.find((p) => p.id === selectedId);
+
+  /* ---------- Rendering helpers ---------- */
+  const renderTerminal = (
+    key: string,
+    coord: { x: number; y: number },
+    label: string,
+    accent = "#94a3b8",
+    onDown?: (e: React.PointerEvent) => void,
+  ) => {
+    const isHover = hoverKey === key;
+    const isPending = pendingKey === key;
+    const isSnap = Boolean(pendingKey) && hoverKey === key && pendingKey !== key;
+    const r = isPending || isSnap ? 7.5 : isHover ? 6.5 : 5;
+    return (
+      <g key={key}>
+        <circle
+          cx={coord.x}
+          cy={coord.y}
+          r={r + 6}
+          fill={
+            isSnap ? "rgba(52,211,153,0.35)" : isPending ? "rgba(52,211,153,0.28)" : "transparent"
+          }
+          style={{ pointerEvents: "none" }}
+        />
+        <circle
+          cx={coord.x}
+          cy={coord.y}
+          r={r}
+          fill={isPending || isSnap ? "#34d399" : accent}
+          stroke={isPending || isSnap ? "#a7f3d0" : "#475569"}
+          strokeWidth="1.5"
+          style={{ pointerEvents: "none" }}
+        />
+        <text
+          x={coord.x + 9}
+          y={coord.y + 3}
+          fontSize="8.5"
+          fontFamily="ui-monospace, monospace"
+          fill={isPending || isSnap ? "#6ee7b7" : "#94a3b8"}
+          style={{ pointerEvents: "none", userSelect: "none" }}
+        >
+          {label}
+        </text>
+        <circle
+          cx={coord.x}
+          cy={coord.y}
+          r={13}
+          fill="transparent"
+          data-term-key={key}
+          onPointerDown={(e) => onDown?.(e)}
+          onClick={(e) => handleTerminalClick(e, key)}
+          onPointerEnter={() => setHoverKey(key)}
+          onPointerLeave={() => setHoverKey((h) => (h === key ? null : h))}
+          style={{
+            pointerEvents: "auto",
+            cursor: drawMode ? "crosshair" : "pointer",
+            touchAction: "none",
+          }}
+        />
+      </g>
+    );
+  };
+
+  const renderWirePath = (
+    id: string,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    color: string,
+    dashed: boolean,
+    selectable: boolean,
+  ) => {
+    const d = wirePath(from, to);
+    const isSelected = id === selectedWireId;
+    const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 + 18 };
+    return (
+      <g key={id}>
+        {dashed ? (
+          <path
+            d={d}
+            fill="none"
+            stroke="#64748b"
+            strokeWidth="2.5"
+            strokeDasharray="6 7"
+            strokeOpacity="0.55"
+            strokeLinecap="round"
+            style={{ pointerEvents: "none" }}
+            data-testid="ghost-guide"
+          />
+        ) : (
+          <>
+            <path
+              d={d}
+              fill="none"
+              stroke="#000000"
+              strokeOpacity="0.45"
+              strokeWidth={isSelected ? 8 : 6}
+              strokeLinecap="round"
+              style={{ pointerEvents: "none" }}
+            />
+            <path
+              d={d}
+              fill="none"
+              stroke={color}
+              strokeWidth={isSelected ? 5 : 3.4}
+              strokeLinecap="round"
+              filter="url(#wire-glow)"
+              style={{ pointerEvents: "none" }}
+            />
+            <path
+              d={d}
+              fill="none"
+              stroke="transparent"
+              strokeWidth={16}
+              style={{
+                pointerEvents: selectable && !drawMode ? "stroke" : "none",
+                cursor: "pointer",
+              }}
+              onClick={(e) => {
+                if (drawMode) return;
+                e.stopPropagation();
+                setSelectedWireId(id);
+                setSelectedId(null);
+              }}
+            />
+            {isSelected && (
+              <g
+                data-testid={`wire-del-${id}`}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeWire(id);
+                }}
+                style={{ pointerEvents: "auto", cursor: "pointer" }}
+              >
+                <circle
+                  cx={mid.x}
+                  cy={mid.y}
+                  r={11}
+                  fill="#1f2937"
+                  stroke="#f43f5e"
+                  strokeWidth="1.5"
+                />
+                <line
+                  x1={mid.x - 3.5}
+                  y1={mid.y - 3.5}
+                  x2={mid.x + 3.5}
+                  y2={mid.y + 3.5}
+                  stroke="#f43f5e"
+                  strokeWidth="2"
+                />
+                <line
+                  x1={mid.x + 3.5}
+                  y1={mid.y - 3.5}
+                  x2={mid.x - 3.5}
+                  y2={mid.y + 3.5}
+                  stroke="#f43f5e"
+                  strokeWidth="2"
+                />
+              </g>
+            )}
+          </>
+        )}
+      </g>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -428,10 +825,12 @@ export function InteractiveBreadboardCanvas({
             <button
               onClick={() => {
                 setDrawMode(false);
-                setWireStart(null);
+                setPendingKey(null);
+                setCursorPos(null);
               }}
               aria-pressed={!drawMode}
-              title="Select and move components"
+              title="Select, move and press components"
+              data-testid="tool-select"
               className={cn(
                 "inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition",
                 !drawMode
@@ -444,11 +843,13 @@ export function InteractiveBreadboardCanvas({
             <button
               onClick={() => {
                 setDrawMode((v) => !v);
-                setWireStart(null);
+                setPendingKey(null);
+                setCursorPos(null);
                 setSelectedWireId(null);
               }}
               aria-pressed={drawMode}
-              title="Draw a jumper wire between two points"
+              title="Draw a jumper wire between two terminals"
+              data-testid="tool-wire"
               className={cn(
                 "inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition",
                 drawMode
@@ -459,119 +860,78 @@ export function InteractiveBreadboardCanvas({
               <Spline className="h-3.5 w-3.5" /> Draw wire
             </button>
           </div>
-          <button
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData("text/miow-part", "wokwi-led");
-              e.dataTransfer.effectAllowed = "copy";
-            }}
-            onClick={() => addPart("wokwi-led")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted cursor-grab active:cursor-grabbing"
-            title="Click to add, or drag onto the workbench"
-          >
-            <div className="h-2.5 w-2.5 rounded-full bg-red-500 shadow-sm" />+ LED
-          </button>
-          <button
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData("text/miow-part", "wokwi-pushbutton");
-              e.dataTransfer.effectAllowed = "copy";
-            }}
-            onClick={() => addPart("wokwi-pushbutton")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted cursor-grab active:cursor-grabbing"
-            title="Click to add, or drag onto the workbench"
-          >
-            <div className="h-2.5 w-2.5 rounded-sm bg-blue-500 shadow-sm" />+ Push Button
-          </button>
-          <button
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData("text/miow-part", "wokwi-potentiometer");
-              e.dataTransfer.effectAllowed = "copy";
-            }}
-            onClick={() => addPart("wokwi-potentiometer")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted cursor-grab active:cursor-grabbing"
-            title="Click to add, or drag onto the workbench"
-          >
-            <Sliders className="h-3.5 w-3.5 text-amber-500" />+ Potentiometer
-          </button>
-          <button
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData("text/miow-part", "wokwi-buzzer");
-              e.dataTransfer.effectAllowed = "copy";
-            }}
-            onClick={() => addPart("wokwi-buzzer")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted cursor-grab active:cursor-grabbing"
-            title="Click to add, or drag onto the workbench"
-          >
-            <Volume2 className="h-3.5 w-3.5 text-sky-400" />+ Buzzer
-          </button>
-          <button
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData("text/miow-part", "wokwi-servo");
-              e.dataTransfer.effectAllowed = "copy";
-            }}
-            onClick={() => addPart("wokwi-servo")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted cursor-grab active:cursor-grabbing"
-            title="Click to add, or drag onto the workbench"
-          >
-            <RotateCcw className="h-3.5 w-3.5 text-rose-400" />+ SG90 Servo
-          </button>
-          <button
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData("text/miow-part", "wokwi-hc-sr04");
-              e.dataTransfer.effectAllowed = "copy";
-            }}
-            onClick={() => addPart("wokwi-hc-sr04")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted cursor-grab active:cursor-grabbing"
-            title="Click to add, or drag onto the workbench"
-          >
-            <Sparkles className="h-3.5 w-3.5 text-teal-400" />+ Sonar
-          </button>
-          <button
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData("text/miow-part", "wokwi-resistor");
-              e.dataTransfer.effectAllowed = "copy";
-            }}
-            onClick={() => addPart("wokwi-resistor")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted cursor-grab active:cursor-grabbing"
-            title="Click to add, or drag onto the workbench"
-          >
-            <span className="font-mono text-amber-600 font-bold">220Ω</span>+ Resistor
-          </button>
+          {(
+            [
+              ["wokwi-led", "LED", "bg-red-500"],
+              ["wokwi-pushbutton", "Push Button", "bg-blue-500"],
+              ["wokwi-potentiometer", "Potentiometer", "bg-amber-500"],
+              ["wokwi-buzzer", "Buzzer", "bg-sky-400"],
+              ["wokwi-servo", "SG90 Servo", "bg-rose-400"],
+              ["wokwi-hc-sr04", "Sonar", "bg-teal-400"],
+              ["wokwi-resistor", "220Ω Resistor", "bg-amber-600"],
+            ] as const
+          ).map(([type, label, dot]) => (
+            <button
+              key={type}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData("text/miow-part", type);
+                e.dataTransfer.effectAllowed = "copy";
+              }}
+              onClick={() => addPart(type)}
+              data-testid={`palette-${type}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted cursor-grab active:cursor-grabbing"
+              title="Click to add, or drag onto the workbench"
+            >
+              <div className={cn("h-2.5 w-2.5 rounded-full shadow-sm", dot)} />+ {label}
+            </button>
+          ))}
         </div>
 
-        {selectedPart && !drawMode && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">
-              Selected: <strong className="text-foreground">{selectedPart.label}</strong>
-            </span>
-            <button
-              onClick={removeSelected}
-              className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-semibold text-rose-400 hover:bg-rose-500/20 transition"
-              title="Delete component"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Remove
-            </button>
-          </div>
-        )}
+        {selectedPart &&
+          !drawMode &&
+          (() => {
+            const selVisual = visuals[selectedPart.id];
+            return (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  Selected: <strong className="text-foreground">{selectedPart.label}</strong>
+                  {selVisual && (
+                    <span className="ml-1 font-mono text-[10px] text-emerald-300">
+                      {selVisual.connectedPins.length > 0
+                        ? `→ ${selVisual.connectedPins.join(", ")}`
+                        : "→ unwired"}
+                    </span>
+                  )}
+                </span>
+                <button
+                  onClick={removeSelected}
+                  data-testid="remove-part"
+                  className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-semibold text-rose-400 hover:bg-rose-500/20 transition"
+                  title="Delete component"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Remove
+                </button>
+              </div>
+            );
+          })()}
 
         {drawMode && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-300">
-              {wireStart
-                ? "Click a second point to finish — Esc to cancel"
-                : "Click a point to start the wire"}
+            <span
+              data-testid="wire-hint"
+              className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-300"
+            >
+              {pendingKey
+                ? "Click the destination terminal to finish — Esc cancels"
+                : "Click a terminal to start the wire"}
             </span>
             <div className="flex items-center gap-1">
               {WIRE_COLORS.map((w) => (
                 <button
                   key={w.name}
                   onClick={() => setDrawColor(w.stroke)}
+                  data-testid={`wire-color-${w.name}`}
                   className={cn(
                     "h-3.5 w-3.5 rounded-full transition-transform",
                     drawColor === w.stroke
@@ -593,6 +953,7 @@ export function InteractiveBreadboardCanvas({
             </span>
             <button
               onClick={() => removeWire(selectedWireId)}
+              data-testid="remove-wire"
               className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-semibold text-rose-400 hover:bg-rose-500/20 transition"
               title="Delete wire"
             >
@@ -602,404 +963,316 @@ export function InteractiveBreadboardCanvas({
         )}
       </div>
 
-      {/* Main Interactive Circuit Sandbox with Realistic Jumper Wires */}
-      <div
-        ref={containerRef}
-        onClick={handleCanvasClick}
-        onMouseMove={(e) => {
-          if (drawMode && wireStart) setCursorPos(localPoint(e));
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "copy";
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragOver(false);
-          const type = e.dataTransfer.getData("text/miow-part") as WokwiComponentType;
-          if (!type) return;
-          const rect = containerRef.current?.getBoundingClientRect();
-          const x = rect ? e.clientX - rect.left : 350;
-          const y = rect ? e.clientY - rect.top : 60;
-          // Clamp so the dropped part stays inside the workbench
-          addPart(type, {
-            x: Math.max(10, Math.min(x - 35, (rect?.width ?? 800) - 100)),
-            y: Math.max(10, Math.min(y - 35, (rect?.height ?? 580) - 100)),
-          });
-        }}
-        className={cn(
-          "relative min-h-[580px] w-full select-none overflow-hidden rounded-2xl border-2 shadow-2xl",
-          dragOver ? "border-emerald-400 ring-2 ring-emerald-400/40" : "border-emerald-900/60",
-          drawMode && "cursor-crosshair",
-        )}
-        style={{
-          backgroundImage: `
-            radial-gradient(circle, rgba(148, 163, 184, 0.22) 1.5px, transparent 1.5px),
-            radial-gradient(circle, rgba(148, 163, 184, 0.08) 1.5px, transparent 1.5px)
-          `,
-          backgroundSize: "28px 28px",
-          backgroundPosition: "0 0, 14px 14px",
-          backgroundColor: "#090d16",
-        }}
-      >
-        {/* Real-time SVG JUMPER WIRES connecting Uno to Components */}
-        <svg className="pointer-events-none absolute inset-0 h-full w-full z-10">
-          <defs>
-            <filter id="wire-glow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="2" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
-          </defs>
-          {parts.map((p) => {
-            const start = getUnoHeaderPinCoord(p.connectedPin);
-            // Component center terminal
-            const end = { x: p.x + 35, y: p.y + 35 };
-
-            // Natural curved bezier jumper wire
-            const midX = (start.x + end.x) / 2;
-            const midY = Math.min(start.y, end.y) - 30;
-            const pathData = `M ${start.x} ${start.y} Q ${midX} ${midY} ${end.x} ${end.y}`;
-
-            const wireColor = p.wireColor || "#10b981";
-
-            return (
-              <g key={`wire-${p.id}`}>
-                {/* Outer shadow / insulated sleeve */}
-                <path
-                  d={pathData}
-                  fill="none"
-                  stroke="#000000"
-                  strokeWidth="5"
-                  strokeOpacity="0.4"
-                  strokeLinecap="round"
-                />
-                {/* Colored Insulated Jumper Wire */}
-                <path
-                  d={pathData}
-                  fill="none"
-                  stroke={wireColor}
-                  strokeWidth="3.2"
-                  strokeLinecap="round"
-                  filter="url(#wire-glow)"
-                />
-                {/* Metal Terminal Pin Ends */}
-                <circle
-                  cx={start.x}
-                  cy={start.y}
-                  r="3"
-                  fill="#cbd5e1"
-                  stroke="#475569"
-                  strokeWidth="1"
-                />
-                <circle
-                  cx={end.x}
-                  cy={end.y}
-                  r="3"
-                  fill="#cbd5e1"
-                  stroke="#475569"
-                  strokeWidth="1"
-                />
-              </g>
-            );
-          })}
-
-          {/* User-drawn jumper wires (clickable — deletable) */}
-          {userWires.map((w) => {
-            const midX = (w.x1 + w.x2) / 2;
-            const midY = Math.min(w.y1, w.y2) - 30;
-            const pathData = `M ${w.x1} ${w.y1} Q ${midX} ${midY} ${w.x2} ${w.y2}`;
-            const isSelected = w.id === selectedWireId;
-            return (
-              <g
-                key={w.id}
-                onClick={(e) => {
-                  if (drawMode) return;
-                  e.stopPropagation();
-                  setSelectedWireId(w.id);
-                  setSelectedId(null);
-                }}
-                style={{
-                  pointerEvents: drawMode ? "none" : "stroke",
-                  cursor: drawMode ? "inherit" : "pointer",
-                }}
-              >
-                <path
-                  d={pathData}
-                  fill="none"
-                  stroke="#000000"
-                  strokeWidth={isSelected ? "7" : "5"}
-                  strokeOpacity="0.4"
-                  strokeLinecap="round"
-                />
-                <path
-                  d={pathData}
-                  fill="none"
-                  stroke={w.color}
-                  strokeWidth={isSelected ? "4.5" : "3.2"}
-                  strokeLinecap="round"
-                  filter="url(#wire-glow)"
-                />
-                <circle cx={w.x1} cy={w.y1} r="3" fill="#cbd5e1" stroke="#475569" strokeWidth="1" />
-                <circle cx={w.x2} cy={w.y2} r="3" fill="#cbd5e1" stroke="#475569" strokeWidth="1" />
-              </g>
-            );
-          })}
-
-          {/* Live rubber-band preview while routing a wire */}
-          {drawMode && wireStart && cursorPos && (
-            <g style={{ pointerEvents: "none" }}>
-              <path
-                d={`M ${wireStart.x} ${wireStart.y} Q ${(wireStart.x + cursorPos.x) / 2} ${Math.min(wireStart.y, cursorPos.y) - 30} ${cursorPos.x} ${cursorPos.y}`}
-                fill="none"
-                stroke={drawColor}
-                strokeWidth="3"
-                strokeDasharray="6 4"
-                strokeOpacity="0.85"
-                strokeLinecap="round"
-              />
-              <circle cx={wireStart.x} cy={wireStart.y} r="4" fill={drawColor} />
-            </g>
-          )}
-        </svg>
-
-        {/* Workbench Watermark Badge */}
-        <div className="pointer-events-none absolute right-4 top-4 flex items-center gap-2 rounded-lg bg-slate-900/90 px-3 py-1 font-mono text-[11px] text-slate-300 border border-slate-700/80 shadow-md z-30">
-          <Zap className="h-3.5 w-3.5 text-amber-400" />
-          <span>Interactive Jumper Wire &amp; Hardware Workbench</span>
-        </div>
-
-        {/* 1. ARDUINO UNO BOARD (Scalable & Draggable) */}
+      {/* Scrollable workbench — stays usable at 390px mobile widths */}
+      <div className="w-full overflow-x-auto rounded-2xl">
         <div
-          onMouseDown={(e) => handleMouseDown(e, "arduino-uno")}
-          style={{
-            left: unoPos.x,
-            top: unoPos.y,
-            transform: "scale(0.85)",
-            transformOrigin: "top left",
+          ref={containerRef}
+          onClick={handleCanvasClick}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            setDragOver(true);
           }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const type = e.dataTransfer.getData("text/miow-part") as WokwiComponentType;
+            if (!type || !PART_LAYOUTS[type]) return;
+            const rect = containerRef.current?.getBoundingClientRect();
+            const x = rect ? e.clientX - rect.left - 30 : 460;
+            const y = rect ? e.clientY - rect.top - 30 : 60;
+            addPart(type, { x: Math.max(4, x), y: Math.max(4, y) });
+          }}
+          data-testid="arduino-workbench"
           className={cn(
-            "absolute cursor-grab active:cursor-grabbing select-none transition-shadow z-20 p-1 rounded-xl",
-            selectedId === "arduino-uno" && "ring-2 ring-emerald-400 shadow-2xl",
+            "relative h-[640px] w-[1080px] select-none overflow-hidden rounded-2xl border-2 shadow-2xl",
+            dragOver ? "border-emerald-400 ring-2 ring-emerald-400/40" : "border-emerald-900/60",
+            drawMode && "cursor-crosshair",
           )}
-          title="Draggable Arduino Uno R3"
+          style={{
+            backgroundImage: `
+              radial-gradient(circle, rgba(148, 163, 184, 0.22) 1.5px, transparent 1.5px),
+              radial-gradient(circle, rgba(148, 163, 184, 0.08) 1.5px, transparent 1.5px)
+            `,
+            backgroundSize: "28px 28px",
+            backgroundPosition: "0 0, 14px 14px",
+            backgroundColor: "#090d16",
+          }}
         >
-          {React.createElement("wokwi-arduino-uno", {
-            led13: boardState?.builtinLed === 1,
-            ledPower: isRunning,
-            ledRX: false,
-            ledTX: false,
-          })}
-          <div className="mt-1 flex items-center justify-between px-2 text-[10px] font-mono text-slate-400 bg-slate-900/90 rounded border border-slate-800">
-            <span>Arduino Uno R3</span>
-            <span className={cn("font-bold", isRunning ? "text-emerald-400" : "text-slate-500")}>
-              {isRunning ? "PWR ON" : "STANDBY"}
-            </span>
+          {/* Wire layer (under parts) */}
+          <svg className="pointer-events-none absolute inset-0 h-full w-full z-10">
+            <defs>
+              <filter id="wire-glow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="2" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+              </filter>
+            </defs>
+            {/* Ghost wiring guides (dashed — never solid pre-placed wires) */}
+            {ghostGuides.map((g, i) => {
+              const from = endpointCoord(g.from);
+              const to = endpointCoord(g.to);
+              if (!from || !to) return null;
+              return renderWirePath(`ghost-${i}`, from, to, "#64748b", true, false);
+            })}
+            {wires.map((w) => {
+              const from = endpointCoord(w.from);
+              const to = endpointCoord(w.to);
+              if (!from || !to) return null;
+              return renderWirePath(w.id, from, to, w.color, false, true);
+            })}
+          </svg>
+
+          {/* Workbench Watermark Badge */}
+          <div className="pointer-events-none absolute right-4 top-4 flex items-center gap-2 rounded-lg bg-slate-900/90 px-3 py-1 font-mono text-[11px] text-slate-300 border border-slate-700/80 shadow-md z-30">
+            <Zap className="h-3.5 w-3.5 text-amber-400" />
+            <span>Tinkercad-style Manual Wiring Workbench</span>
           </div>
-        </div>
 
-        {/* 2. REAL PHYSICAL HARDWARE COMPONENTS WITH LIVE JUMPER TERMINALS */}
-        {parts.map((p) => {
-          const isSelected = p.id === selectedId;
-          const isDigital = p.connectedPin <= 13;
-          const pinVal = isDigital
-            ? (boardState?.digital[p.connectedPin]?.digitalValue ?? 0)
-            : (boardState?.analog[p.connectedPin - 14]?.digitalValue ?? 0);
-          const isHigh = pinVal === 1;
-
-          const servoPwm = boardState?.digital[p.connectedPin]?.analogValue ?? 0;
-          const servoAngle = Math.round((servoPwm / 255) * 180);
-
-          return (
+          {/* ARDUINO UNO (draggable) */}
+          <div
+            onPointerDown={(e) => handlePartDown(e, "arduino-uno")}
+            style={{
+              left: unoPos.x,
+              top: unoPos.y,
+              width: UNO_W,
+              height: UNO_H,
+              touchAction: "none",
+            }}
+            className={cn(
+              "absolute cursor-grab active:cursor-grabbing select-none rounded-lg transition-shadow z-20",
+              selectedId === "arduino-uno" && "ring-2 ring-emerald-400 shadow-2xl",
+            )}
+            title="Draggable Arduino Uno R3"
+            data-testid="arduino-uno"
+          >
+            {React.createElement("wokwi-arduino-uno", {
+              led13: boardState?.builtinLed === 1,
+              ledPower: isRunning,
+              ledRX: false,
+              ledTX: false,
+              style: { width: `${UNO_W}px`, height: `${UNO_H}px` },
+            })}
             <div
-              key={p.id}
-              onMouseDown={(e) => handleMouseDown(e, p.id)}
-              style={{ left: p.x, top: p.y }}
-              className={cn(
-                "absolute cursor-grab active:cursor-grabbing select-none rounded-xl p-2 transition-shadow z-20 group",
-                isSelected
-                  ? "ring-2 ring-emerald-400 bg-slate-900/80 shadow-2xl border border-emerald-500/50"
-                  : "hover:ring-1 hover:ring-slate-500/50 hover:bg-slate-900/40",
-              )}
+              className="absolute left-0 flex items-center justify-between font-mono text-[10px] text-slate-400 bg-slate-900/90 rounded border border-slate-800 px-2 py-0.5"
+              style={{ top: UNO_H + 2, width: UNO_W }}
             >
-              {/* Wiring Badge & Jumper Pin Connection */}
-              <div className="mb-1 flex items-center justify-between gap-2 px-1 text-[10px] font-mono">
-                <span className="rounded bg-slate-800/90 px-1.5 py-0.2 text-slate-300 font-semibold border border-slate-700">
-                  {p.label}
-                </span>
-                <span
-                  className="rounded px-1.5 py-0.2 font-bold border text-black shadow-sm"
-                  style={{
-                    backgroundColor: p.wireColor || "#10b981",
-                    borderColor: p.wireColor || "#10b981",
-                  }}
-                >
-                  {p.connectedPin >= 14 ? `A${p.connectedPin - 14}` : `D${p.connectedPin}`}
-                </span>
-              </div>
+              <span>Arduino Uno R3</span>
+              <span className={cn("font-bold", isRunning ? "text-emerald-400" : "text-slate-500")}>
+                {isRunning ? "PWR ON" : "STANDBY"}
+              </span>
+            </div>
+          </div>
 
-              {/* Real Wokwi Component Rendering */}
-              <div className="flex items-center justify-center p-1">
-                {p.type === "wokwi-led" &&
-                  React.createElement("wokwi-led", {
-                    color: p.color || "red",
-                    value: isHigh,
-                    lightColor: p.color || "red",
-                  })}
-
-                {p.type === "wokwi-pushbutton" && (
+          {/* Parts (draggable) */}
+          {parts.map((p) => {
+            const layout = PART_LAYOUTS[p.type];
+            const visual = visuals[p.id];
+            const isSelected = p.id === selectedId;
+            return (
+              <div
+                key={p.id}
+                onPointerDown={(e) => handlePartDown(e, p.id)}
+                style={{
+                  left: p.x,
+                  top: p.y,
+                  width: layout.w,
+                  height: layout.h,
+                  touchAction: "none",
+                }}
+                data-testid={`part-${p.label}`}
+                data-part-id={p.id}
+                data-lit={p.type === "wokwi-led" ? (visual?.lit ? "true" : "false") : undefined}
+                className={cn(
+                  "absolute cursor-grab active:cursor-grabbing select-none rounded-xl transition-shadow z-20 group",
+                  isSelected
+                    ? "ring-2 ring-emerald-400 bg-slate-900/80 shadow-2xl border border-emerald-500/50"
+                    : "hover:ring-1 hover:ring-slate-500/50 hover:bg-slate-900/40",
+                )}
+              >
+                {/* Label + derived pin badge + wiring warning */}
+                <div className="flex items-center justify-between gap-1 px-1 text-[10px] font-mono">
+                  <span className="rounded bg-slate-800/90 px-1.5 py-0.2 text-slate-300 font-semibold border border-slate-700">
+                    {p.label}
+                  </span>
+                  <span className="rounded px-1.5 py-0.2 font-bold border border-slate-600 bg-slate-700/80 text-slate-200">
+                    {visual && visual.connectedPins.length > 0
+                      ? visual.connectedPins.join("/")
+                      : "—"}
+                  </span>
+                </div>
+                {visual?.warning && (
                   <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handlePushButton(p);
-                    }}
-                    className="cursor-pointer active:scale-95 transition"
-                    title="Click to press pushbutton"
+                    data-testid={`warning-${p.label}`}
+                    className="mx-1 mt-0.5 rounded border border-amber-500/40 bg-amber-500/15 px-1 py-0.5 text-[8.5px] leading-tight text-amber-300"
+                    title={visual.warning}
                   >
-                    {React.createElement("wokwi-pushbutton", {
-                      color: p.color || "red",
-                      pressed: p.value === 1,
-                    })}
+                    ⚠ {visual.warning}
                   </div>
                 )}
 
-                {p.type === "wokwi-potentiometer" && (
-                  <div className="flex flex-col items-center gap-1">
-                    {React.createElement("wokwi-potentiometer", {
+                {/* Wokwi element — absolutely placed for terminal alignment */}
+                <div
+                  className="absolute flex items-center justify-center"
+                  style={{
+                    left: layout.el.x,
+                    top: layout.el.y,
+                    width: layout.el.w,
+                    height: layout.el.h,
+                  }}
+                >
+                  {p.type === "wokwi-led" &&
+                    React.createElement("wokwi-led", {
+                      color: p.color || "red",
+                      value: Boolean(visual?.lit),
+                      lightColor: p.color || "red",
+                    })}
+
+                  {p.type === "wokwi-pushbutton" && (
+                    <div
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePushButton(p);
+                      }}
+                      className="cursor-pointer active:scale-95 transition"
+                      title="Click to press pushbutton"
+                      data-testid={`press-${p.label}`}
+                    >
+                      {React.createElement("wokwi-pushbutton", {
+                        color: p.color || "red",
+                        pressed: p.value === 1,
+                      })}
+                    </div>
+                  )}
+
+                  {p.type === "wokwi-potentiometer" &&
+                    React.createElement("wokwi-potentiometer", {
                       min: 0,
                       max: 1023,
                       value: p.value ?? 512,
                     })}
+
+                  {p.type === "wokwi-buzzer" &&
+                    React.createElement("wokwi-buzzer", {
+                      hasSignal: Boolean(visual?.sounding),
+                    })}
+
+                  {p.type === "wokwi-servo" &&
+                    React.createElement("wokwi-servo", {
+                      angle: visual?.angle ?? 0,
+                    })}
+
+                  {p.type === "wokwi-hc-sr04" && React.createElement("wokwi-hc-sr04", {})}
+
+                  {p.type === "wokwi-resistor" &&
+                    React.createElement("wokwi-resistor", {
+                      value: "220",
+                    })}
+                </div>
+
+                {/* Interactive controls */}
+                {p.type === "wokwi-potentiometer" && (
+                  <div
+                    className="absolute left-2 right-2 flex flex-col items-center gap-1"
+                    style={{ top: 112 }}
+                  >
                     <input
                       type="range"
                       min="0"
                       max="1023"
                       value={p.value ?? 512}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        handlePotInput(p, val);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="h-1.5 w-24 cursor-pointer appearance-none rounded-lg bg-slate-700 accent-emerald-400"
+                      data-testid={`pot-${p.label}`}
+                      onChange={(e) => updatePartValue(p, Number(e.target.value))}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-700 accent-emerald-400"
                     />
                     <span className="font-mono text-[9px] text-slate-400">
                       {p.value ?? 512} ({(((p.value ?? 512) / 1023) * 5.0).toFixed(2)}V)
                     </span>
                   </div>
                 )}
-
-                {p.type === "wokwi-buzzer" &&
-                  React.createElement("wokwi-buzzer", {
-                    hasSignal: Boolean(boardState?.buzzerTone),
-                  })}
-
-                {p.type === "wokwi-servo" &&
-                  React.createElement("wokwi-servo", {
-                    angle: servoAngle,
-                  })}
-
                 {p.type === "wokwi-hc-sr04" && (
-                  <div className="flex flex-col items-center gap-1">
-                    {React.createElement("wokwi-hc-sr04", {})}
+                  <div
+                    className="absolute left-2 right-2 flex flex-col items-center gap-1"
+                    style={{ top: 128 }}
+                  >
                     <input
                       type="range"
                       min="2"
                       max="400"
-                      value={p.value ?? 20}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setParts((prev) =>
-                          prev.map((item) => (item.id === p.id ? { ...item, value: val } : item)),
-                        );
-                        const aPin = p.connectedPin >= 14 ? p.connectedPin - 14 : p.connectedPin;
-                        if (onAnalogPinChange && aPin <= 5) {
-                          onAnalogPinChange(aPin, Math.round((val / 400) * 1023));
-                        }
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="h-1.5 w-24 cursor-pointer appearance-none rounded-lg bg-slate-700 accent-teal-400"
+                      value={p.value ?? 25}
+                      data-testid={`sonar-${p.label}`}
+                      onChange={(e) => updatePartValue(p, Number(e.target.value))}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-700 accent-teal-400"
                     />
                     <span className="font-mono text-[9px] text-teal-400">
-                      Dist: {p.value ?? 20} cm
+                      Dist: {p.value ?? 25} cm
                     </span>
                   </div>
                 )}
-
-                {p.type === "wokwi-resistor" &&
-                  React.createElement("wokwi-resistor", {
-                    value: "220",
-                  })}
               </div>
+            );
+          })}
 
-              {/* Wire & Pin Inspector Box */}
-              {isSelected && (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  className="mt-1 flex flex-col gap-1.5 rounded-lg border border-slate-700 bg-slate-900/95 p-2 text-[11px] backdrop-blur-md shadow-lg"
-                >
-                  <div className="flex items-center justify-between gap-1.5">
-                    <label className="text-slate-400 font-mono text-[10px]">Pin:</label>
-                    <select
-                      value={p.connectedPin}
-                      onChange={(e) => updatePin(p.id, Number(e.target.value))}
-                      className="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-emerald-300 outline-none border border-slate-700 font-mono"
-                    >
-                      {p.type === "wokwi-potentiometer" ? (
-                        <>
-                          <option value={14}>A0</option>
-                          <option value={15}>A1</option>
-                          <option value={16}>A2</option>
-                          <option value={17}>A3</option>
-                          <option value={18}>A4</option>
-                          <option value={19}>A5</option>
-                        </>
-                      ) : (
-                        <>
-                          {[13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((pin) => (
-                            <option key={pin} value={pin}>
-                              Pin {pin}
-                            </option>
-                          ))}
-                        </>
-                      )}
-                    </select>
-                  </div>
+          {/* Terminal + preview layer (above parts for easy clicking) */}
+          <svg className="pointer-events-none absolute inset-0 h-full w-full z-40">
+            {/* Uno header terminals */}
+            {UNO_TERMINALS.map((t) =>
+              renderTerminal(t.key, unoCoord(t), t.label, "#cbd5e1", (e) =>
+                handleTerminalDown(e, t.key),
+              ),
+            )}
 
-                  {/* Wire Color Picker */}
-                  <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-800">
-                    <span className="text-[10px] text-slate-400 font-mono">Wire:</span>
-                    <div className="flex items-center gap-1">
-                      {WIRE_COLORS.map((w) => (
-                        <button
-                          key={w.name}
-                          onClick={() => updateWireColor(p.id, w.stroke)}
-                          className={cn(
-                            "h-3.5 w-3.5 rounded-full transition-transform",
-                            p.wireColor === w.stroke
-                              ? "scale-125 ring-2 ring-white"
-                              : "opacity-80 hover:opacity-100",
-                          )}
-                          style={{ backgroundColor: w.stroke }}
-                          title={`${w.name} Wire`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
+            {/* Part terminals */}
+            {parts.map((p) =>
+              PART_LAYOUTS[p.type].terminals.map((t) => {
+                const coord = partTerminalCoord(p.id, t.id);
+                if (!coord) return null;
+                return renderTerminal(`part-${p.id}-${t.id}`, coord, t.label, "#a5b4fc", (e) =>
+                  handleTerminalDown(e, `part-${p.id}-${t.id}`),
+                );
+              }),
+            )}
+
+            {/* Live rubber-band preview while routing a wire */}
+            {drawMode &&
+              pendingKey &&
+              cursorPos &&
+              (() => {
+                const fromEp = keyToEndpoint(pendingKey);
+                const from = fromEp ? endpointCoord(fromEp) : null;
+                const snapEp = hoverKey && hoverKey !== pendingKey ? keyToEndpoint(hoverKey) : null;
+                const to = (snapEp ? endpointCoord(snapEp) : null) ?? cursorPos;
+                if (!from) return null;
+                return (
+                  <g style={{ pointerEvents: "none" }}>
+                    <path
+                      d={wirePath(from, to)}
+                      fill="none"
+                      stroke={snapEp ? "#34d399" : drawColor}
+                      strokeWidth="3"
+                      strokeDasharray={snapEp ? "none" : "6 4"}
+                      strokeOpacity="0.9"
+                      strokeLinecap="round"
+                    />
+                    <circle cx={from.x} cy={from.y} r={4} fill={drawColor} />
+                  </g>
+                );
+              })()}
+          </svg>
+        </div>
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Info className="h-3.5 w-3.5 text-primary" />
+      <div className="flex items-start gap-2 text-xs text-muted-foreground">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
         <span>
-          Select mode: drag components to route wires, click one to set its Arduino pin (D0–D13 /
-          A0–A5) or wire color, and click a wire to remove it. Draw wire mode: click two points to
-          route a new jumper wire (Esc cancels). Parts can be dragged from the palette onto the
-          workbench.
+          Draw wire mode: click a terminal (LED anode/cathode, resistor legs, Uno pins D0–D13 /
+          A0–A5 / 5V / GND), then click the destination terminal to snap a jumper wire between them
+          — or drag from terminal to terminal. Esc cancels, click a wire then Delete (or the ✕) to
+          remove it. Select mode: drag components to move them. Nothing is pre-wired — every jumper
+          is placed by you, just like in Tinkercad.
         </span>
       </div>
     </div>

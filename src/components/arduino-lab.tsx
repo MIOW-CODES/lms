@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Play,
   Square,
@@ -9,14 +9,24 @@ import {
   Volume2,
   Sliders,
   Code2,
-  Sparkles,
   Copy,
   Check,
   LayoutGrid,
   Layers,
+  Ghost,
 } from "lucide-react";
-import { ArduinoSimulator, type ArduinoBoardState } from "@/lib/arduino-simulator";
-import { InteractiveBreadboardCanvas } from "@/components/arduino-breadboard-canvas";
+import {
+  ArduinoSimulator,
+  buildConnectionsSummary,
+  resolvePartStates,
+  type ArduinoBoardState,
+  type CircuitPart,
+} from "@/lib/arduino-simulator";
+import {
+  InteractiveBreadboardCanvas,
+  type CanvasWire,
+} from "@/components/arduino-breadboard-canvas";
+import { ARDUINO_TASKS, type ArduinoTask } from "@/lib/arduino-tasks";
 import { cn } from "@/lib/utils";
 
 const STARTER_SKETCHES = [
@@ -165,7 +175,15 @@ void loop() {
   },
 ];
 
-export function ArduinoLab() {
+interface ArduinoLabProps {
+  /**
+   * Receives the auto-generated wiring description whenever the student's
+   * circuit changes (used by worksheet answer boxes for the keyword grader).
+   */
+  onConnectionsChange?: (summary: string) => void;
+}
+
+export function ArduinoLab({ onConnectionsChange }: ArduinoLabProps = {}) {
   const [selectedSketch, setSelectedSketch] = useState(0);
   const [code, setCode] = useState(STARTER_SKETCHES[0]?.code ?? "");
   const [logs, setLogs] = useState<string[]>([]);
@@ -175,6 +193,13 @@ export function ArduinoLab() {
   const [copied, setCopied] = useState(false);
   // View mode: 'board' (PCB view) or 'canvas' (Wokwi / TinkerCAD style interactive drag & drop breadboard)
   const [activeTab, setActiveTab] = useState<"canvas" | "board">("canvas");
+  // Seeded task with a dashed ghost wiring guide (wires are still placed manually)
+  const [activeTask, setActiveTask] = useState<ArduinoTask | null>(null);
+  // Student's manual wiring — feeds the simulator netlist + connections summary
+  const [circuit, setCircuit] = useState<{ parts: CircuitPart[]; wires: CanvasWire[] }>({
+    parts: [],
+    wires: [],
+  });
 
   // Sliders for Analog Inputs A0-A5
   const [analogValues, setAnalogValues] = useState<number[]>([512, 0, 0, 0, 0, 0]);
@@ -184,10 +209,18 @@ export function ArduinoLab() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const oscRef = useRef<OscillatorNode | null>(null);
 
+  // Buzzer only fires through its wired net (Tinkercad semantics): tone() must
+  // be active AND a buzzer's + terminal must reach the tone pin.
+  const buzzerActive = useMemo(() => {
+    if (!boardState?.buzzerTone) return false;
+    const states = resolvePartStates(circuit.parts, circuit.wires, boardState);
+    return Object.values(states).some((s) => s.sounding);
+  }, [boardState, circuit]);
+
   // Web Audio sound generator for Piezo buzzer
   useEffect(() => {
     const freq = boardState?.buzzerTone;
-    if (isRunning && freq && freq > 20) {
+    if (isRunning && buzzerActive && freq && freq > 20) {
       try {
         if (!audioCtxRef.current) {
           const AudioCtx =
@@ -227,7 +260,13 @@ export function ArduinoLab() {
         oscRef.current = null;
       }
     }
-  }, [boardState?.buzzerTone, isRunning]);
+  }, [boardState?.buzzerTone, buzzerActive, isRunning]);
+
+  const handleCircuitChange = (parts: CircuitPart[], wires: CanvasWire[]) => {
+    setCircuit({ parts, wires });
+    simRef.current?.setCircuit(parts, wires);
+    onConnectionsChange?.(buildConnectionsSummary(parts, wires));
+  };
 
   useEffect(() => {
     const sim = new ArduinoSimulator();
@@ -414,16 +453,44 @@ export function ArduinoLab() {
             </div>
           </div>
 
+          {/* Seeded task hint chips + ghost wiring guide */}
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/80 bg-card/80 p-2.5 shadow-sm backdrop-blur-md">
+            <span className="inline-flex items-center gap-1.5 px-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              <Ghost className="h-3.5 w-3.5 text-primary" /> Task hints:
+            </span>
+            {ARDUINO_TASKS.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setActiveTask((prev) => (prev?.id === t.id ? null : t))}
+                data-testid={`task-chip-${t.id}`}
+                aria-pressed={activeTask?.id === t.id}
+                title={t.title}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                  activeTask?.id === t.id
+                    ? "border-emerald-500/60 bg-emerald-500/20 text-emerald-300 shadow-inner"
+                    : "border-border/70 bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                {t.chip}
+              </button>
+            ))}
+            {activeTask && (
+              <p
+                data-testid="task-hint"
+                className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] leading-relaxed text-emerald-200"
+              >
+                <strong className="font-semibold">{activeTask.title}:</strong> {activeTask.hint}
+              </p>
+            )}
+          </div>
+
           {activeTab === "canvas" ? (
             <InteractiveBreadboardCanvas
               boardState={boardState}
               isRunning={isRunning}
-              onDigitalPinChange={(pin, val) => {
-                if (simRef.current) simRef.current.setDigitalInput(pin, val);
-              }}
-              onAnalogPinChange={(pinIndex, val) => {
-                handleAnalogChange(pinIndex, val);
-              }}
+              task={activeTask}
+              onCircuitChange={handleCircuitChange}
             />
           ) : (
             <>
