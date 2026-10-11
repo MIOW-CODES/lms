@@ -22,7 +22,7 @@ Open `http://127.0.0.1:3000` — you'll see the login page.
 | College (e.g. Section B8)            | Student ID (e.g. `2025-2517`) or school email | Student ID (e.g. `2025-2517`) |
 | `josephalan.vergara@g.msuiit.edu.ph` | Admin (web developer)                         | `1234`                        |
 | `alan.vergara@g.msuiit.edu.ph`       | Admin & Teacher                               | `3333`                        |
-| `maria.santos@northview.edu`         | Teacher                                       | `1111`                        |
+| `test@g.msuiit.edu.ph`               | Staff (LiveUser, multi-role view switcher)    | `0916`                        |
 
 ## Database Setup
 
