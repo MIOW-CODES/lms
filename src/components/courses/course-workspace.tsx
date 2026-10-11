@@ -7,6 +7,7 @@ import {
   FileSpreadsheet,
   Plus,
   Search,
+  Table,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -17,6 +18,7 @@ import { UserAvatar } from "@/components/ui-elements";
 import { WorksheetsSection } from "@/components/courses/worksheets-section";
 import { AssignmentsSection } from "@/components/courses/assignments-section";
 import { ClassRecord } from "@/components/courses/class-record";
+import { TosView } from "@/components/courses/tos-view";
 import { EnrollStudentsModal } from "@/components/courses/enroll-students-modal";
 import { MeetingsPanel } from "@/components/courses/meetings-panel";
 import { SectionsPanel } from "@/components/courses/sections-panel";
@@ -281,6 +283,7 @@ export function StaffCourseWorkspace({
       count: loading ? "…" : courseAssignments.length,
     },
     { id: "class", label: "Class Record", icon: <FileSpreadsheet className="h-4 w-4" /> },
+    { id: "tos", label: "TOS", icon: <Table className="h-4 w-4" /> },
     {
       id: "roster",
       label: "Students",
@@ -361,6 +364,8 @@ export function StaffCourseWorkspace({
         ) : (
           <ClassRecord courseId={course.id} courseCode={course.code} roster={roster} />
         ))}
+
+      {tab === "tos" && <TosView course={course} />}
 
       {tab === "roster" && (
         <CourseRoster

@@ -33,10 +33,12 @@ import {
   listCourseMeetingsFn,
   listCourseSectionsFn,
   listCoursesFn,
+  listCourseTosFn,
   listGradesForCourseFn,
   listGradesForStudentFn,
   listMeetingMembersFn,
   listQuizAttemptsFn,
+  listQuestionBankFn,
   listQuizScoresForCourseFn,
   listQuizzesFn,
   listSectionsFn,
@@ -61,10 +63,13 @@ import {
   updateProfileFn,
   updateTeacherSettingsFn,
   updateQuizRetakePolicyFn,
+  updateQuestionFn,
   updateQuizFn,
   updateAssignmentFn,
+  upsertTosFn,
   deleteQuizFn,
   deleteAssignmentFn,
+  deleteTosFn,
   uploadCourseMaterialFn,
   attachCourseMaterialFn,
   removeCourseMaterialFn,
@@ -1604,4 +1609,101 @@ export async function listAuditLogs(): Promise<AuditEntry[]> {
     detail: r.detail,
     at: r.created_at,
   }));
+}
+
+/* ---------- TOS (Table of Specifications) ---------- */
+
+/** Bloom's taxonomy levels allowed for a TOS item. */
+export type CognitiveLevel =
+  "remembering" | "understanding" | "applying" | "analyzing" | "evaluating" | "creating";
+
+/** One entry of a TOS item list (stored as jsonb on tos.items). */
+export type TosItem = {
+  topic: string;
+  no_of_items: number;
+  cognitive_level: CognitiveLevel;
+  quiz_id: string | null;
+  note: string | null;
+};
+
+/** A Table of Specifications row — one per (course, quarter). */
+export interface Tos {
+  id: string;
+  course_id: string;
+  quarter: number;
+  title: string | null;
+  items: TosItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+/** All TOS rows for a course, ordered by quarter. Staff-only. */
+export async function listCourseTos(courseId: string): Promise<Tos[]> {
+  return (await listCourseTosFn({ data: { courseId, token: sessionToken() } })) as Tos[];
+}
+
+/**
+ * Create or update one TOS row — upserts on (courseId, quarter) when no id is
+ * given. `items` replaces the stored item set wholesale. Staff-only.
+ */
+export async function upsertTos(input: {
+  id?: string;
+  courseId: string;
+  quarter: number;
+  title?: string | null;
+  items: TosItem[];
+}): Promise<Tos> {
+  return (await upsertTosFn({
+    data: { ...(input as object), token: sessionToken() } as Record<string, unknown>,
+  })) as Tos;
+}
+
+/** Delete a whole TOS row. Staff-only. */
+export async function deleteTos(id: string): Promise<void> {
+  await deleteTosFn({ data: { id, token: sessionToken() } });
+}
+
+/* ---------- Question bank ---------- */
+
+/** A quiz question with course context, as seen by the staff question bank. */
+export interface QuestionBankQuestion {
+  id: string;
+  quiz_id: string;
+  course_id: string;
+  course_code: string | null;
+  question: string;
+  options: string[];
+  correct_answer: string;
+  position: number;
+  image_url: string | null;
+  lab_task: boolean;
+  required: boolean;
+  created_at: string;
+}
+
+/** Partial edit for one quiz question. Staff-only. */
+export type QuestionBankPatch = {
+  question?: string;
+  options?: string[];
+  correct_answer?: string;
+  lab_task?: boolean;
+  required?: boolean;
+  image_url?: string | null;
+};
+
+/** Question-bank rows (includes answer keys). Pass courseId to scope, omit for all. */
+export async function listQuestionBank(courseId?: string | null): Promise<QuestionBankQuestion[]> {
+  return (await listQuestionBankFn({
+    data: { courseId: courseId ?? null, token: sessionToken() },
+  })) as QuestionBankQuestion[];
+}
+
+/** Edit one quiz question in place (only provided fields are written). */
+export async function updateQuestion(
+  id: string,
+  patch: QuestionBankPatch,
+): Promise<QuestionBankQuestion> {
+  return (await updateQuestionFn({
+    data: { id, patch, token: sessionToken() } as Record<string, unknown>,
+  })) as QuestionBankQuestion;
 }

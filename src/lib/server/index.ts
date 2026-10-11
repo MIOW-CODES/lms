@@ -172,3 +172,9 @@ export { schemas } from "./schemas.server";
 
 export { writeAuditLog, listAuditLogs, clampAuditDetail } from "./audit.server";
 export type { AuditActor, AuditLogRow } from "./audit.server";
+
+export { listTosForCourse, upsertTos, deleteTos } from "./tos.server";
+export type { TosItem, TosRow, UpsertTosInput, CognitiveLevel } from "./tos.server";
+
+export { listQuestionBank, updateQuestion } from "./question-bank.server";
+export type { QuestionBankRow, QuestionPatch } from "./question-bank.server";

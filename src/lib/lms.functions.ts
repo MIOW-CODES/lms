@@ -733,3 +733,43 @@ export const listAuditLogsFn = createServerFn({ method: "POST" })
     await server.requireStaff(data.token);
     return server.listAuditLogs();
   });
+
+/* ---------- TOS (Table of Specifications) ---------- */
+
+export const listCourseTosFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.courseScoped.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireStaff(data.token);
+    return server.listTosForCourse(data.courseId);
+  });
+
+// TOS editing: teachers plan their own courses; admins may manage any.
+// Staff-only guard + audit live in the server module (it resolves the caller).
+export const upsertTosFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.tosUpsert.parse(data))
+  .handler(async ({ data }) =>
+    server.upsertTos(data.token, {
+      id: data.id,
+      courseId: data.courseId,
+      quarter: data.quarter,
+      title: data.title,
+      items: data.items,
+    }),
+  );
+
+export const deleteTosFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.id.parse(data))
+  .handler(async ({ data }) => server.deleteTos(data.token, data.id));
+
+/* ---------- Question bank ---------- */
+
+// Includes answer keys — the server module enforces requireStaff.
+export const listQuestionBankFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.questionBankList.parse(data))
+  .handler(async ({ data }) =>
+    server.listQuestionBank(data.token, { courseId: data.courseId ?? null }),
+  );
+
+export const updateQuestionFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.questionUpdate.parse(data))
+  .handler(async ({ data }) => server.updateQuestion(data.token, data.id, data.patch));

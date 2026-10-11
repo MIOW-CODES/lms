@@ -1,0 +1,97 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// Question bank — staff-facing view over quiz_questions with course context
+// (the `question_bank` view), plus guarded in-place question editing.
+// Includes answer keys, so every entry point is staff-only.
+import { db } from "@/integrations/db/client.server";
+import { unwrap, asJsonParam } from "@/lib/server/utils.server";
+import { requireStaff } from "@/lib/server/auth.server";
+import { writeAuditLog } from "@/lib/server/audit.server";
+
+export interface QuestionBankRow {
+  id: string;
+  quiz_id: string;
+  course_id: string;
+  course_code: string | null;
+  question: string;
+  options: string[];
+  correct_answer: string;
+  position: number;
+  image_url: string | null;
+  lab_task: boolean;
+  required: boolean;
+  created_at: string;
+}
+
+export interface QuestionPatch {
+  question?: string | undefined;
+  options?: string[] | undefined;
+  correct_answer?: string | undefined;
+  lab_task?: boolean | undefined;
+  required?: boolean | undefined;
+  image_url?: string | null | undefined;
+}
+
+/** Defensive normalization (jsonb comes back parsed on both backends). */
+function normalizeRow(r: any): QuestionBankRow {
+  const options = typeof r.options === "string" ? safeParse(r.options) : r.options;
+  return { ...(r as QuestionBankRow), options: Array.isArray(options) ? options : [] };
+}
+
+function safeParse(s: string): unknown {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * List question-bank rows, optionally scoped to one course (omit courseId for
+ * everything). Staff-only — rows include the answer key.
+ */
+export async function listQuestionBank(
+  token: string,
+  opts: { courseId?: string | null } = {},
+): Promise<QuestionBankRow[]> {
+  await requireStaff(token);
+  let q = db.from("question_bank").select("*");
+  if (opts.courseId) q = q.eq("course_id", opts.courseId);
+  const rows = await unwrap<any[]>(q.order("quiz_id").order("position"));
+  return rows.map(normalizeRow);
+}
+
+/**
+ * Edit one quiz question in place. Only the provided fields are written;
+ * `options` is stored as jsonb via asJsonParam so it round-trips both
+ * backends. Staff-only; writes an audit entry and returns the updated row as
+ * seen through the question_bank view.
+ */
+export async function updateQuestion(
+  token: string,
+  id: string,
+  patch: QuestionPatch,
+): Promise<QuestionBankRow> {
+  const caller = await requireStaff(token);
+
+  const row: Record<string, any> = {};
+  if (patch.question !== undefined) row["question"] = patch.question;
+  if (patch.options !== undefined) row["options"] = asJsonParam(patch.options);
+  if (patch.correct_answer !== undefined) row["correct_answer"] = patch.correct_answer;
+  if (patch.lab_task !== undefined) row["lab_task"] = patch.lab_task;
+  if (patch.required !== undefined) row["required"] = patch.required;
+  if (patch.image_url !== undefined) row["image_url"] = patch.image_url;
+
+  if (Object.keys(row).length > 0) {
+    await unwrap(db.from("quiz_questions").update(row).eq("id", id));
+  }
+
+  const saved = await unwrap<any>(db.from("question_bank").select("*").eq("id", id).maybeSingle());
+  if (!saved) throw new Error("Not found");
+
+  await writeAuditLog(
+    caller,
+    "Question updated",
+    `Question ${id} · ${Object.keys(row).join(", ") || "no fields"}`,
+  );
+  return normalizeRow(saved);
+}

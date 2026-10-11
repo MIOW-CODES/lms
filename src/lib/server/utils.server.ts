@@ -62,6 +62,18 @@ export async function unwrap<T>(
 }
 
 /**
+ * Wrap a value destined for a `jsonb` column so it round-trips BOTH database
+ * backends. Plain JS arrays are broken on the pg compat path: node-pg's
+ * prepareValue serializes arrays as Postgres array literals ('{"a","b"}'),
+ * which is invalid jsonb input, while objects already serialize as JSON.
+ * The toJSON() wrapper makes node-pg go through JSON.stringify (producing
+ * proper JSON text) and supabase-js still embeds the real value in its body.
+ */
+export function asJsonParam<T>(value: T): { toJSON: () => T } {
+  return { toJSON: () => value };
+}
+
+/**
  * Strip the session token from a validated payload before it hits PostgREST —
  * no table has a `token` column, so passing it through breaks inserts/updates.
  */

@@ -52,6 +52,22 @@ const profileFields = {
   avatar_url: avatarUrl.nullable().optional(),
 };
 
+/** One row of a Table of Specifications item list (stored as jsonb on tos.items). */
+const tosItem = z.object({
+  topic: z.string().min(1).max(300),
+  no_of_items: z.number().int().min(0).max(1000),
+  cognitive_level: z.enum([
+    "remembering",
+    "understanding",
+    "applying",
+    "analyzing",
+    "evaluating",
+    "creating",
+  ]),
+  quiz_id: uuid.nullable().optional(),
+  note: z.string().max(2000).nullable().optional(),
+});
+
 export const schemas = {
   rfid: z.object({ uid: z.string().min(1).max(64) }),
   pinLogin: z.object({ login: z.string().min(1).max(320), secret: z.string().min(1).max(200) }),
@@ -480,6 +496,32 @@ export const schemas = {
     ...token,
   }),
   contentDelete: z.object({ id: uuid, mode: z.enum(["soft", "hard"]), ...token }),
+  // ---- TOS (Table of Specifications) ----
+  tosItem,
+  tosUpsert: z.object({
+    id: uuid.optional(),
+    courseId: uuid,
+    quarter: z.number().int().min(1).max(8),
+    title: z.string().max(300).nullable().optional(),
+    items: z.array(tosItem).max(200),
+    ...token,
+  }),
+  // ---- Question bank ----
+  questionBankList: z.object({ courseId: uuid.nullable().optional(), ...token }),
+  questionUpdate: z.object({
+    id: uuid,
+    patch: z
+      .object({
+        question: z.string().min(1).max(2000),
+        options: z.array(z.string().min(1).max(500)).max(12),
+        correct_answer: z.string().min(1).max(1000),
+        lab_task: z.boolean(),
+        required: z.boolean(),
+        image_url: z.string().max(2_000_000).nullable(),
+      })
+      .partial(),
+    ...token,
+  }),
   announcementMaterialUpload: z.object({
     announcement_id: uuid,
     name: z.string().min(1).max(200),

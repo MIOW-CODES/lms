@@ -14,10 +14,12 @@ import {
   GraduationCap,
   Layers,
   LayoutDashboard,
+  Library,
   LogOut,
   Megaphone,
   Menu as MenuIcon,
   Settings,
+  Table,
   Users,
   X,
 } from "lucide-react";
@@ -74,6 +76,12 @@ export const ADMIN_NAV: NavItem[] = [
   },
   { to: "/dashboard/admin/courses", label: "Courses", icon: <BookOpen className="h-4 w-4" /> },
   {
+    to: "/dashboard/admin/question-bank",
+    label: "Question Bank",
+    icon: <Library className="h-4 w-4" />,
+  },
+  { to: "/dashboard/admin/tos", label: "TOS", icon: <Table className="h-4 w-4" /> },
+  {
     to: "/dashboard/admin/announcements",
     label: "Announcements",
     icon: <Megaphone className="h-4 w-4" />,
@@ -101,6 +109,12 @@ export const TEACHER_NAV: NavItem[] = [
     icon: <Megaphone className="h-4 w-4" />,
   },
   { to: "/dashboard/teacher/grades", label: "Gradebook", icon: <Layers className="h-4 w-4" /> },
+  {
+    to: "/dashboard/teacher/question-bank",
+    label: "Question Bank",
+    icon: <Library className="h-4 w-4" />,
+  },
+  { to: "/dashboard/teacher/tos", label: "TOS", icon: <Table className="h-4 w-4" /> },
   {
     to: "/dashboard/teacher/arduino",
     label: "Arduino Lab (ongoing)",

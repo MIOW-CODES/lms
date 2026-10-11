@@ -2,7 +2,7 @@
 // Quizzes — CRUD, attempts, retake policy engine, essay grading, scoring.
 import { z } from "zod";
 import { db } from "@/integrations/db/client.server";
-import { unwrap, withoutToken, isUniqueViolation } from "@/lib/server/utils.server";
+import { unwrap, withoutToken, isUniqueViolation, asJsonParam } from "@/lib/server/utils.server";
 import {
   requireSession,
   requireStaff,
@@ -446,9 +446,11 @@ export async function submitQuizAttempt(
     attempt_number,
     score,
     total,
-    results,
+    // `results` and `tab_switches` are jsonb columns — wrap the JS arrays.
+    // `question_ids` is a native uuid[] column and stays a plain array.
+    results: asJsonParam(results),
     question_ids: questionIds ?? [],
-    tab_switches: tabSwitches ?? [],
+    tab_switches: asJsonParam(tabSwitches ?? []),
   };
   if (submissionId) row["submission_id"] = submissionId;
 
@@ -847,11 +849,22 @@ export async function createQuizWithQuestions(
   quiz: z.infer<typeof schemas.quizBundle>["quiz"],
   questions: z.infer<typeof schemas.quizBundle>["questions"],
 ) {
-  const created = await unwrap<any>(db.from("quizzes").insert(quiz).select().single());
+  // `attachments` (quizzes) and `options` (quiz_questions) are jsonb columns —
+  // wrap JS arrays in asJsonParam so node-pg doesn't send a Postgres array
+  // literal (see utils.server.ts).
+  const quizRow: Record<string, unknown> = { ...quiz };
+  if (Array.isArray(quizRow["attachments"]))
+    quizRow["attachments"] = asJsonParam(quizRow["attachments"]);
+  const created = await unwrap<any>(db.from("quizzes").insert(quizRow).select().single());
   await unwrap(
-    db
-      .from("quiz_questions")
-      .insert(questions.map((q, i) => ({ ...q, quiz_id: created.id, position: i + 1 }))),
+    db.from("quiz_questions").insert(
+      questions.map((q, i) => ({
+        ...q,
+        options: asJsonParam(q.options),
+        quiz_id: created.id,
+        position: i + 1,
+      })),
+    ),
   );
 
   // Notify enrolled students via email and SMS
@@ -970,15 +983,23 @@ export async function updateQuiz(
   const safePatch = Object.fromEntries(
     Object.entries(patch).filter(([key]) => ALLOWED_QUIZ_COLUMNS.has(key)),
   );
+  // `attachments` is jsonb — wrap the JS array (see utils.server.ts).
+  if (Array.isArray(safePatch["attachments"]))
+    safePatch["attachments"] = asJsonParam(safePatch["attachments"]);
   if (Object.keys(safePatch).length)
     await unwrap(db.from("quizzes").update(safePatch).eq("id", id));
   if (questions && questions.length) {
     await unwrap(db.from("quiz_attempts").delete().eq("quiz_id", id));
     await unwrap(db.from("quiz_questions").delete().eq("quiz_id", id));
     await unwrap(
-      db
-        .from("quiz_questions")
-        .insert(questions.map((q, i) => ({ ...q, quiz_id: id, position: i + 1 }))),
+      db.from("quiz_questions").insert(
+        questions.map((q, i) => ({
+          ...q,
+          options: asJsonParam(q.options),
+          quiz_id: id,
+          position: i + 1,
+        })),
+      ),
     );
   }
 }
