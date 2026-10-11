@@ -123,6 +123,8 @@ function QuizzesPage() {
   const [idx, setIdx] = useState(0);
   // Collapsible Virtual Arduino Lab panel for problem-solving (lab_task) items.
   const [labOpen, setLabOpen] = useState(true);
+  // Auto-generated wiring description from the Virtual Arduino Lab (manual wires)
+  const [connSummary, setConnSummary] = useState("");
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [result, setResult] = useState<QuizSuccess | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -685,6 +687,7 @@ function QuizzesPage() {
                   key={q.id}
                   onClick={() => setIdx(i)}
                   aria-label={`Go to question ${i + 1}`}
+                  data-testid={`question-nav-${i + 1}`}
                   className={cn(
                     "flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold transition-colors",
                     i === idx
@@ -719,6 +722,7 @@ function QuizzesPage() {
                   <textarea
                     value={answers[current.id] ?? ""}
                     onChange={(e) => setAnswers((a) => ({ ...a, [current.id]: e.target.value }))}
+                    data-testid="answer-input"
                     placeholder={
                       current.lab_task
                         ? "Type or paste your final code / circuit description here…"
@@ -749,26 +753,65 @@ function QuizzesPage() {
                   </div>
                 )}
                 {current.lab_task && (
-                  <div className="mt-4 overflow-hidden rounded-xl border border-primary/30">
-                    <button
-                      type="button"
-                      onClick={() => setLabOpen((o) => !o)}
-                      className="flex w-full items-center justify-between gap-2 bg-primary/5 px-4 py-3 text-left text-sm font-semibold hover:bg-primary/10"
+                  <>
+                    {/* Auto-generated connections summary from the lab's manual wiring */}
+                    <div
+                      data-testid="connections-summary"
+                      className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3"
                     >
-                      <span>🧪 Virtual Arduino Lab — build &amp; test your solution here</span>
-                      <ChevronDown
-                        className={cn(
-                          "h-4 w-4 shrink-0 transition-transform",
-                          labOpen && "rotate-180",
-                        )}
-                      />
-                    </button>
-                    {labOpen && (
-                      <div className="max-h-[70vh] overflow-y-auto border-t border-border p-3">
-                        <ArduinoLab />
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-300">
+                          🔌 Connections summary (auto-generated from your wires)
+                        </span>
+                        <button
+                          type="button"
+                          data-testid="insert-connections"
+                          disabled={!connSummary}
+                          onClick={() => {
+                            if (!connSummary) return;
+                            setAnswers((a) => {
+                              const prevText = a[current.id] ?? "";
+                              return {
+                                ...a,
+                                [current.id]: prevText
+                                  ? `${prevText}\n${connSummary}`
+                                  : connSummary,
+                              };
+                            });
+                          }}
+                          className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-300"
+                        >
+                          Insert into answer
+                        </button>
                       </div>
-                    )}
-                  </div>
+                      <p className="mt-2 font-mono text-xs leading-relaxed text-muted-foreground">
+                        {connSummary ||
+                          "No jumper wires yet — wire some terminals in the lab below and this description fills in automatically."}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 overflow-hidden rounded-xl border border-primary/30">
+                      <button
+                        type="button"
+                        data-testid="lab-panel-toggle"
+                        onClick={() => setLabOpen((o) => !o)}
+                        className="flex w-full items-center justify-between gap-2 bg-primary/5 px-4 py-3 text-left text-sm font-semibold hover:bg-primary/10"
+                      >
+                        <span>🧪 Virtual Arduino Lab — build &amp; test your solution here</span>
+                        <ChevronDown
+                          className={cn(
+                            "h-4 w-4 shrink-0 transition-transform",
+                            labOpen && "rotate-180",
+                          )}
+                        />
+                      </button>
+                      {labOpen && (
+                        <div className="max-h-[70vh] overflow-y-auto border-t border-border p-3">
+                          <ArduinoLab onConnectionsChange={setConnSummary} />
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             )}
