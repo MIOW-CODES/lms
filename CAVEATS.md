@@ -80,6 +80,27 @@ Kept current through the review loop; entries are addressed or accepted before m
 - **Browsers without the Fullscreen API** (iPhone Safari) get input-blocking only — same
   degradation the exam lockdown already had; no new platform guarantee.
 
+## Review triage (Hermes, per-commit 9ada899 / aca28b3 / 51c328b / 6f12ae7 / 8185a63)
+
+No commit was rated "Needs changes". Dispositions:
+
+- **Accepted, documented**: keyword regex is an enforcement floor, not a content-quality
+  gate (see above); kiosk fail-open is silent-by-design (see above); magic numbers kept
+  literal per seed convention; backfill sentence is generic by design.
+- **Rejected as non-issues**: SELECT-then-INSERT upsert races (migrations run once,
+  sequentially via `scripts/migrate.ts`; `(course_id, title)` unique index rejected —
+  soft-deleted rows may share titles); `examActive`/`kioskActive` "races" (single-threaded
+  store; React batching cannot interleave demand updates); `=== true` strictness in
+  `shouldKioskLockdown` is deliberate (rejects `"true"` strings from a JSON column);
+  `ORDER BY created_at LIMIT 1` on course lookup is deliberate determinism.
+- **Accepted, minor (deliberate)**: `document.exitFullscreen().catch(() => {})` swallows
+  benign "not fullscreen" rejections; `RAISE NOTICE` visibility matches every other seed
+  migration in this repo; `refetchInterval: 60s` matches the kiosk-polling pattern in
+  `__root.tsx`.
+- **Deferred (tooling, out of scope)**: CI check for migration version-prefix collisions
+  (manual guard applied in this PR — renames to `20261012000011-15`); post-migration
+  orphan checks; parameterized refactor of quiz seed templates.
+
 ## Environment / validation
 
 - **Docker daemon is not running on this machine**; local DB validation uses PGlite
