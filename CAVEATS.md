@@ -16,6 +16,11 @@ Kept current through the review loop; entries are addressed or accepted before m
 - **Reset migration first** (`20261013000000`): soft-deletes the old active `Quiz 1…7`
   rows (wrongly-based content + attempt history preserved but hidden), then the new
   set is inserted. Old rows never hard-deleted. PRELIM/FINAL rows never matched.
+- **Legacy all-caps clones** (`20261013000030`): the TVE100 assessment clone left
+  `QUIZ 1`…`QUIZ 4` rows (all-caps titles) that the reset's mixed-case match missed —
+  they duplicated the weekly set in the UI (13 cards instead of 9). Soft-deleted with
+  a double guard (`title = upper(title)` AND `^QUIZ [0-9]+$`) so the live mixed-case
+  set can never be caught. These are the "quiz 1-3" the user asked to remove.
 - **Weekly quizzes: 10 questions / 20 minutes** each (question count unspecified; kept
   the 10-item convention). **FINAL EXAMINATION (Coverage: Weeks 1-7): 100 questions /
   60 minutes**, authored as two range-scoped halves (1–50 TVE100 weeks, 51–100 ICT1
@@ -49,6 +54,11 @@ Kept current through the review loop; entries are addressed or accepted before m
   Quiz/assignment/material access was already enrollment-guarded server-side (only
   course shells leaked). Secondary fix: `listCourseMeetings` now requires enrollment
   for students (timetable of arbitrary courses was readable by id).
+- **Verified in prod UI** (post-deploy): a student with zero enrollment rows now
+  correctly sees **zero** courses (before the fix they saw every same-grade course).
+  Example: Benejol (2nd Yr · B8) is not in the ICT1 roster ("0 of 46 learners") and
+  her Courses page is empty — correct, not a regression. If B8 students should
+  access the ICT1 lab, that is an admin "Enroll students" data action, not code.
 
 ## ICT1 slide-based quizzes (Quiz 1–3, 5–6)
 
