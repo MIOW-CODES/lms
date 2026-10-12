@@ -173,6 +173,8 @@ export {
 } from "./rfid-devices.server";
 export type { RfidDevicePublic } from "./rfid-devices.server";
 
+export { getKioskLockdown, setKioskLockdown, kioskLockdownInput } from "./app-settings.server";
+
 export { schemas } from "./schemas.server";
 
 export { writeAuditLog, listAuditLogs, clampAuditDetail } from "./audit.server";

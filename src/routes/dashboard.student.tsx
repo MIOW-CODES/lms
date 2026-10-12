@@ -1,8 +1,13 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { KioskLockdown, LockdownProvider } from "@/components/lockdown";
 
 // Layout route for the student portal. The dashboard body lives in
 // dashboard.student.index.tsx; child pages (grades, assignments, quizzes,
 // attendance, settings) mount through <Outlet />.
+//
+// App-wide kiosk lockdown lives here: LockdownProvider holds the single
+// useExamLock activation shared with the exam flow (dashboard.student.quizzes),
+// and KioskLockdown applies it to student sessions when the admin setting is on.
 //
 // NOTE: No beforeLoad auth guard is needed here. useProfile() returns null
 // when not authenticated, and all child pages already handle this case by
@@ -24,5 +29,10 @@ export const Route = createFileRoute("/dashboard/student")({
 });
 
 function StudentLayout() {
-  return <Outlet />;
+  return (
+    <LockdownProvider>
+      <KioskLockdown />
+      <Outlet />
+    </LockdownProvider>
+  );
 }

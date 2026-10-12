@@ -38,6 +38,11 @@ export function useSignOut() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   return () => {
+    // Signing out is a proper end of session: leave fullscreen so the kiosk
+    // drops back to the sign-in screen with the browser's own chrome.
+    if (document.fullscreenElement && document.exitFullscreen) {
+      void document.exitFullscreen().catch(() => {});
+    }
     saveSession(null);
     queryClient.clear();
     navigate({ to: "/auth", replace: true });
