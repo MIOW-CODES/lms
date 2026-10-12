@@ -350,13 +350,29 @@ function createPgCompatLayer(): DbLike {
             return `(${vals.join(", ")})`;
           })
           .join(", ");
-        const conflictClause =
-          this.conflictTarget && this.ignoreDuplicates
-            ? ` ON CONFLICT (${this.conflictTarget
-                .split(",")
-                .map((c) => qi(c.trim()))
-                .join(", ")}) DO NOTHING`
-            : "";
+        let conflictClause = "";
+        if (this.conflictTarget) {
+          const targetSql = this.conflictTarget
+            .split(",")
+            .map((c) => qi(c.trim()))
+            .join(", ");
+          if (this.ignoreDuplicates) {
+            conflictClause = ` ON CONFLICT (${targetSql}) DO NOTHING`;
+          } else {
+            // Supabase semantics: `onConflict` without `ignoreDuplicates` is an
+            // upsert — conflicting rows take the new values (DO UPDATE SET), not
+            // a silent DO NOTHING (which turned the insert into a unique
+            // violation on the pg backend).
+            const conflictCols = new Set(this.conflictTarget.split(",").map((c) => c.trim()));
+            const setSql = keys
+              .filter((k) => !conflictCols.has(k))
+              .map((k) => `${qi(k)} = EXCLUDED.${qi(k)}`)
+              .join(", ");
+            conflictClause = setSql
+              ? ` ON CONFLICT (${targetSql}) DO UPDATE SET ${setSql}`
+              : ` ON CONFLICT (${targetSql}) DO NOTHING`;
+          }
+        }
         const sql =
           `INSERT INTO ${table} (${colsSql}) VALUES ${valuesSql}${conflictClause} ${returningClause()};`.trim();
         const res = await pool.query(sql, params);

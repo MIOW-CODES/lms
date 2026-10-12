@@ -38,18 +38,20 @@ export function CourseCardGrid({
                     <button
                       onClick={() => onEdit(c)}
                       title="Edit course"
-                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      aria-label={`Edit course ${c.code} — ${c.title}`}
+                      className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-4 w-4" />
                     </button>
                   )}
                   {isAdmin && (
                     <button
                       onClick={() => onRemove(c)}
                       title="Delete course"
-                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
+                      aria-label={`Delete course ${c.code} — ${c.title}`}
+                      className="rounded-lg p-2 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   )}
                 </div>

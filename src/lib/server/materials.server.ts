@@ -405,6 +405,9 @@ export async function countRows(table: string): Promise<number> {
 }
 
 /* ---------- Material serving access policy (P2a, user-signed 2026-10-06) ----------
+ * Announcement attachments (`<announcementId>/material_...`, same bucket/route):
+ *   - any signed-in session may read them — announcements are already visible
+ *     to every signed-in user, so their attachments follow suit;
  * Course-material paths (`<course_id>/material_...`):
  *   - staff (teacher/admin): always allowed;
  *   - students: must be enrolled in the course AND the path must be open under
@@ -419,6 +422,8 @@ function attachmentsIncludePath(attachments: unknown, path: string): boolean {
   return Array.isArray(attachments) && attachments.some((a: any) => a?.path === path);
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function canAccessCourseMaterialPath(
   caller: { id: string; role: string },
   path: string,
@@ -426,6 +431,15 @@ export async function canAccessCourseMaterialPath(
 ): Promise<boolean> {
   if (caller.role === "admin" || caller.role === "teacher") return true;
   const courseId = path.split("/")[0] ?? "";
+  // Announcement branch: `<announcementId>/…` paths belong to announcement
+  // attachments, which every signed-in session may read. (Only probed for
+  // well-formed uuids so the lookup can never error on cast.)
+  if (UUID_RE.test(courseId)) {
+    const announcement = await unwrap<{ id: string } | null>(
+      db.from("announcements").select("id").eq("id", courseId).maybeSingle(),
+    );
+    if (announcement) return true;
+  }
   if (!(await isEnrolledIn(caller.id, courseId))) return false;
   // Reverse lookup: which ACTIVE assessments in this course reference the path?
   const [quizzes, assignments] = await Promise.all([

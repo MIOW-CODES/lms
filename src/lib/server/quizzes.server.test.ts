@@ -4,7 +4,13 @@ process.env["SUPABASE_URL"] ??= "https://test.supabase.co";
 process.env["SUPABASE_SERVICE_ROLE_KEY"] ??= "test-service-role-key-1234567890abcdef";
 process.env["SUPABASE_PUBLISHABLE_KEY"] ??= "test-publishable-key";
 
-import { parseKeywordCategories, gradeEssay, selectQuestionBank } from "./quizzes.server";
+import {
+  parseKeywordCategories,
+  gradeEssay,
+  selectQuestionBank,
+  validateAttemptQuestionIds,
+  gateAttemptResults,
+} from "./quizzes.server";
 
 /* ---------- selectQuestionBank ---------- */
 
@@ -343,5 +349,109 @@ describe("gradeEssay", () => {
         ),
       ).toBe(true);
     });
+  });
+});
+
+/* ---------- validateAttemptQuestionIds ---------- */
+
+describe("validateAttemptQuestionIds", () => {
+  const quizQuestionIds = ["q1", "q2", "q3", "q4"];
+
+  it("accepts a legacy submit without question ids when the bank is disabled", () => {
+    expect(validateAttemptQuestionIds(undefined, quizQuestionIds, 0)).toEqual({
+      ok: true,
+      questionIds: undefined,
+    });
+  });
+
+  it("accepts the exact drawn set for a question-bank worksheet", () => {
+    expect(validateAttemptQuestionIds(["q2", "q4"], quizQuestionIds, 2)).toEqual({
+      ok: true,
+      questionIds: ["q2", "q4"],
+    });
+  });
+
+  it("rejects question ids that do not belong to the worksheet", () => {
+    const res = validateAttemptQuestionIds(["q1", "foreign"], quizQuestionIds, 0);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain("not part of this worksheet");
+  });
+
+  it("rejects ids from another worksheet even when the count matches", () => {
+    const res = validateAttemptQuestionIds(["x1", "x2"], quizQuestionIds, 2);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain("not part of this worksheet");
+  });
+
+  it("requires question_ids.length === question_count when the bank is enabled", () => {
+    const tooFew = validateAttemptQuestionIds(["q1"], quizQuestionIds, 3);
+    expect(tooFew.ok).toBe(false);
+    if (!tooFew.ok) expect(tooFew.error).toContain("3 question(s)");
+
+    const tooMany = validateAttemptQuestionIds(["q1", "q2", "q3", "q4"], quizQuestionIds, 3);
+    expect(tooMany.ok).toBe(false);
+    if (!tooMany.ok) expect(tooMany.error).toContain("sent 4 question id(s)");
+
+    const missing = validateAttemptQuestionIds(undefined, quizQuestionIds, 3);
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.error).toContain("sent 0 question id(s)");
+  });
+
+  it("rejects duplicate question ids", () => {
+    const res = validateAttemptQuestionIds(["q1", "q1"], quizQuestionIds, 2);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain("Duplicate");
+  });
+
+  it("ignores the count rule when question_count is 0 (no bank)", () => {
+    expect(validateAttemptQuestionIds(["q1", "q2"], quizQuestionIds, 0)).toEqual({
+      ok: true,
+      questionIds: ["q1", "q2"],
+    });
+  });
+});
+
+/* ---------- gateAttemptResults ---------- */
+
+describe("gateAttemptResults", () => {
+  const row = (id: string, correct_answer: string) => ({
+    id,
+    question: `Question ${id}`,
+    correct_answer,
+    correct: true,
+    chosen: "A",
+    options: ["A", "B"],
+    image_url: null,
+  });
+
+  it("returns no rows (and therefore no correctness flags) until scores are released", () => {
+    expect(
+      gateAttemptResults([row("a", "A"), row("b", "B")], {
+        scoreReleased: false,
+        answerKeyReleased: true,
+      }),
+    ).toEqual([]);
+    expect(
+      gateAttemptResults([row("a", "A")], {
+        scoreReleased: false,
+        answerKeyReleased: false,
+      }),
+    ).toEqual([]);
+  });
+
+  it("keeps review rows but blanks the answer key when only scores are released", () => {
+    const gated = gateAttemptResults([row("a", "A")], {
+      scoreReleased: true,
+      answerKeyReleased: false,
+    });
+    expect(gated).toHaveLength(1);
+    expect(gated[0]!.correct_answer).toBe("");
+  });
+
+  it("returns full per-question results once the answer key is released", () => {
+    const results = [row("a", "A"), row("b", "B")];
+    expect(gateAttemptResults(results, { scoreReleased: true, answerKeyReleased: true })).toEqual(
+      results,
+    );
   });
 });

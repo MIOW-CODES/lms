@@ -29,12 +29,7 @@ import {
   useProfile,
   useRfidScanner,
 } from "@/components/lms";
-import {
-  findProfileByCredential,
-  updateProfile,
-  updateSessionProfile,
-  uploadAvatar,
-} from "@/lib/lms";
+import { changeOwnPin, updateProfile, updateSessionProfile, uploadAvatar } from "@/lib/lms";
 import {
   applyFontSize,
   applyHighContrast,
@@ -254,24 +249,16 @@ function StudentSettings() {
     }
     setPinBusy(true);
     try {
-      const login = profile.email ?? profile.student_id ?? "";
-      const verified = await findProfileByCredential(login, oldPin);
-      if (!verified) {
-        toast.error("Current PIN is incorrect");
-        return;
-      }
-      await updateProfile(profile.id, { pin: newPin });
-      // Rotate the session token to the freshly issued one.
-      updateSessionProfile({
-        session_token: verified.session_token ?? profile.session_token ?? "",
-      });
+      // Server-side: verifies the current PIN (rate-limited like sign-in),
+      // hashes the new one, and clears the forced-change gate flag.
+      await changeOwnPin(oldPin, newPin);
       setOldPin("");
       setNewPin("");
       setConfirmPin("");
       logAudit("PIN changed", `${profile.full_name} reset their account PIN`);
       toast.success("PIN updated successfully");
-    } catch {
-      toast.error("Could not update PIN");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not update PIN");
     } finally {
       setPinBusy(false);
     }
@@ -476,8 +463,7 @@ function StudentSettings() {
               <Card className="p-6">
                 <h2 className="font-display text-lg font-bold">Reset Account PIN</h2>
                 <p className="mb-4 text-xs text-muted-foreground">
-                  Your current PIN is verified first; the new PIN is stored as a bcrypt hash and
-                  your session token is rotated.
+                  Your current PIN is verified first; the new PIN is stored as a bcrypt hash.
                 </p>
                 <form
                   onSubmit={(e) => {

@@ -25,35 +25,54 @@ const describeRealDB =
 const TEST_TIMEOUT = 240_000;
 
 /** Hydration-safe PIN login: retries until the React submit handler runs and
- *  the server lands us on the dashboard (native pre-hydration submits reload). */
+ *  the server lands us on the dashboard (native pre-hydration submits reload).
+ *  Completes the forced-PIN-change gate when it appears; falls back to the test
+ *  PIN below when a previous run already rotated the account's PIN. */
 async function pinLogin(page: Page, id: string, pin: string) {
-  for (let i = 0; i < 6; i++) {
-    await page.goto("/auth");
-    await page.waitForTimeout(1500);
-    try {
-      await page.locator("#auth-tab-pin").click({ timeout: 2000 });
-      await page.waitForTimeout(400);
-      await page.locator("#login-id").fill(id, { timeout: 2000 });
-      await page.locator("#login-pin").fill(pin, { timeout: 2000 });
-      const btn = page.locator("#auth-panel-pin button[type=submit]");
-      if (!(await btn.isEnabled({ timeout: 2000 }))) continue;
-      // The submit must reach the login server function — a pre-hydration click
-      // falls back to a native form GET that just reloads the page.
-      const loginReq = page
-        .waitForRequest((r) => r.url().includes("/_serverFn/") && r.method() === "POST", {
-          timeout: 6000,
-        })
-        .catch(() => null);
-      await btn.click({ timeout: 5000 });
-      if (!(await loginReq)) continue;
-      await page.waitForURL(/\/dashboard\//, { timeout: 12000 }).catch(() => {});
-      if (page.url().includes("/dashboard")) return;
-    } catch {
-      // not hydrated yet — retry
+  for (const attemptPin of [pin, "9999"]) {
+    for (let i = 0; i < 6; i++) {
+      await page.goto("/auth");
+      await page.waitForTimeout(1500);
+      try {
+        await page.locator("#auth-tab-pin").click({ timeout: 2000 });
+        await page.waitForTimeout(400);
+        await page.locator("#login-id").fill(id, { timeout: 2000 });
+        await page.locator("#login-pin").fill(attemptPin, { timeout: 2000 });
+        const btn = page.locator("#auth-panel-pin button[type=submit]");
+        if (!(await btn.isEnabled({ timeout: 2000 }))) continue;
+        // The submit must reach the login server function — a pre-hydration click
+        // falls back to a native form GET that just reloads the page.
+        const loginReq = page
+          .waitForRequest((r) => r.url().includes("/_serverFn/") && r.method() === "POST", {
+            timeout: 6000,
+          })
+          .catch(() => null);
+        await btn.click({ timeout: 5000 });
+        if (!(await loginReq)) continue;
+        await page.waitForURL(/\/dashboard\//, { timeout: 12000 }).catch(() => {});
+        if (page.url().includes("/dashboard")) {
+          await completePinGate(page);
+          return;
+        }
+      } catch {
+        // not hydrated yet — retry
+      }
+      await page.waitForTimeout(500);
     }
-    await page.waitForTimeout(500);
   }
   throw new Error("PIN login never completed");
+}
+
+/** Forced-PIN-change gate: student PINs default to the student number, so the
+ *  migration flags every student (pin_must_change) and the student layout
+ *  blocks until a private PIN is chosen. Set the test PIN and proceed. */
+async function completePinGate(page: Page, newPin = "9999") {
+  const gate = page.getByTestId("pin-gate");
+  if (!(await gate.isVisible({ timeout: 5000 }).catch(() => false))) return;
+  await page.getByTestId("pin-gate-new").fill(newPin);
+  await page.getByTestId("pin-gate-confirm").fill(newPin);
+  await page.getByTestId("pin-gate-submit").click();
+  await gate.waitFor({ state: "hidden", timeout: 20000 });
 }
 
 /** Login once per worker; every test reuses the authenticated storage state. */

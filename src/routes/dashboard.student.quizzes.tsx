@@ -477,11 +477,11 @@ function QuizzesPage() {
               <div className="flex flex-col items-center py-4 text-center">
                 <CheckCircle2 className="h-14 w-14 text-emerald-500" />
                 <p className="mt-3 font-display text-3xl font-bold">
-                  {result.score} / {result.total}
+                  {result.score} / {result.total ?? 0}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {Math.round((result.score / Math.max(1, result.total)) * 100)}% —{" "}
-                  {result.score / Math.max(1, result.total) >= 0.75
+                  {Math.round((result.score / Math.max(1, result.total ?? 0)) * 100)}% —{" "}
+                  {result.score / Math.max(1, result.total ?? 0) >= 0.75
                     ? "Great job!"
                     : "Review the material and try again in class."}
                 </p>
@@ -491,7 +491,7 @@ function QuizzesPage() {
                   </Badge>
                   {result.effective_score !== result.score && (
                     <Badge tone="green">
-                      Gradebook score: {result.effective_score}/{result.total} (
+                      Gradebook score: {result.effective_score}/{result.total ?? 0} (
                       {result.retake_score_policy === "highest_score"
                         ? "highest kept"
                         : result.retake_score_policy === "average_score"
@@ -508,74 +508,82 @@ function QuizzesPage() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Review
                 </p>
-                {result.results.map((r, i) => (
-                  <div key={r.id} className="rounded-xl border border-border/70 p-4">
-                    <div className="flex items-start gap-2">
-                      {r.correct ? (
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                      ) : (
-                        <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-500" />
-                      )}
-                      <p className="text-sm font-semibold">
-                        {i + 1}. {r.question}
-                      </p>
-                    </div>
-                    {r.image_url && (
-                      <img
-                        src={r.image_url}
-                        alt="Question illustration"
-                        className="mt-2 max-h-40 rounded-lg border border-border object-contain"
-                      />
-                    )}
-                    {r.options.length === 0 ? (
-                      <div className="mt-2 space-y-1.5 text-xs">
-                        <p className="rounded-lg border border-border px-3 py-1.5 text-muted-foreground">
-                          Your answer: {r.chosen?.trim() ? r.chosen : "Not answered"}
-                        </p>
-                        <p className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-3 py-1.5 font-semibold text-emerald-700 dark:text-emerald-300">
-                          {r.correct_answer?.startsWith("Rubric:")
-                            ? // Strip the auto-grader's "| Keywords: ..." block from the review display.
-                              `Rubric: ${r.correct_answer.slice("Rubric:".length).split("| Keywords:")[0]!.trim()}`
-                            : `Answer: ${r.correct_answer?.split("||")[0]}`}
-                        </p>
-                        {r.correct_answer?.startsWith("Rubric:") && !r.correct && (
-                          <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-rose-700 dark:text-rose-300">
-                            Auto-graded: answers need at least 5 real words and must cover the
-                            rubric's key concepts — gibberish or one-word replies fail
-                            automatically.
-                          </p>
+                {result.results.length === 0 ? (
+                  // Server withholds per-question rows until the teacher
+                  // releases them — render the empty state gracefully.
+                  <p className="rounded-xl border border-border/60 bg-muted/60 px-4 py-6 text-center text-sm text-muted-foreground">
+                    Results will appear when your teacher releases scores.
+                  </p>
+                ) : (
+                  result.results.map((r, i) => (
+                    <div key={r.id} className="rounded-xl border border-border/70 p-4">
+                      <div className="flex items-start gap-2">
+                        {r.correct ? (
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                        ) : (
+                          <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-500" />
                         )}
+                        <p className="text-sm font-semibold">
+                          {i + 1}. {r.question}
+                        </p>
                       </div>
-                    ) : (
-                      <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-                        {r.options.map((opt) => {
-                          const isCorrect = opt === r.correct_answer;
-                          const isChosen = opt === r.chosen;
-                          return (
-                            <p
-                              key={opt}
-                              className={cn(
-                                "rounded-lg border px-3 py-1.5 text-xs",
-                                isCorrect
-                                  ? "border-emerald-500/50 bg-emerald-500/10 font-semibold text-emerald-700 dark:text-emerald-300"
-                                  : isChosen
-                                    ? "border-rose-500/50 bg-rose-500/10 font-semibold text-rose-700 dark:text-rose-300"
-                                    : "border-border text-muted-foreground",
-                              )}
-                            >
-                              {opt}
-                              {isCorrect && " ✓"}
-                              {isChosen && !isCorrect && " — your answer"}
+                      {r.image_url && (
+                        <img
+                          src={r.image_url}
+                          alt="Question illustration"
+                          className="mt-2 max-h-40 rounded-lg border border-border object-contain"
+                        />
+                      )}
+                      {r.options.length === 0 ? (
+                        <div className="mt-2 space-y-1.5 text-xs">
+                          <p className="rounded-lg border border-border px-3 py-1.5 text-muted-foreground">
+                            Your answer: {r.chosen?.trim() ? r.chosen : "Not answered"}
+                          </p>
+                          <p className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-3 py-1.5 font-semibold text-emerald-700 dark:text-emerald-300">
+                            {r.correct_answer?.startsWith("Rubric:")
+                              ? // Strip the auto-grader's "| Keywords: ..." block from the review display.
+                                `Rubric: ${r.correct_answer.slice("Rubric:".length).split("| Keywords:")[0]!.trim()}`
+                              : `Answer: ${r.correct_answer?.split("||")[0]}`}
+                          </p>
+                          {r.correct_answer?.startsWith("Rubric:") && !r.correct && (
+                            <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-rose-700 dark:text-rose-300">
+                              Auto-graded: answers need at least 5 real words and must cover the
+                              rubric's key concepts — gibberish or one-word replies fail
+                              automatically.
                             </p>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {!r.chosen && r.options.length > 0 && (
-                      <p className="mt-1.5 text-xs text-muted-foreground">Not answered</p>
-                    )}
-                  </div>
-                ))}
+                          )}
+                        </div>
+                      ) : (
+                        <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                          {r.options.map((opt) => {
+                            const isCorrect = opt === r.correct_answer;
+                            const isChosen = opt === r.chosen;
+                            return (
+                              <p
+                                key={opt}
+                                className={cn(
+                                  "rounded-lg border px-3 py-1.5 text-xs",
+                                  isCorrect
+                                    ? "border-emerald-500/50 bg-emerald-500/10 font-semibold text-emerald-700 dark:text-emerald-300"
+                                    : isChosen
+                                      ? "border-rose-500/50 bg-rose-500/10 font-semibold text-rose-700 dark:text-rose-300"
+                                      : "border-border text-muted-foreground",
+                                )}
+                              >
+                                {opt}
+                                {isCorrect && " ✓"}
+                                {isChosen && !isCorrect && " — your answer"}
+                              </p>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {!r.chosen && r.options.length > 0 && (
+                        <p className="mt-1.5 text-xs text-muted-foreground">Not answered</p>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
 
               {/* Retake actions */}

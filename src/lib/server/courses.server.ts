@@ -456,7 +456,16 @@ export async function submitAssignment(input: z.infer<typeof schemas.submissionI
       .eq("student_id", input.student_id)
       .maybeSingle(),
   );
-  const row = withoutToken(input);
+  const row: Record<string, unknown> = { ...withoutToken(input) };
+  // Spoof-proof submission metadata (audit m1): `submitted_at` is server-set on
+  // every write and `status` is not student-writable — a student's write always
+  // records a plain "submitted" state. Staff may still set `status` explicitly.
+  row["submitted_at"] = new Date().toISOString();
+  if (caller.role === "student") {
+    row["status"] = "submitted";
+  } else if (row["status"] === undefined) {
+    delete row["status"];
+  }
   if (existing) {
     await unwrap(db.from("submissions").update(row).eq("id", existing.id));
     return { id: existing.id };

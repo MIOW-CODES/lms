@@ -331,17 +331,88 @@ export function FilterTabs<T extends string>({
 
 export function Field({
   label,
+  hint,
+  error,
+  id,
+  className,
   ...props
-}: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+}: {
+  label: string;
+  /** Small help text under the input — explains what the setting does. */
+  hint?: string;
+  /** Inline validation message; replaces the hint while set. */
+  error?: string;
+} & React.InputHTMLAttributes<HTMLInputElement>) {
+  const autoId = useId();
+  const inputId = id ?? autoId;
+  const describedBy = hint || error ? `${inputId}-desc` : undefined;
   return (
-    <label className="block">
+    <label className="block" htmlFor={inputId}>
       <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </span>
       <input
         {...props}
-        className="w-full rounded-xl border border-input bg-background/70 px-3 py-2 text-sm outline-none backdrop-blur-sm transition-shadow focus:ring-2 focus:ring-ring disabled:opacity-60"
+        id={inputId}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy}
+        className={cn(
+          "w-full rounded-xl border border-input bg-background/70 px-3 py-2 text-sm outline-none backdrop-blur-sm transition-shadow focus:ring-2 focus:ring-ring disabled:opacity-60",
+          error && "border-rose-400 focus:ring-rose-400/40",
+          className,
+        )}
       />
+      {(hint || error) && (
+        <span
+          id={describedBy}
+          className={cn(
+            "mt-1 block text-[11px]",
+            error ? "font-medium text-rose-600 dark:text-rose-400" : "text-muted-foreground",
+          )}
+        >
+          {error ?? hint}
+        </span>
+      )}
+    </label>
+  );
+}
+
+/** Select sibling of `Field` — same label, help text and focus treatment. */
+export function SelectField({
+  label,
+  hint,
+  id,
+  className,
+  children,
+  ...props
+}: {
+  label: string;
+  hint?: string;
+} & React.SelectHTMLAttributes<HTMLSelectElement>) {
+  const autoId = useId();
+  const selectId = id ?? autoId;
+  const describedBy = hint ? `${selectId}-desc` : undefined;
+  return (
+    <label className="block" htmlFor={selectId}>
+      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      <select
+        {...props}
+        id={selectId}
+        aria-describedby={describedBy}
+        className={cn(
+          "w-full rounded-xl border border-input bg-background/70 px-3 py-2 text-sm outline-none backdrop-blur-sm transition-shadow focus:ring-2 focus:ring-ring disabled:opacity-60",
+          className,
+        )}
+      >
+        {children}
+      </select>
+      {hint && (
+        <span id={describedBy} className="mt-1 block text-[11px] text-muted-foreground">
+          {hint}
+        </span>
+      )}
     </label>
   );
 }
@@ -351,19 +422,22 @@ export function Toggle({
   onChange,
   label,
   description,
+  disabled,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
   description?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
-      className="flex w-full items-center justify-between gap-4 rounded-xl border border-border/60 bg-card/60 px-4 py-3 text-left transition-colors hover:bg-muted/50"
+      className="flex w-full items-center justify-between gap-4 rounded-xl border border-border/60 bg-card/60 px-4 py-3 text-left transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
     >
       <span className="min-w-0">
         <span className="block text-sm font-semibold">{label}</span>
