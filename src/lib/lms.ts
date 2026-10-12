@@ -21,6 +21,7 @@ import {
   enrollStudentsFn,
   enrollmentsForCourseFn,
   enrollmentsForStudentFn,
+  getKioskLockdownFn,
   getProfileByRfidFn,
   getQuizFn,
   grantQuizRetakeFn,
@@ -54,6 +55,7 @@ import {
   quizAttemptInfoFn,
   recordTapFn,
   refreshSessionFn,
+  setKioskLockdownFn,
   setTestRoleViewFn,
   resetQuizAttemptsFn,
   submitAssignmentFn,
@@ -374,7 +376,7 @@ export interface QuizQuestion {
   position: number;
   /** Question media — URL or data URL rendered above the answer area. */
   image_url?: string | null;
-  /** Embeds the Virtual Arduino Lab (code + breadboard) for this task. */
+  /** Embeds the Virtual Arduino Lab (code + breadboard) for this task; the question text must require breadboard wiring. */
   lab_task?: boolean;
   /** Always included when an attempt draws the question bank (fixed sections). */
   required?: boolean;
@@ -1330,6 +1332,18 @@ export async function countRows(table: string): Promise<number> {
   return countRowsFn({
     data: { table: table as unknown as Record<string, unknown>, token: sessionToken() },
   });
+}
+
+/* ---------- App settings (school-wide admin flags) ---------- */
+
+/** Is app-wide kiosk lockdown on for student sessions? */
+export async function getKioskLockdown(): Promise<boolean> {
+  return getKioskLockdownFn({ data: { token: sessionToken() } });
+}
+
+/** Admin toggle for app-wide kiosk lockdown. */
+export async function setKioskLockdown(enabled: boolean): Promise<boolean> {
+  return setKioskLockdownFn({ data: { enabled, token: sessionToken() } });
 }
 
 /* ---------- Misc helpers ---------- */

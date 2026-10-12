@@ -43,7 +43,9 @@ import {
   listGradesForCourse,
   listTeachers,
   listStudents,
+  getKioskLockdown,
   listRfidDevices,
+  setKioskLockdown,
   createRfidDevice,
   deactivateRfidDevice,
   type RfidDevice,
@@ -154,6 +156,7 @@ function AdminSettings() {
   const [devLocation, setDevLocation] = useState("");
   const [devBusy, setDevBusy] = useState(false);
   const [newKey, setNewKey] = useState<null | { key: string; name: string }>(null);
+  const [lockdownBusy, setLockdownBusy] = useState(false);
   const keyRef = useRef<HTMLElement>(null);
 
   const copyNewKey = async () => {
@@ -196,6 +199,13 @@ function AdminSettings() {
     queryFn: listAllUsers,
     enabled: !!profile,
   });
+  // App-wide kiosk lockdown (server-persisted admin setting) — the same flag
+  // student sessions read to self-apply the lockdown on shared devices.
+  const { data: kioskLockdownSetting } = useQuery({
+    queryKey: ["kiosk-lockdown"],
+    queryFn: getKioskLockdown,
+    enabled: !!profile && tab === "kiosk",
+  });
   const { data: rfidDevices, isPending: devicesPending } = useQuery({
     queryKey: ["rfid-devices"],
     queryFn: listRfidDevices,
@@ -237,6 +247,27 @@ function AdminSettings() {
     setCfg(next);
     saveAdminConfig(next);
     toast.success(message);
+  };
+
+  // Kiosk lockdown persists server-side (not localStorage) so every student
+  // device picks it up — see src/lib/server/app-settings.server.ts.
+  const saveKioskLockdown = async (enabled: boolean) => {
+    if (lockdownBusy) return;
+    setLockdownBusy(true);
+    try {
+      await setKioskLockdown(enabled);
+      queryClient.invalidateQueries({ queryKey: ["kiosk-lockdown"] });
+      toast.success(enabled ? "Kiosk lockdown turned on" : "Kiosk lockdown turned off");
+      logAudit(
+        "Kiosk lockdown updated",
+        enabled ? "App-wide student lockdown enabled" : "App-wide student lockdown disabled",
+      );
+      setAudit(listAudit());
+    } catch {
+      toast.error("Could not save kiosk lockdown — try again.");
+    } finally {
+      setLockdownBusy(false);
+    }
   };
 
   const weightSum = cfg.weights.attendance + cfg.weights.ww + cfg.weights.exam + cfg.weights.pt;
@@ -882,6 +913,26 @@ function AdminSettings() {
                   >
                     <Save className="h-4 w-4" /> Save kiosk settings
                   </button>
+                </div>
+              </Card>
+
+              <Card className="p-6">
+                <h2 className="flex items-center gap-2 font-display text-lg font-bold">
+                  <ShieldCheck className="h-5 w-5 text-primary" /> Kiosk lockdown
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  App-wide lockdown for student sessions on shared devices: fullscreen on sign-in, a
+                  return-to-fullscreen overlay, blocked copy/paste and shortcuts, and a screen wake
+                  lock. Teachers and admins are not affected. Signing out always works — it is a
+                  proper end of session.
+                </p>
+                <div className="mt-4 space-y-2">
+                  <Toggle
+                    label="Lock students into the app"
+                    description="Applies to every student session until you turn it off"
+                    checked={kioskLockdownSetting === true}
+                    onChange={(v) => void saveKioskLockdown(v)}
+                  />
                 </div>
               </Card>
 

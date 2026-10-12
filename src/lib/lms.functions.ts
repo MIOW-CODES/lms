@@ -577,6 +577,31 @@ export const deactivateRfidDeviceFn = createServerFn({ method: "POST" })
     return device;
   });
 
+/* ---------- App settings (school-wide admin flags) ---------- */
+
+// Read is open to any signed-in session — students need the kiosk lockdown
+// flag to self-apply the lockdown on shared devices. Writes are ADMIN-only
+// and validated in the app-settings server module.
+export const getKioskLockdownFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.session.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireSession(data.token);
+    return server.getKioskLockdown();
+  });
+
+export const setKioskLockdownFn = createServerFn({ method: "POST" })
+  .validator((data) => server.kioskLockdownInput.parse(data))
+  .handler(async ({ data }) => {
+    const admin = await server.requireAdmin(data.token);
+    const enabled = await server.setKioskLockdown(data.enabled);
+    await server.writeAuditLog(
+      admin,
+      "Kiosk lockdown updated",
+      enabled ? "App-wide student lockdown enabled" : "App-wide student lockdown disabled",
+    );
+    return enabled;
+  });
+
 /* ---------- Misc ---------- */
 
 export const countRowsFn = createServerFn({ method: "POST" })

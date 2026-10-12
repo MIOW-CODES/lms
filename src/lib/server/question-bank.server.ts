@@ -6,6 +6,7 @@ import { db } from "@/integrations/db/client.server";
 import { unwrap, asJsonParam } from "@/lib/server/utils.server";
 import { requireStaff } from "@/lib/server/auth.server";
 import { writeAuditLog } from "@/lib/server/audit.server";
+import { labTaskWiringProblem } from "@/lib/server/schemas.server";
 
 export interface QuestionBankRow {
   id: string;
@@ -90,6 +91,22 @@ export async function updateQuestion(
   if (patch.lab_task !== undefined) row["lab_task"] = patch.lab_task;
   if (patch.required !== undefined) row["required"] = patch.required;
   if (patch.image_url !== undefined) row["image_url"] = patch.image_url;
+
+  // Effective-state wiring check: a patch may omit lab_task while editing the
+  // question text, so validate the merged row (post-update state), not just the
+  // patch. Mirrors the Zod rule in schemas.server.ts; the DB trigger remains
+  // the backstop (PR #56 review — defense-in-depth consistency).
+  if (row["question"] !== undefined || row["lab_task"] !== undefined) {
+    const current = await unwrap<any>(
+      db.from("quiz_questions").select("question, lab_task").eq("id", id).maybeSingle(),
+    );
+    if (!current) throw new Error("Not found");
+    const problem = labTaskWiringProblem({
+      question: row["question"] !== undefined ? row["question"] : current.question,
+      lab_task: row["lab_task"] !== undefined ? row["lab_task"] : current.lab_task,
+    });
+    if (problem) throw new Error(problem);
+  }
 
   if (Object.keys(row).length > 0) {
     await unwrap(db.from("quiz_questions").update(row).eq("id", id));
