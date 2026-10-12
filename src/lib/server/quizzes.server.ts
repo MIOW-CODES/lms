@@ -188,6 +188,47 @@ export function gradeEssay(answer: string, rubric: string): boolean {
 
 /* ---------- Scoring ---------- */
 
+export type AttemptQuestionIdsValidation =
+  { ok: true; questionIds: string[] | undefined } | { ok: false; error: string };
+
+/**
+ * Validate the client-supplied `question_ids` of an attempt before scoring.
+ *
+ * A submit may only score questions that belong to the worksheet
+ * (`quiz_questions.quiz_id = quizId`), and for question-bank worksheets
+ * (`question_count > 0`) the attempt must cover exactly the drawn set.
+ *
+ * Pure and exported for unit testing.
+ */
+export function validateAttemptQuestionIds(
+  submittedIds: string[] | null | undefined,
+  quizQuestionIds: Iterable<string>,
+  questionCount: number,
+): AttemptQuestionIdsValidation {
+  const valid = new Set(quizQuestionIds);
+  const provided = Array.isArray(submittedIds) ? submittedIds : undefined;
+  const ids = provided ?? [];
+  // Duplicates would inflate the attempt's question set without adding anything
+  // to score — reject them outright.
+  if (new Set(ids).size !== ids.length) {
+    return { ok: false, error: "Duplicate question ids in this attempt." };
+  }
+  const foreign = ids.filter((id) => !valid.has(id));
+  if (foreign.length > 0) {
+    return {
+      ok: false,
+      error: `This attempt includes ${foreign.length} question id(s) that are not part of this worksheet.`,
+    };
+  }
+  if (questionCount > 0 && ids.length !== questionCount) {
+    return {
+      ok: false,
+      error: `This worksheet scores exactly ${questionCount} question(s); the attempt sent ${ids.length} question id(s).`,
+    };
+  }
+  return { ok: true, questionIds: provided };
+}
+
 async function scoreQuiz(quiz_id: string, answers: Record<string, string>, questionIds?: string[]) {
   let query = db
     .from("quiz_questions")
@@ -332,6 +373,24 @@ function effectiveScore(
   return { score: best.score, total: best.total };
 }
 
+/**
+ * Release gating for per-question attempt rows (pure, exported for testing).
+ *
+ * Two independent gates:
+ *  - `scoreReleased`: until the teacher releases scores, NO per-question rows
+ *    leave the server — that withholds every correctness flag along with them.
+ *  - `answerKeyReleased`: once scores are released, review rows stay visible but
+ *    the answer key itself is withheld (blanked) until it is released too.
+ */
+export function gateAttemptResults<T extends { correct_answer: string }>(
+  results: T[],
+  gating: { scoreReleased: boolean; answerKeyReleased: boolean },
+): T[] {
+  if (!gating.scoreReleased) return [];
+  if (gating.answerKeyReleased) return results;
+  return results.map((r) => ({ ...r, correct_answer: "" }));
+}
+
 /** Build the gated submit response shared by fresh inserts and idempotent replays. */
 function gatedResponse(
   quiz: QuizConfig,
@@ -344,13 +403,17 @@ function gatedResponse(
   const eff = effectiveScore(attemptsIncludingThis, quiz.retake_score_policy);
   const isScoreReleased = quiz.score_released === true;
   const isAnswerKeyReleased = quiz.answer_key_released === true;
-  const gatedResults = isAnswerKeyReleased
-    ? results
-    : results.map((r) => ({ ...r, correct_answer: "" }));
+  // Score-release gating is real: until scores are released the response carries
+  // NO per-question rows (hence no correctness flags), no `total` and no score.
+  // The answer key is gated separately on answer_key_released.
+  const gatedResults = gateAttemptResults(results, {
+    scoreReleased: isScoreReleased,
+    answerKeyReleased: isAnswerKeyReleased,
+  });
   return {
     ok: true as const,
     score: (isScoreReleased ? attempt.score : null) as number | null,
-    total: attempt.total,
+    total: (isScoreReleased ? attempt.total : null) as number | null,
     results: gatedResults,
     attempt_number: attempt.attempt_number,
     attempts_used: used,
@@ -436,8 +499,20 @@ export async function submitQuizAttempt(
     };
   }
 
+  // M1: the client-supplied question set must belong to this worksheet (and
+  // match the drawn size for question-bank worksheets) before it is scored.
+  const quizQuestionRows = await unwrap<Array<{ id: string }>>(
+    db.from("quiz_questions").select("id").eq("quiz_id", quiz_id),
+  );
+  const validated = validateAttemptQuestionIds(
+    questionIds,
+    quizQuestionRows.map((q) => q.id),
+    quiz.question_count ?? 0,
+  );
+  if (!validated.ok) throw new Error(validated.error);
+
   // questionIds passed from client for question bank scoring
-  const { score, total, results } = await scoreQuiz(quiz_id, answers, questionIds);
+  const { score, total, results } = await scoreQuiz(quiz_id, answers, validated.questionIds);
   const attempt_number = attempts.reduce((m, a) => Math.max(m, a.attempt_number), 0) + 1;
 
   const row: Record<string, unknown> = {
@@ -449,7 +524,7 @@ export async function submitQuizAttempt(
     // `results` and `tab_switches` are jsonb columns — wrap the JS arrays.
     // `question_ids` is a native uuid[] column and stays a plain array.
     results: asJsonParam(results),
-    question_ids: questionIds ?? [],
+    question_ids: validated.questionIds ?? [],
     tab_switches: asJsonParam(tabSwitches ?? []),
   };
   if (submissionId) row["submission_id"] = submissionId;

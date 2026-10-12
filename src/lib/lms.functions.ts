@@ -13,6 +13,7 @@
 //   for student-scoped records, any valid session for catalog reads.
 import { createServerFn } from "@tanstack/react-start";
 import * as server from "./server";
+import { changeOwnPin, parseChangeOwnPinInput } from "./server/profiles.server";
 
 /* ---------- Profiles & kiosk auth (public — they issue tokens) ---------- */
 
@@ -45,6 +46,15 @@ export const updateProfileFn = createServerFn({ method: "POST" })
     const patch = await server.authorizeProfileUpdate(data.token, data.id, data.patch);
     return server.updateProfile(data.id, patch);
   });
+
+// Self-service PIN change (any valid session, always the caller's OWN
+// account): session proof + optional current PIN, new PIN validated against
+// the existing PIN format rules, bcrypt-hashed, and the forced-change
+// (pin_must_change) gate cleared in the same write. The same 5-per-15-minute
+// rate limiting as sign-in applies on the server.
+export const changeOwnPinFn = createServerFn({ method: "POST" })
+  .validator((data) => parseChangeOwnPinInput(data))
+  .handler(async ({ data }) => changeOwnPin(data.token, data.new_pin, data.current_pin ?? null));
 
 // User removal is ADMIN-only (teachers cannot remove accounts) and runs
 // as a soft delete with self-deletion and last-admin safeguards.

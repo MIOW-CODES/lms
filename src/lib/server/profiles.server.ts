@@ -8,9 +8,32 @@ import { createSessionToken, revokeSessions, sessionSecret } from "@/lib/server/
 import { schemas } from "@/lib/server/schemas.server";
 import { type ProfileRow, type ProfileRole, type HttpError } from "@/lib/server/db-types";
 
+/* ---------- PIN policy (pure decision logic — see pin-security.test.ts) ---------- */
+
+/** Accepted self-service PIN format — digits only, 4–8 long (matches the UI). */
+export const PIN_FORMAT_RE = /^\d{4,8}$/;
+
+export function isValidPinFormat(pin: string): boolean {
+  return PIN_FORMAT_RE.test(pin);
+}
+
+/** Policy: only students are forced to pick a private PIN (pin_must_change). */
+export function pinGateRequiredForRole(role: ProfileRole): boolean {
+  return role === "student";
+}
+
+/**
+ * A credential write that sets a PIN (self-service change or staff reset)
+ * clears the forced-change flag — the PIN on file is now one the user chose
+ * or an admin just reset.
+ */
+export function pinWriteClearsGate(patch: Record<string, unknown>): boolean {
+  return typeof patch["pin"] === "string" && patch["pin"].length > 0;
+}
+
 /* ---------- Safe profile shaping (strip credentials/biometrics) ---------- */
 
-export function safeProfile(p: ProfileRow) {
+export function safeProfile(p: ProfileRow & { pin_must_change?: boolean | null }) {
   return {
     id: p.id,
     student_id: p.student_id,
@@ -31,6 +54,9 @@ export function safeProfile(p: ProfileRow) {
     rfid_uid: null,
     has_pin: !!p.pin_hash || !!p.pin,
     has_rfid: !!p.rfid_uid,
+    // Forced PIN-change gate (student policy) — surfaced on every login and
+    // session refresh so the client can block until the PIN is replaced.
+    pin_must_change: p.pin_must_change === true && pinGateRequiredForRole(p.role),
   };
 }
 
@@ -185,6 +211,54 @@ export async function verifyPinLogin(login: string, secret: string) {
   return { ok: true as const, profile: safeProfile(p), token: await createSessionToken(p.id) };
 }
 
+/* ---------- Self-service PIN change (clears the forced-change gate) ---------- */
+
+const changeOwnPinSchema = z.object({
+  token: z.string().min(1),
+  current_pin: z.string().min(1).max(200).nullable().optional(),
+  new_pin: z.string().min(1).max(200),
+});
+
+export function parseChangeOwnPinInput(data: unknown) {
+  return changeOwnPinSchema.parse(data);
+}
+
+/**
+ * Self-service PIN change: the caller proves identity with their signed
+ * session (and optionally their current PIN), the new PIN must match the
+ * existing PIN format rules, and the forced-change flag is cleared in the
+ * same write. The same 5-per-15-minute rate limiting as sign-in applies
+ * (dedicated change bucket + the shared per-profile PIN bucket when the
+ * current PIN is verified).
+ */
+export async function changeOwnPin(token: string, newPin: string, currentPin?: string | null) {
+  const { requireSession } = await import("@/lib/server/auth.server");
+  const caller = await requireSession(token);
+  const bucket = getBucket(`pinchange:${caller.id}`);
+  if (!bucket.consume()) {
+    const err = new Error("Too many attempts") as HttpError;
+    err.status = 429;
+    throw err;
+  }
+  if (!isValidPinFormat(newPin)) throw new Error("New PIN must be 4–8 digits");
+  const p = await unwrap<ProfileRow | null>(
+    db.from("profiles").select("*").eq("id", caller.id).is("deleted_at", null).maybeSingle(),
+  );
+  if (!p) throw new Error("Profile not found");
+  // Current PIN is optional proof on top of the session — when given it is
+  // verified through the shared rate-limited PIN verifier.
+  if (typeof currentPin === "string" && currentPin.length > 0) {
+    if (!(await verifyPin(p, currentPin))) throw new Error("Current PIN is incorrect");
+  }
+  await unwrap(
+    db
+      .from("profiles")
+      .update({ pin_hash: await bcrypt.hash(newPin, 12), pin: null, pin_must_change: false })
+      .eq("id", caller.id),
+  );
+  return getProfileById(caller.id);
+}
+
 /* ---------- Profile CRUD ---------- */
 
 export async function getProfileById(id: string) {
@@ -266,9 +340,12 @@ export async function updateProfile(id: string, patch: Record<string, unknown>) 
     },
     id,
   );
-  if (typeof row["pin"] === "string" && row["pin"]) {
-    row["pin_hash"] = await bcrypt.hash(row["pin"], 10);
+  if (pinWriteClearsGate(row)) {
+    // A fresh PIN (self-service change or staff "Reset PIN") satisfies the
+    // forced-change policy — hash it and clear the gate flag in the same write.
+    row["pin_hash"] = await bcrypt.hash(row["pin"] as string, 10);
     row["pin"] = null;
+    row["pin_must_change"] = false;
   }
   await unwrap(db.from("profiles").update(row).eq("id", id));
   if ("role" in row || "pin_hash" in row || "password_hash" in row) {

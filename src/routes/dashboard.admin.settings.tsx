@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ATTENDANCE_LIMIT_PURGE } from "@/components/courses/constants";
 import {
+  Check,
   Copy,
   Database,
   Download,
@@ -29,6 +30,7 @@ import {
   Badge,
   Card,
   Field,
+  SelectField,
   Modal,
   Toggle,
   useProfile,
@@ -133,11 +135,72 @@ function Initials({ name }: { name: string }) {
   );
 }
 
+/**
+ * Shared save footer for settings cards: names the save state ("Unsaved
+ * changes" / "Saved" / "All changes saved") so it's always obvious whether a
+ * change is live, and disables the button when there is nothing to save.
+ */
+function SaveRow({
+  dirty,
+  onSave,
+  saveLabel,
+  disabled,
+}: {
+  dirty: boolean;
+  onSave: () => void;
+  saveLabel: string;
+  disabled?: boolean;
+}) {
+  const [justSaved, setJustSaved] = useState(false);
+
+  useEffect(() => {
+    if (!justSaved) return;
+    const t = setTimeout(() => setJustSaved(false), 2500);
+    return () => clearTimeout(t);
+  }, [justSaved]);
+
+  return (
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-4">
+      <p
+        role="status"
+        className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
+      >
+        {dirty ? (
+          <>
+            <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden />
+            Unsaved changes
+          </>
+        ) : justSaved ? (
+          <>
+            <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden />
+            <span className="text-emerald-600 dark:text-emerald-400">Saved</span>
+          </>
+        ) : (
+          "All changes saved"
+        )}
+      </p>
+      <button
+        onClick={() => {
+          onSave();
+          setJustSaved(true);
+        }}
+        disabled={disabled || !dirty}
+        className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-lift transition-opacity hover:opacity-90 disabled:opacity-50"
+      >
+        <Save className="h-4 w-4" /> {saveLabel}
+      </button>
+    </div>
+  );
+}
+
 function AdminSettings() {
   const profile = useProfile(["admin"]);
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("school");
   const [cfg, setCfg] = useState<AdminConfig | null>(null);
+  // Snapshot of the last persisted config — drives the per-card
+  // "Unsaved changes" / "All changes saved" indicators.
+  const [savedCfg, setSavedCfg] = useState<AdminConfig | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [auditQuery, setAuditQuery] = useState("");
   const [scanTest, setScanTest] = useState("");
@@ -221,7 +284,9 @@ function AdminSettings() {
 
   useEffect(() => {
     if (profile && !cfg) {
-      setCfg(getAdminConfig());
+      const next = getAdminConfig();
+      setCfg(next);
+      setSavedCfg(next);
       setAudit(listAudit());
     }
   }, [profile, cfg]);
@@ -243,10 +308,15 @@ function AdminSettings() {
       </AppShell>
     );
 
-  const persistCfg = (next: AdminConfig, message = "Changes saved successfully") => {
-    setCfg(next);
-    saveAdminConfig(next);
+  /** Persist the whole settings form and clear every unsaved indicator. */
+  const saveCfgNow = (message: string, auditAction?: string, auditDetail?: string) => {
+    saveAdminConfig(cfg);
+    setSavedCfg(cfg);
     toast.success(message);
+    if (auditAction) {
+      logAudit(auditAction, auditDetail ?? "");
+      setAudit(listAudit());
+    }
   };
 
   // Kiosk lockdown persists server-side (not localStorage) so every student
@@ -273,17 +343,77 @@ function AdminSettings() {
   const weightSum = cfg.weights.attendance + cfg.weights.ww + cfg.weights.exam + cfg.weights.pt;
   const weightsValid = weightSum === 100;
 
+  /* Per-card unsaved-change indicators, compared against the last save. */
+  const calendarDirty =
+    !!savedCfg &&
+    (cfg.academicYear !== savedCfg.academicYear || cfg.activeQuarter !== savedCfg.activeQuarter);
+  const weightsDirty =
+    !!savedCfg &&
+    (cfg.weights.attendance !== savedCfg.weights.attendance ||
+      cfg.weights.ww !== savedCfg.weights.ww ||
+      cfg.weights.exam !== savedCfg.weights.exam ||
+      cfg.weights.pt !== savedCfg.weights.pt ||
+      cfg.passingThreshold !== savedCfg.passingThreshold);
+  const scannerDirty =
+    !!savedCfg &&
+    (cfg.rfidPrefix !== savedCfg.rfidPrefix ||
+      cfg.rfidSuffix !== savedCfg.rfidSuffix ||
+      cfg.enterDelimiter !== savedCfg.enterDelimiter);
+  const kioskDirty =
+    !!savedCfg &&
+    (cfg.audioChime !== savedCfg.audioChime ||
+      cfg.overlayDuration !== savedCfg.overlayDuration ||
+      cfg.autoResetDelay !== savedCfg.autoResetDelay);
+  const privilegesDirty =
+    !!savedCfg &&
+    (cfg.privileges.teacherEditPublished !== savedCfg.privileges.teacherEditPublished ||
+      cfg.privileges.studentViewRank !== savedCfg.privileges.studentViewRank ||
+      cfg.privileges.teacherPostAnnouncements !== savedCfg.privileges.teacherPostAnnouncements ||
+      cfg.privileges.guardianAccess !== savedCfg.privileges.guardianAccess);
+
   const saveSchoolConfig = () => {
     if (!weightsValid) {
       toast.error(`Grading weights must total 100% (currently ${weightSum}%)`);
       return;
     }
-    persistCfg(cfg);
-    logAudit(
+    saveCfgNow(
+      "Grading settings saved",
       "Grading config updated",
       `Attendance ${cfg.weights.attendance}% / WW ${cfg.weights.ww}% / Exam ${cfg.weights.exam}% / PT ${cfg.weights.pt}% · pass ≥ ${cfg.passingThreshold}%`,
     );
-    setAudit(listAudit());
+  };
+
+  const saveCalendarConfig = () => {
+    saveCfgNow(
+      "Academic calendar saved",
+      "Academic calendar updated",
+      `SY ${cfg.academicYear} · Quarter ${cfg.activeQuarter}`,
+    );
+  };
+
+  const saveScannerConfig = () => {
+    saveCfgNow(
+      "Scanner settings saved",
+      "RFID config updated",
+      `Prefix "${cfg.rfidPrefix || "none"}" · Suffix "${cfg.rfidSuffix || "none"}" · Enter delimiter ${cfg.enterDelimiter ? "on" : "off"}`,
+    );
+  };
+
+  const saveKioskConfig = () => {
+    saveCfgNow(
+      "Kiosk settings saved",
+      "Kiosk config updated",
+      "Audio chime, overlay duration and auto-reset delay",
+    );
+  };
+
+  const savePrivilegesConfig = () => {
+    const p = cfg.privileges;
+    saveCfgNow(
+      "Role privileges saved",
+      "Role privileges updated",
+      `Teacher edit published: ${p.teacherEditPublished ? "on" : "off"} · Student rank: ${p.studentViewRank ? "on" : "off"} · Teacher announcements: ${p.teacherPostAnnouncements ? "on" : "off"} · Guardian access: ${p.guardianAccess ? "on" : "off"}`,
+    );
   };
 
   const simulateScan = () => {
@@ -397,16 +527,22 @@ function AdminSettings() {
     toast.success("Schema dump downloaded");
   };
 
+  // Each destructive action has its own confirmation phrase — "RESET" for the
+  // local reset, "PURGE" for the irreversible attendance purge.
+  const confirmPhrase = confirmAction === "purge" ? "PURGE" : "RESET";
+
   const runConfirmed = async () => {
-    if (confirmText !== "RESET") {
-      toast.error('Type "RESET" to confirm');
+    if (confirmText !== confirmPhrase) {
+      toast.error(`Type "${confirmPhrase}" to confirm`);
       return;
     }
     setBusy(true);
     try {
       if (confirmAction === "reset") {
         resetLocalPreferences();
-        setCfg(getAdminConfig());
+        const next = getAdminConfig();
+        setCfg(next);
+        setSavedCfg(next);
         logAudit("Factory reset", "Local mock data and preferences reset to defaults");
         setAudit(listAudit());
         toast.success("Mock data reset to defaults");
@@ -640,83 +776,45 @@ function AdminSettings() {
               </Card>
 
               <Card className="p-6">
-                <h2 className="font-display text-lg font-bold">System &amp; Credits</h2>
-                <div className="mt-4 space-y-3 text-sm">
-                  <div>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Web Application Developers
-                    </span>
-                    <p className="mt-1 font-medium text-foreground">
-                      <a
-                        href="https://www.joalvergs.tech/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline"
-                      >
-                        Joseph Alan B. Vergara
-                      </a>
-                      {", "}
-                      <a
-                        href="https://github.com/laeyue"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline"
-                      >
-                        Kent Alexis T. Alia
-                      </a>
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Institution
-                    </span>
-                    <p className="mt-1 text-muted-foreground">
-                      MSU-IIT Integrated Developmental School (MIOW Online Workspace)
-                    </p>
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="p-6">
                 <h2 className="font-display text-lg font-bold">Academic Calendar</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Sets the school year and the quarter that reports, exports and new activities use.
+                </p>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Academic Year
-                    </span>
-                    <select
-                      value={cfg.academicYear}
-                      onChange={(e) => setCfg({ ...cfg, academicYear: e.target.value })}
-                      className="w-full rounded-xl border border-input bg-background/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      {Array.from(
-                        { length: 5 },
-                        (_, i) =>
-                          `${new Date().getFullYear() - 2 + i}–${new Date().getFullYear() - 1 + i}`,
-                      ).map((y) => (
-                        <option key={y} value={y}>
-                          {y}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Active Quarter
-                    </span>
-                    <select
-                      value={cfg.activeQuarter}
-                      onChange={(e) => setCfg({ ...cfg, activeQuarter: Number(e.target.value) })}
-                      className="w-full rounded-xl border border-input bg-background/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      {[1, 2, 3, 4].map((q) => (
-                        <option key={q} value={q}>
-                          Quarter {q}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <SelectField
+                    label="Academic Year"
+                    hint="Shown on report cards and exports."
+                    value={cfg.academicYear}
+                    onChange={(e) => setCfg({ ...cfg, academicYear: e.target.value })}
+                  >
+                    {Array.from(
+                      { length: 5 },
+                      (_, i) =>
+                        `${new Date().getFullYear() - 2 + i}–${new Date().getFullYear() - 1 + i}`,
+                    ).map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </SelectField>
+                  <SelectField
+                    label="Active Quarter"
+                    hint="Controls which quarter gradebook exports and reports cover."
+                    value={cfg.activeQuarter}
+                    onChange={(e) => setCfg({ ...cfg, activeQuarter: Number(e.target.value) })}
+                  >
+                    {[1, 2, 3, 4].map((q) => (
+                      <option key={q} value={q}>
+                        Quarter {q}
+                      </option>
+                    ))}
+                  </SelectField>
                 </div>
+                <SaveRow
+                  dirty={calendarDirty}
+                  onSave={saveCalendarConfig}
+                  saveLabel="Save calendar settings"
+                />
               </Card>
 
               <Card className="p-6">
@@ -784,6 +882,7 @@ function AdminSettings() {
                 <div className="mt-4">
                   <Field
                     label="Passing threshold (transmuted grade)"
+                    hint="Students below this transmuted grade are marked failing in the gradebook."
                     type="number"
                     min={60}
                     max={100}
@@ -791,15 +890,12 @@ function AdminSettings() {
                     onChange={(e) => setCfg({ ...cfg, passingThreshold: Number(e.target.value) })}
                   />
                 </div>
-                <div className="mt-6 flex justify-end">
-                  <button
-                    onClick={saveSchoolConfig}
-                    disabled={!weightsValid}
-                    className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-lift transition-opacity hover:opacity-90 disabled:opacity-50"
-                  >
-                    <Save className="h-4 w-4" /> Save configuration
-                  </button>
-                </div>
+                <SaveRow
+                  dirty={weightsDirty}
+                  onSave={saveSchoolConfig}
+                  saveLabel="Save grading settings"
+                  disabled={!weightsValid}
+                />
               </Card>
 
               <Card className="p-6">
@@ -822,6 +918,44 @@ function AdminSettings() {
                   …down to initial 0 → transmuted 60.
                 </p>
               </Card>
+
+              <Card className="p-6">
+                <h2 className="font-display text-lg font-bold">System &amp; Credits</h2>
+                <div className="mt-4 space-y-3 text-sm">
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Web Application Developers
+                    </span>
+                    <p className="mt-1 font-medium text-foreground">
+                      <a
+                        href="https://www.joalvergs.tech/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        Joseph Alan B. Vergara
+                      </a>
+                      {", "}
+                      <a
+                        href="https://github.com/laeyue"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        Kent Alexis T. Alia
+                      </a>
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Institution
+                    </span>
+                    <p className="mt-1 text-muted-foreground">
+                      MSU-IIT Integrated Developmental School (MIOW Online Workspace)
+                    </p>
+                  </div>
+                </div>
+              </Card>
             </>
           )}
 
@@ -832,9 +966,14 @@ function AdminSettings() {
                 <h2 className="flex items-center gap-2 font-display text-lg font-bold">
                   <Nfc className="h-5 w-5 text-primary" /> RFID Scanner Setup
                 </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Tune how raw badge reads are cleaned before a student is matched. Use the test box
+                  below to check a real payload before saving.
+                </p>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <Field
                     label="UID prefix to strip"
+                    hint="Removed from the start of every badge read before matching."
                     value={cfg.rfidPrefix}
                     maxLength={8}
                     placeholder="e.g. NV-"
@@ -842,6 +981,7 @@ function AdminSettings() {
                   />
                   <Field
                     label="UID suffix to strip"
+                    hint="Removed from the end of every badge read before matching."
                     value={cfg.rfidSuffix}
                     maxLength={8}
                     placeholder="e.g. ;"
@@ -856,14 +996,15 @@ function AdminSettings() {
                     onChange={(v) => setCfg({ ...cfg, enterDelimiter: v })}
                   />
                 </div>
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <input
-                    value={scanTest}
-                    onChange={(e) => setScanTest(e.target.value)}
-                    placeholder="Raw badge payload, e.g. NV-0021847563"
-                    aria-label="Test badge payload"
-                    className="min-w-0 flex-1 rounded-xl border border-input bg-background/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring sm:max-w-xs"
-                  />
+                <div className="mt-4 flex flex-wrap items-end gap-2">
+                  <div className="min-w-0 flex-1 sm:max-w-xs">
+                    <Field
+                      label="Test badge payload"
+                      placeholder="Raw badge payload, e.g. NV-0021847563"
+                      value={scanTest}
+                      onChange={(e) => setScanTest(e.target.value)}
+                    />
+                  </div>
                   <button
                     onClick={simulateScan}
                     className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold transition-colors hover:bg-muted"
@@ -871,15 +1012,24 @@ function AdminSettings() {
                     Test badge scan
                   </button>
                 </div>
+                <SaveRow
+                  dirty={scannerDirty}
+                  onSave={saveScannerConfig}
+                  saveLabel="Save scanner settings"
+                />
               </Card>
 
               <Card className="p-6">
                 <h2 className="flex items-center gap-2 font-display text-lg font-bold">
                   <Volume2 className="h-5 w-5 text-primary" /> Kiosk Terminal
                 </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  How the shared attendance terminal behaves after each successful scan.
+                </p>
                 <div className="mt-4 space-y-2">
                   <Toggle
                     label="Audio chime on successful scan"
+                    description="Play a short tone so the student knows the tap worked"
                     checked={cfg.audioChime}
                     onChange={(v) => setCfg({ ...cfg, audioChime: v })}
                   />
@@ -887,6 +1037,7 @@ function AdminSettings() {
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <Field
                     label="Checkmark overlay duration (s)"
+                    hint="How long the success checkmark stays on screen."
                     type="number"
                     min={1}
                     max={10}
@@ -895,6 +1046,7 @@ function AdminSettings() {
                   />
                   <Field
                     label="Auto-reset delay (s)"
+                    hint="How long before the terminal returns to the scan screen."
                     type="number"
                     min={1}
                     max={30}
@@ -902,18 +1054,11 @@ function AdminSettings() {
                     onChange={(e) => setCfg({ ...cfg, autoResetDelay: Number(e.target.value) })}
                   />
                 </div>
-                <div className="mt-6 flex justify-end">
-                  <button
-                    onClick={() => {
-                      persistCfg(cfg, "Kiosk configuration saved");
-                      logAudit("Kiosk config updated", "Kiosk settings saved");
-                      setAudit(listAudit());
-                    }}
-                    className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-lift transition-opacity hover:opacity-90"
-                  >
-                    <Save className="h-4 w-4" /> Save kiosk settings
-                  </button>
-                </div>
+                <SaveRow
+                  dirty={kioskDirty}
+                  onSave={saveKioskConfig}
+                  saveLabel="Save kiosk settings"
+                />
               </Card>
 
               <Card className="p-6">
@@ -929,8 +1074,9 @@ function AdminSettings() {
                 <div className="mt-4 space-y-2">
                   <Toggle
                     label="Lock students into the app"
-                    description="Applies to every student session until you turn it off"
+                    description="Saves immediately — applies to every student session until you turn it off"
                     checked={kioskLockdownSetting === true}
+                    disabled={lockdownBusy}
                     onChange={(v) => void saveKioskLockdown(v)}
                   />
                 </div>
@@ -1320,19 +1466,28 @@ function AdminSettings() {
                 >
                   Run end-of-year batch promote
                 </button>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Queues a request for the registrar — no student records change until it is
+                  approved.
+                </p>
               </Card>
 
               <Card className="p-6">
                 <h2 className="flex items-center gap-2 font-display text-lg font-bold">
                   <ShieldCheck className="h-5 w-5 text-primary" /> Role Privileges
                 </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Extra permissions for teachers, students and guardians. Role changes and course
+                  assignments above save immediately — these privileges save when you press the
+                  button below.
+                </p>
                 <div className="mt-4 space-y-2">
                   <Toggle
                     label="Teachers can edit published grades"
                     description="Allow corrections after a quarter's grades are released"
                     checked={cfg.privileges.teacherEditPublished}
                     onChange={(v) =>
-                      persistCfg({
+                      setCfg({
                         ...cfg,
                         privileges: { ...cfg.privileges, teacherEditPublished: v },
                       })
@@ -1343,7 +1498,7 @@ function AdminSettings() {
                     description="Expose percentile ranking on the student grade page"
                     checked={cfg.privileges.studentViewRank}
                     onChange={(v) =>
-                      persistCfg({ ...cfg, privileges: { ...cfg.privileges, studentViewRank: v } })
+                      setCfg({ ...cfg, privileges: { ...cfg.privileges, studentViewRank: v } })
                     }
                   />
                   <Toggle
@@ -1351,7 +1506,7 @@ function AdminSettings() {
                     description="Let teachers broadcast to their own sections"
                     checked={cfg.privileges.teacherPostAnnouncements}
                     onChange={(v) =>
-                      persistCfg({
+                      setCfg({
                         ...cfg,
                         privileges: { ...cfg.privileges, teacherPostAnnouncements: v },
                       })
@@ -1362,10 +1517,15 @@ function AdminSettings() {
                     description="Allow parent/guardian read-only accounts"
                     checked={cfg.privileges.guardianAccess}
                     onChange={(v) =>
-                      persistCfg({ ...cfg, privileges: { ...cfg.privileges, guardianAccess: v } })
+                      setCfg({ ...cfg, privileges: { ...cfg.privileges, guardianAccess: v } })
                     }
                   />
                 </div>
+                <SaveRow
+                  dirty={privilegesDirty}
+                  onSave={savePrivilegesConfig}
+                  saveLabel="Save privileges"
+                />
               </Card>
             </>
           )}
@@ -1449,20 +1609,20 @@ function AdminSettings() {
                   <Trash2 className="h-5 w-5" /> Data Reset Utilities
                 </h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Destructive actions — confirmation required.
+                  Destructive actions — each one asks you to type its name to confirm.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button
                     onClick={() => setConfirmAction("reset")}
                     className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-100 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300"
                   >
-                    Reset Mock Data to Default
+                    Reset mock data
                   </button>
                   <button
                     onClick={() => setConfirmAction("purge")}
                     className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-100 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300"
                   >
-                    Purge Demo Attendance Logs
+                    Purge attendance logs
                   </button>
                 </div>
               </Card>
@@ -1480,22 +1640,23 @@ function AdminSettings() {
         }}
         title={confirmAction === "reset" ? "Reset Mock Data" : "Purge Attendance Logs"}
       >
-        <p className="text-sm text-muted-foreground">
-          {confirmAction === "reset"
-            ? "This clears all locally stored preferences, settings, and audit history on this device. The active session is kept."
-            : "This permanently deletes up to 100 recent demo attendance records from the database."}
-        </p>
-        <label className="mt-4 block">
-          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Type RESET to confirm
-          </span>
-          <input
+        <div className="flex gap-3 rounded-xl border border-rose-300/60 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <p>
+            {confirmAction === "reset"
+              ? "This clears all locally stored preferences, settings, and audit history on this device. The active session is kept."
+              : "This permanently deletes up to 100 recent demo attendance records from the database. Grades and submissions are not affected."}
+          </p>
+        </div>
+        <div className="mt-4">
+          <Field
+            label={`Type ${confirmPhrase} to confirm`}
+            hint="This step is case-sensitive."
             value={confirmText}
             onChange={(e) => setConfirmText(e.target.value)}
-            placeholder="RESET"
-            className="w-full rounded-xl border border-input bg-background/70 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            placeholder={confirmPhrase}
           />
-        </label>
+        </div>
         <div className="mt-4 flex justify-end gap-2">
           <button
             onClick={() => {
@@ -1508,10 +1669,14 @@ function AdminSettings() {
           </button>
           <button
             onClick={runConfirmed}
-            disabled={busy || confirmText !== "RESET"}
+            disabled={busy || confirmText !== confirmPhrase}
             className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {busy ? "Working…" : "Confirm"}
+            {busy
+              ? "Working…"
+              : confirmAction === "purge"
+                ? "Purge attendance logs"
+                : "Reset mock data"}
           </button>
         </div>
       </Modal>
@@ -1645,7 +1810,7 @@ function AdminSettings() {
                 disabled={deleteBusy}
                 className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                {deleteBusy ? "Removing…" : "Delete User"}
+                {deleteBusy ? "Removing…" : "Remove user"}
               </button>
             </div>
           </>

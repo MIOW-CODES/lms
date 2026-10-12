@@ -358,8 +358,10 @@ export const schemas = {
       )
       .max(10)
       .optional(),
+    // `status` is staff-only: ignored for student callers (see
+    // submitAssignment in courses.server.ts) and kept so staff may still set
+    // it. `submitted_at` is server-set on every write — clients cannot spoof it.
     status: z.enum(["pending", "submitted", "graded"]).optional(),
-    submitted_at: z.string().max(40).nullable().optional(),
     ...token,
   }),
   submissionUpload: z.object({

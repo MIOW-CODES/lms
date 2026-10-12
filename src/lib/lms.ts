@@ -86,6 +86,7 @@ import {
   setMeetingMembersFn,
   setCourseSectionsFn,
   pinLoginFn,
+  changeOwnPinFn,
   uploadSubmissionFileFn,
   listSubmissionsForAssignmentFn,
   gradeSubmissionFn,
@@ -125,6 +126,8 @@ export interface Profile {
   /** Server-set indicators; credential values themselves are never sent to the browser. */
   has_pin?: boolean;
   has_rfid?: boolean;
+  /** Forced PIN-change gate (student policy) — true until the user picks a private PIN. */
+  pin_must_change?: boolean;
   /** Signed session token issued at login; required by every gated server function. */
   session_token?: string;
 }
@@ -484,7 +487,8 @@ export type SubmitQuizResult =
   | {
       ok: true;
       score: number | null;
-      total: number;
+      /** Hidden (null) until the teacher releases scores. */
+      total: number | null;
       results: QuizResultItem[];
       attempt_number: number;
       attempts_used: number;
@@ -818,6 +822,24 @@ export async function updateProfile(id: string, patch: Partial<Profile>): Promis
   await updateProfileFn({
     data: { id, patch: patch as Record<string, unknown>, token: sessionToken() },
   });
+}
+
+/**
+ * Self-service PIN change for the signed-in user (all roles). Proves identity
+ * with the session and optionally the current PIN, validates the new PIN
+ * against the existing format rules, and clears the forced-change gate
+ * (pin_must_change) on the server. The returned record is merged into the
+ * global session store so the PIN gate closes without a page refresh.
+ */
+export async function changeOwnPin(currentPin: string | null, newPin: string): Promise<Profile> {
+  const updated = (await changeOwnPinFn({
+    data: { token: sessionToken(), current_pin: currentPin, new_pin: newPin },
+  })) as Profile;
+  updateSessionProfile({
+    pin_must_change: updated.pin_must_change ?? false,
+    has_pin: updated.has_pin ?? true,
+  });
+  return updated;
 }
 
 function fileToBase64(file: File): Promise<string> {

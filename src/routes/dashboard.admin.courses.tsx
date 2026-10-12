@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, ClipboardList, FileQuestion } from "lucide-react";
+import { BookOpen, ClipboardList, FileQuestion, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import {
   deleteAssignment,
@@ -81,6 +81,7 @@ export function CoursesPage() {
     id: string;
     title: string;
   } | null>(null);
+  const [removeCourseTarget, setRemoveCourseTarget] = useState<Course | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedCourseId, selectCourse] = useCourseSelection();
 
@@ -99,13 +100,18 @@ export function CoursesPage() {
     setModal("course");
   };
 
-  const removeCourse = async (c: Course) => {
+  const confirmRemoveCourse = async () => {
+    if (!removeCourseTarget) return;
+    setSaving(true);
     try {
-      await deleteCourse(c.id);
+      await deleteCourse(removeCourseTarget.id);
       toast.success("Course deleted.");
+      setRemoveCourseTarget(null);
       refresh();
     } catch {
-      toast.error("Delete failed.");
+      toast.error("Couldn't delete the course — try again.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -236,7 +242,7 @@ export function CoursesPage() {
                 isAdmin={isAdmin}
                 onOpen={(c) => selectCourse(c.id)}
                 onEdit={openEdit}
-                onRemove={removeCourse}
+                onRemove={setRemoveCourseTarget}
               />
             </>
           )}
@@ -304,6 +310,42 @@ export function CoursesPage() {
         onConfirm={confirmRemove}
         onClose={() => setRemoveTarget(null)}
       />
+
+      {/* Course deletion confirmation — one click used to erase a whole course. */}
+      <Modal
+        open={!!removeCourseTarget}
+        onClose={() => setRemoveCourseTarget(null)}
+        title="Delete course"
+      >
+        <div className="flex gap-3 rounded-xl border border-rose-300/60 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <p>
+            <span className="font-semibold">
+              {removeCourseTarget ? `${removeCourseTarget.code} — ${removeCourseTarget.title}` : ""}
+            </span>{" "}
+            — deleting a course removes it and everything inside it: worksheets, assignments,
+            enrollments, schedules and grades. This cannot be undone.
+          </p>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          This is permanent — only delete a course that was created by mistake.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={() => setRemoveCourseTarget(null)}
+            className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold transition-colors hover:bg-muted"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={confirmRemoveCourse}
+            disabled={saving}
+            className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? "Deleting…" : "Delete course"}
+          </button>
+        </div>
+      </Modal>
 
       <Modal
         open={!!rosterQuiz}

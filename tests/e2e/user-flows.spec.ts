@@ -439,30 +439,57 @@ describeRealDB("Real PIN login", () => {
 
   /** Hydration-safe PIN login: retries tab click + fills until the submit button enables. */
   async function pinLogin(page: Page, id: string, pin: string) {
-    await page.goto("/auth");
-    await page.evaluate(() => localStorage.clear());
-    await page.goto("/auth");
-    for (let i = 0; i < 20; i++) {
-      try {
-        await page.locator("#auth-tab-pin").click({ timeout: 2000 });
-        await page.waitForTimeout(150);
-        await page.locator("#login-id").fill(id, { timeout: 2000 });
-        await page.locator("#login-pin").fill(pin, { timeout: 2000 });
-        const btn = page.locator("#auth-panel-pin button[type=submit]");
-        if (await btn.isEnabled()) {
-          await btn.click({ timeout: 5000 });
-          return;
+    // Second-chance credential: a previous run may have already rotated the
+    // account's PIN to the gate's test PIN below.
+    for (const attemptPin of [pin, "9999"]) {
+      await page.goto("/auth");
+      await page.evaluate(() => localStorage.clear());
+      await page.goto("/auth");
+      let submitted = false;
+      for (let i = 0; i < 20; i++) {
+        try {
+          await page.locator("#auth-tab-pin").click({ timeout: 2000 });
+          await page.waitForTimeout(150);
+          await page.locator("#login-id").fill(id, { timeout: 2000 });
+          await page.locator("#login-pin").fill(attemptPin, { timeout: 2000 });
+          const btn = page.locator("#auth-panel-pin button[type=submit]");
+          if (await btn.isEnabled()) {
+            await btn.click({ timeout: 5000 });
+            submitted = true;
+            break;
+          }
+        } catch {
+          // not hydrated yet — retry
         }
-      } catch {
-        // not hydrated yet — retry
+        await page.waitForTimeout(500);
       }
-      await page.waitForTimeout(500);
+      if (!submitted) throw new Error("PIN login form never became ready");
+      await page.waitForURL(/\/dashboard\//, { timeout: 20000 }).catch(() => {});
+      if (page.url().includes("/dashboard")) {
+        await completePinGate(page);
+        return;
+      }
     }
-    throw new Error("PIN login form never became ready");
+    throw new Error("PIN login never completed");
+  }
+
+  /**
+   * Forced-PIN-change gate: student PINs default to the student number, so the
+   * migration flags every student (pin_must_change) and the student layout
+   * blocks until a private PIN is chosen. Set the test PIN and proceed.
+   */
+  async function completePinGate(page: Page, newPin = "9999") {
+    const gate = page.getByTestId("pin-gate");
+    if (!(await gate.isVisible({ timeout: 5000 }).catch(() => false))) return;
+    await page.getByTestId("pin-gate-new").fill(newPin);
+    await page.getByTestId("pin-gate-confirm").fill(newPin);
+    await page.getByTestId("pin-gate-submit").click();
+    await gate.waitFor({ state: "hidden", timeout: 20000 });
   }
 
   test("admin logs in via PIN and sees Campus Overview", async ({ page }) => {
-    await pinLogin(page, "josephalan.vergara@g.msuiit.edu.ph", "1234");
+    // PIN rotated by the pin_security migration (was the documented default).
+    await pinLogin(page, "josephalan.vergara@g.msuiit.edu.ph", "5570");
     await page.waitForURL(/\/dashboard\/admin/, { timeout: 20000 });
     await expect(page.locator("body")).toContainText(/Admin Console|Good morning/i, {
       timeout: 15000,

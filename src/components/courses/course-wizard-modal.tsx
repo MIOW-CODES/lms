@@ -24,6 +24,10 @@ interface CourseWizardModalProps {
   onSaved: () => void;
 }
 
+type WizardErrors = Partial<
+  Record<"title" | "code" | "level" | "strand" | "program" | "schedule", string | undefined>
+>;
+
 export function CourseWizardModal({
   open,
   onClose,
@@ -36,14 +40,17 @@ export function CourseWizardModal({
   const qc = useQueryClient();
   const [courseForm, setCourseForm] = useState(EMPTY_COURSE);
   const [wizardStep, setWizardStep] = useState<WizardStep>("basic");
+  const [errors, setErrors] = useState<WizardErrors>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setErrors({});
     if (editing) {
       setCourseForm({
-        title: editing.title,
-        code: editing.code,
+        // Trim on load so legacy trailing spaces never round-trip back to the DB.
+        title: editing.title.trim(),
+        code: editing.code.trim(),
         grade_level: String(editing.grade_level),
         teacher_id: editing.teacher_id ?? "",
         color: editing.color,
@@ -64,41 +71,63 @@ export function CourseWizardModal({
     setWizardStep("basic");
   }, [open, editing, isAdmin, currentUserId]);
 
-  const saveCourse = async () => {
-    if (!courseForm.title || !courseForm.code) {
-      toast.error("Title and code are required.");
-      return;
-    }
+  /** Validate every step at once and jump to the first step that needs a fix. */
+  const validateForm = (): WizardErrors | null => {
+    const errs: WizardErrors = {};
     const lvl = parseInt(courseForm.grade_level);
-    if (Number.isNaN(lvl) || lvl < 7 || lvl > 16) {
-      toast.error("Level must be Grade 7 – College 4th Year (7–16).");
+    if (!courseForm.title.trim()) errs.title = "Enter a course title.";
+    if (!courseForm.code.trim()) errs.code = "Enter a course code.";
+    if (Number.isNaN(lvl) || lvl < 7 || lvl > 16)
+      errs.level = "Level must be Grade 7 – College 4th Year (7–16).";
+    if ((lvl === 11 || lvl === 12) && !courseForm.strand)
+      errs.strand = "Please select a strand for SHS (G11–G12).";
+    if (lvl >= 13 && lvl <= 16 && !courseForm.program?.trim())
+      errs.program = "Please enter a program for College (e.g. BSIT, BSED).";
+    if (courseForm.days.length > 0 && (!courseForm.start_time || !courseForm.end_time))
+      errs.schedule = "Set both a start and end time for the scheduled days (or clear the days).";
+    return Object.keys(errs).length > 0 ? errs : null;
+  };
+
+  const stepOfError = (errs: WizardErrors): WizardStep => {
+    if (errs.title || errs.code || errs.level) return "basic";
+    if (errs.strand || errs.program) return "assignment";
+    return "schedule";
+  };
+
+  const saveCourse = async () => {
+    const errs = validateForm();
+    if (errs) {
+      setErrors(errs);
+      setWizardStep(stepOfError(errs));
+      toast.error(Object.values(errs)[0]!);
       return;
     }
-    if ((lvl === 11 || lvl === 12) && !courseForm.strand) {
-      toast.error("Please select a strand for SHS (G11–G12).");
-      return;
-    }
-    if (lvl >= 13 && lvl <= 16 && !courseForm.program?.trim()) {
-      toast.error("Please enter a program for College (e.g. BSIT, BSED).");
-      return;
-    }
-    if (courseForm.days.length > 0 && (!courseForm.start_time || !courseForm.end_time)) {
-      toast.error("Set both a start and end time for the scheduled days (or clear the days).");
-      return;
-    }
+    setErrors({});
+    const lvl = parseInt(courseForm.grade_level);
     setSaving(true);
     try {
       const education_level = educationLevelOf(lvl);
       const college_year = collegeYearOf(lvl);
-      const payload = {
-        title: courseForm.title,
-        code: courseForm.code,
+      // The lead is only sent when it actually changed. An empty selection
+      // while editing keeps the existing lead (it never silently clears it),
+      // and an unchanged lead is left out of the patch entirely so legacy
+      // leads outside the teacher list can't fail validation on other edits.
+      const nextLeadId = courseForm.teacher_id;
+      const leadChanged = nextLeadId !== (editing?.teacher_id ?? "");
+      const leadPatch = editing
+        ? leadChanged && nextLeadId
+          ? { teacher_id: nextLeadId }
+          : {}
+        : { teacher_id: nextLeadId || null };
+      const payload: Partial<Course> = {
+        title: courseForm.title.trim(),
+        code: courseForm.code.trim(),
         grade_level: lvl,
         education_level,
         college_year,
         strand: lvl >= 11 && lvl <= 12 ? courseForm.strand || null : null,
         program: lvl >= 13 ? courseForm.program?.trim() || null : null,
-        teacher_id: courseForm.teacher_id || null,
+        ...leadPatch,
         color: courseForm.color,
         days_of_week: courseForm.days.length ? courseForm.days : null,
         start_time: courseForm.days.length ? courseForm.start_time : null,
@@ -120,6 +149,20 @@ export function CourseWizardModal({
       setSaving(false);
     }
   };
+
+  /* The teachers list only holds teacher-role profiles, but a course lead may
+     be a legacy/admin lead (listCourses resolves teacher_name from teachers AND
+     admins). Keep the real lead visible and selectable even when the list does
+     not contain them — otherwise the select falls back to "Assign teacher…"
+     and a save can look like it dropped the lead. */
+  const currentLeadId = editing?.teacher_id ?? "";
+  const leadInList = teachers.some((t) => t.id === currentLeadId);
+  const currentLeadName =
+    editing?.teacher_name ??
+    teachers.find((t) => t.id === currentLeadId)?.full_name ??
+    "Current course lead";
+  const currentStrand = courseForm.strand ?? "";
+  const currentProgram = courseForm.program ?? "";
 
   return (
     <Modal
@@ -194,27 +237,69 @@ export function CourseWizardModal({
 
       {wizardStep === "basic" && (
         <div className="grid gap-3">
-          <input
-            value={courseForm.title}
-            onChange={(e) => setCourseForm((f) => ({ ...f, title: e.target.value }))}
-            placeholder="Course title * (e.g. Mathematics 7)"
-            className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
-          <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold text-muted-foreground">
+              Course title *
+            </span>
             <input
-              value={courseForm.code}
-              onChange={(e) => setCourseForm((f) => ({ ...f, code: e.target.value }))}
-              placeholder="Code * (e.g. MATH7)"
-              className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              value={courseForm.title}
+              onChange={(e) => {
+                setCourseForm((f) => ({ ...f, title: e.target.value }));
+                if (errors.title) setErrors((x) => ({ ...x, title: undefined }));
+              }}
+              placeholder="e.g. Mathematics 7"
+              aria-invalid={errors.title ? true : undefined}
+              className={cn(
+                "h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring",
+                errors.title && "border-rose-400 focus:ring-rose-400/40",
+              )}
             />
+            {errors.title && (
+              <span className="mt-1 block text-[11px] font-medium text-rose-600 dark:text-rose-400">
+                {errors.title}
+              </span>
+            )}
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold text-muted-foreground">Code *</span>
+              <input
+                value={courseForm.code}
+                onChange={(e) => {
+                  setCourseForm((f) => ({ ...f, code: e.target.value }));
+                  if (errors.code) setErrors((x) => ({ ...x, code: undefined }));
+                }}
+                placeholder="e.g. MATH7"
+                aria-invalid={errors.code ? true : undefined}
+                className={cn(
+                  "h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring",
+                  errors.code && "border-rose-400 focus:ring-rose-400/40",
+                )}
+              />
+              <span className="mt-1 block text-[11px] text-muted-foreground">
+                {errors.code ?? "Short code shown on course cards, e.g. ICT1."}
+              </span>
+            </label>
             <div>
               <label className="mb-1 block text-xs font-semibold text-muted-foreground">
                 Level *
               </label>
               <select
                 value={courseForm.grade_level}
-                onChange={(e) => setCourseForm({ ...courseForm, grade_level: e.target.value })}
-                className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                onChange={(e) => {
+                  setCourseForm({ ...courseForm, grade_level: e.target.value });
+                  if (errors.level || errors.strand || errors.program)
+                    setErrors((x) => ({
+                      ...x,
+                      level: undefined,
+                      strand: undefined,
+                      program: undefined,
+                    }));
+                }}
+                className={cn(
+                  "h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring",
+                  errors.level && "border-rose-400 focus:ring-rose-400/40",
+                )}
                 aria-label="Course level"
               >
                 {COURSE_LEVELS.map((lv) => (
@@ -223,17 +308,25 @@ export function CourseWizardModal({
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                {(() => {
-                  const n = parseInt(courseForm.grade_level) || 10;
-                  const edu = educationLevelOf(n);
-                  const yr = collegeYearOf(n);
-                  return edu === "college"
-                    ? `College Year ${yr} · college`
-                    : edu === "shs"
-                      ? "Senior High (SHS)"
-                      : "Junior High (JHS)";
-                })()}
+              <p
+                className={cn(
+                  "mt-1 text-[11px]",
+                  errors.level
+                    ? "font-medium text-rose-600 dark:text-rose-400"
+                    : "text-muted-foreground",
+                )}
+              >
+                {errors.level ??
+                  (() => {
+                    const n = parseInt(courseForm.grade_level) || 10;
+                    const edu = educationLevelOf(n);
+                    const yr = collegeYearOf(n);
+                    return edu === "college"
+                      ? `College Year ${yr} · college`
+                      : edu === "shs"
+                        ? "Senior High (SHS)"
+                        : "Junior High (JHS)";
+                  })()}
               </p>
             </div>
           </div>
@@ -255,10 +348,19 @@ export function CourseWizardModal({
             >
               {!isAdmin && (
                 <option value={courseForm.teacher_id}>
-                  {teachers.find((t) => t.id === courseForm.teacher_id)?.full_name ?? "You"}
+                  {teachers.find((t) => t.id === courseForm.teacher_id)?.full_name ??
+                    editing?.teacher_name ??
+                    "You"}
                 </option>
               )}
-              {isAdmin && <option value="">Assign teacher…</option>}
+              {isAdmin && (
+                <option value="">
+                  {editing?.teacher_id ? "Keep current lead" : "Assign teacher…"}
+                </option>
+              )}
+              {isAdmin && currentLeadId && !leadInList && (
+                <option value={currentLeadId}>{currentLeadName}</option>
+              )}
               {isAdmin &&
                 teachers.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -271,6 +373,11 @@ export function CourseWizardModal({
                 You will be assigned as the course lead.
               </span>
             )}
+            {isAdmin && editing?.teacher_id && (
+              <span className="mt-1 block text-[11px] text-muted-foreground">
+                Saving without changing this keeps {currentLeadName} as the course lead.
+              </span>
+            )}
           </label>
           {(courseForm.grade_level === "11" || courseForm.grade_level === "12") && (
             <label className="block">
@@ -279,8 +386,15 @@ export function CourseWizardModal({
               </span>
               <select
                 value={courseForm.strand ?? ""}
-                onChange={(e) => setCourseForm({ ...courseForm, strand: e.target.value })}
-                className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                onChange={(e) => {
+                  setCourseForm({ ...courseForm, strand: e.target.value });
+                  if (errors.strand) setErrors((x) => ({ ...x, strand: undefined }));
+                }}
+                aria-invalid={errors.strand ? true : undefined}
+                className={cn(
+                  "h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring",
+                  errors.strand && "border-rose-400 focus:ring-rose-400/40",
+                )}
               >
                 <option value="">Select strand</option>
                 <option value="STEM">STEM</option>
@@ -288,7 +402,17 @@ export function CourseWizardModal({
                 <option value="HUMSS">HUMSS</option>
                 <option value="GAS">GAS</option>
                 <option value="TVL">TVL</option>
+                {/* Keep a stored strand visible even if it's outside the preset list. */}
+                {currentStrand &&
+                  !["STEM", "ABM", "HUMSS", "GAS", "TVL"].includes(currentStrand) && (
+                    <option value={currentStrand}>{currentStrand}</option>
+                  )}
               </select>
+              {errors.strand && (
+                <span className="mt-1 block text-[11px] font-medium text-rose-600 dark:text-rose-400">
+                  {errors.strand}
+                </span>
+              )}
             </label>
           )}
           {(courseForm.grade_level === "13" ||
@@ -301,10 +425,22 @@ export function CourseWizardModal({
               </span>
               <select
                 value={courseForm.program ?? ""}
-                onChange={(e) => setCourseForm({ ...courseForm, program: e.target.value })}
-                className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                onChange={(e) => {
+                  setCourseForm({ ...courseForm, program: e.target.value });
+                  if (errors.program) setErrors((x) => ({ ...x, program: undefined }));
+                }}
+                aria-invalid={errors.program ? true : undefined}
+                className={cn(
+                  "h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring",
+                  errors.program && "border-rose-400 focus:ring-rose-400/40",
+                )}
               >
                 <option value="">Select program</option>
+                {/* Keep a stored program visible even if it's not a CED program
+                    (e.g. BSIT) — otherwise the field renders blank on edit. */}
+                {currentProgram && !CED_PROGRAMS.some((p) => p.name === currentProgram) && (
+                  <option value={currentProgram}>{currentProgram}</option>
+                )}
                 {(["SME", "PRE", "PE", "TTE"] as const).map((dept) => {
                   const progs = CED_PROGRAMS.filter((p) => p.department === dept);
                   if (!progs.length) return null;
@@ -319,6 +455,11 @@ export function CourseWizardModal({
                   );
                 })}
               </select>
+              {errors.program && (
+                <span className="mt-1 block text-[11px] font-medium text-rose-600 dark:text-rose-400">
+                  {errors.program}
+                </span>
+              )}
             </label>
           )}
           <div>
@@ -341,6 +482,9 @@ export function CourseWizardModal({
                 />
               ))}
             </div>
+            <span className="mt-1 block text-[11px] text-muted-foreground">
+              Sets the course card bar, chips and header accents.
+            </span>
           </div>
         </div>
       )}
@@ -358,12 +502,13 @@ export function CourseWizardModal({
                   key={d.code}
                   type="button"
                   aria-pressed={active}
-                  onClick={() =>
+                  onClick={() => {
                     setCourseForm((f) => ({
                       ...f,
                       days: active ? f.days.filter((x) => x !== d.code) : [...f.days, d.code],
-                    }))
-                  }
+                    }));
+                    if (errors.schedule) setErrors((x) => ({ ...x, schedule: undefined }));
+                  }}
                   className={cn(
                     "rounded-lg px-2.5 py-1.5 text-xs font-semibold transition",
                     active
@@ -384,7 +529,10 @@ export function CourseWizardModal({
                   type="time"
                   aria-label="Class start time"
                   value={courseForm.start_time}
-                  onChange={(e) => setCourseForm((f) => ({ ...f, start_time: e.target.value }))}
+                  onChange={(e) => {
+                    setCourseForm((f) => ({ ...f, start_time: e.target.value }));
+                    if (errors.schedule) setErrors((x) => ({ ...x, schedule: undefined }));
+                  }}
                   className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 />
               </label>
@@ -394,7 +542,10 @@ export function CourseWizardModal({
                   type="time"
                   aria-label="Class end time"
                   value={courseForm.end_time}
-                  onChange={(e) => setCourseForm((f) => ({ ...f, end_time: e.target.value }))}
+                  onChange={(e) => {
+                    setCourseForm((f) => ({ ...f, end_time: e.target.value }));
+                    if (errors.schedule) setErrors((x) => ({ ...x, schedule: undefined }));
+                  }}
                   className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 />
               </label>
@@ -407,13 +558,21 @@ export function CourseWizardModal({
                   onChange={(e) => setCourseForm((f) => ({ ...f, grace: e.target.value }))}
                   className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 />
+                <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
+                  Students arriving after this many minutes are marked late.
+                </span>
               </label>
             </div>
+          )}
+          {errors.schedule && (
+            <p className="mt-2 text-[11px] font-medium text-rose-600 dark:text-rose-400">
+              {errors.schedule}
+            </p>
           )}
         </fieldset>
       )}
 
-      <div className="mt-5 flex gap-2">
+      <div className="mt-5 flex flex-wrap gap-2">
         {wizardStep !== "basic" ? (
           <button
             type="button"
@@ -423,7 +582,7 @@ export function CourseWizardModal({
             Back
           </button>
         ) : (
-          <div className="flex-1" />
+          !editing && <div className="flex-1" />
         )}
         {wizardStep !== "schedule" ? (
           <button
@@ -434,12 +593,23 @@ export function CourseWizardModal({
             Next
           </button>
         ) : (
+          !editing && (
+            <button
+              onClick={saveCourse}
+              disabled={saving}
+              className="h-11 flex-1 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Create course"}
+            </button>
+          )
+        )}
+        {editing && (
           <button
             onClick={saveCourse}
             disabled={saving}
-            className="h-11 flex-1 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            className="h-11 min-w-[8.5rem] flex-1 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
-            {saving ? "Saving…" : editing ? "Save changes" : "Create course"}
+            {saving ? "Saving…" : "Save changes"}
           </button>
         )}
       </div>
