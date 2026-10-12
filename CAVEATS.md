@@ -164,6 +164,17 @@ No commit was rated "Needs changes". Dispositions:
   (manual guard applied in this PR — renames to `20261012000011-15`); post-migration
   orphan checks; parameterized refactor of quiz seed templates.
 
+## Review triage (Hermes, PR #57) — rating: LGTM
+
+- Accepted, documented: double dotenv precedence in `attach-it10-materials.ts`
+  (`.env` defaults, `.env.local` overrides, real env wins) is intentional.
+- Accepted, future polish: explicit error logging on the `enrolledCourseIds`
+  failure path; a dedicated `listAllCoursesForLookup()` instead of the neutral-caller
+  pattern in chat-tools; retry/backoff in the workflow's key-derivation curl.
+- Final-exam Part 1 range delete is attempt-safe: attempts snapshot question text
+  into `results` jsonb; `quiz_questions` rows are re-seeded idempotently.
+- SELECT-then-INSERT upsert races: non-issue — migrations apply once, sequentially.
+
 ## Environment / validation
 
 - **Docker daemon is not running on this machine**; local DB validation uses PGlite
