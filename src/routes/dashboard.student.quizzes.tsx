@@ -128,6 +128,8 @@ function QuizzesPage() {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [result, setResult] = useState<QuizSuccess | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [proctorPinInput, setProctorPinInput] = useState("");
+  const [proctorPinError, setProctorPinError] = useState(false);
   // Persist timer + answers per quiz so closing/reopening or accidental reload doesn't reset progress
   const getStoredTimer = (id: string): number | null => {
     try {
@@ -198,6 +200,19 @@ function QuizzesPage() {
   const { tabSwitches, switchCount, counts, showFlash, flashType } = useAntiCheat(taking);
   // Hard lock while taking: fullscreen + input blocking (installed PWA kiosk).
   const examLock = useExamLock(taking);
+
+  // Maximum violations auto-submission rule:
+  // If severe tab switches or integrity violations hit 3 strikes, auto-submit the exam.
+  const MAX_ALLOWED_VIOLATIONS = 3;
+  useEffect(() => {
+    if (taking && switchCount >= MAX_ALLOWED_VIOLATIONS && !submittedRef.current) {
+      toast.error(
+        `Security threshold exceeded (${switchCount}/${MAX_ALLOWED_VIOLATIONS} violations). Auto-submitting worksheet...`,
+        { duration: 5000 },
+      );
+      finishRef.current?.();
+    }
+  }, [taking, switchCount]);
 
   // Resume or start attempt: restore saved timer/answers if the student
   // closed and reopened the same worksheet within this session.
@@ -441,32 +456,67 @@ function QuizzesPage() {
         onClose={() => setActiveId(null)}
         title={activeQuiz?.title ?? "Worksheet"}
         wide
+        allowClose={!taking}
       >
         {result ? (
           // Teacher-gated release: server gates score/answer_key; client mirrors via result.score_released
           result.score == null ||
           (result as unknown as { score_released?: boolean })?.score_released === false ? (
             <div className="flex flex-col items-center py-8 text-center">
-              <ShieldCheck className="h-12 w-12 text-amber-500" />
-              <p className="mt-3 text-base font-semibold">Awaiting teacher release</p>
+              <ShieldCheck className="h-14 w-14 text-emerald-500" />
+              <p className="mt-3 text-lg font-bold">Worksheet Submitted & Hardlocked</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Your worksheet has been submitted. Your teacher will release your score soon.
+                Your answers have been securely recorded. Your teacher will release your score soon.
               </p>
               <p className="mt-2 text-xs text-muted-foreground">
                 Attempt {result.attempts_used} of {result.attempts_allowed ?? "∞"} recorded — score
                 hidden until release.
               </p>
-              <div className="mt-4 flex flex-col gap-2 w-full">
+              <div className="mt-5 flex flex-col gap-3 w-full">
                 <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-center text-xs text-amber-800 dark:text-amber-200">
-                  Awaiting teacher release — submitted. You&apos;ll see your score and review once
-                  your teacher releases it.
+                  🔒 Session Locked: Station remains locked. Please call your teacher or proctor to enter their release PIN to unlock your station.
                 </p>
-                <button
-                  onClick={() => setActiveId(null)}
-                  className="h-11 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90"
-                >
-                  Done
-                </button>
+                <div className="flex flex-col gap-2 rounded-xl border border-border/80 bg-muted/40 p-3">
+                  <label htmlFor="proctor-pin" className="text-xs font-semibold text-muted-foreground text-left">
+                    Proctor Release PIN:
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="proctor-pin"
+                      type="password"
+                      maxLength={6}
+                      value={proctorPinInput}
+                      onChange={(e) => {
+                        setProctorPinInput(e.target.value);
+                        setProctorPinError(false);
+                      }}
+                      placeholder="Enter 4-digit PIN"
+                      className="h-10 flex-1 rounded-lg border border-input bg-background px-3 text-center font-mono text-sm tracking-widest outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Standard proctor release pin is 1234 or 0000
+                        if (proctorPinInput === "1234" || proctorPinInput === "0000") {
+                          toast.success("Station unlocked by proctor.");
+                          setProctorPinInput("");
+                          setActiveId(null);
+                        } else {
+                          setProctorPinError(true);
+                          toast.error("Invalid proctor PIN.");
+                        }
+                      }}
+                      className="h-10 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                    >
+                      Unlock Station
+                    </button>
+                  </div>
+                  {proctorPinError && (
+                    <p className="text-[11px] text-rose-600 dark:text-rose-400 text-left">
+                      Incorrect PIN. Ask your teacher or proctor to enter their security code.
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           ) : (
@@ -614,15 +664,15 @@ function QuizzesPage() {
                 until the student returns to fullscreen (tap = new gesture). */}
             {examLock.lockLost && (
               <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-background/95 p-8 text-center backdrop-blur">
-                <ShieldCheck className="h-10 w-10 text-primary" />
-                <p className="text-lg font-semibold">Exam lockdown active</p>
-                <p className="max-w-sm text-sm text-muted-foreground">
-                  This exam runs in fullscreen. Return to fullscreen to keep answering — your timer
-                  is still running.
+                <ShieldCheck className="h-12 w-12 text-primary" />
+                <p className="text-xl font-bold">Exam lockdown active</p>
+                <p className="max-w-md text-sm text-muted-foreground">
+                  This assessment runs in secure fullscreen mode. You must return to fullscreen to keep answering — your exam timer is still running.
                 </p>
                 <button
+                  type="button"
                   onClick={() => examLock.lock()}
-                  className="flex h-11 items-center gap-2 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                  className="flex h-11 items-center gap-2 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground hover:opacity-90 shadow-lift"
                 >
                   Return to fullscreen
                 </button>
