@@ -485,6 +485,9 @@ export function QuestionBank({
                               />
                               Lab task (Arduino lab embed)
                             </label>
+                            <span className="text-xs text-muted-foreground">
+                              Simulation questions must include a breadboard wiring task.
+                            </span>
                             <label className="flex items-center gap-2 text-sm">
                               <input
                                 type="checkbox"

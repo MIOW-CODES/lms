@@ -69,6 +69,32 @@ const tosItem = z.object({
   note: z.string().max(2000).nullable().optional(),
 });
 
+// ---- Simulation (lab_task) questions must require breadboard wiring ----
+// The Virtual Arduino Lab renders an empty board with manual pin-to-pin wiring,
+// so every lab_task question must explicitly require breadboard wiring in its
+// question text. Mirrors the DB guard in
+// supabase/migrations/20261012000020_require_breadboarding_in_sim_questions.sql.
+export const LAB_TASK_WIRING_RE = /breadboard|wiring|wire|jumper|resistor|pin-to-pin/i;
+
+export const LAB_TASK_WIRING_MSG =
+  "Simulation (lab task) questions must include a breadboard wiring task in the question text — mention a breadboard, wire/wiring, jumper, resistor, or pin-to-pin connection.";
+
+/**
+ * Enforce the breadboarding rule on one question payload. Only simulation
+ * (lab_task = true) questions are constrained — lab_task = false (or unset) is
+ * free-form. Returns the violation message, or null when acceptable.
+ */
+function labTaskWiringProblem(data: {
+  question?: string | undefined;
+  lab_task?: boolean | undefined;
+}): string | null {
+  if (data.lab_task !== true) return null;
+  if (data.question === undefined) {
+    return `${LAB_TASK_WIRING_MSG} Send the question text together with lab_task.`;
+  }
+  return LAB_TASK_WIRING_RE.test(data.question) ? null : LAB_TASK_WIRING_MSG;
+}
+
 export const schemas = {
   rfid: z.object({ uid: z.string().min(1).max(64) }),
   pinLogin: z.object({ login: z.string().min(1).max(320), secret: z.string().min(1).max(200) }),
@@ -391,11 +417,26 @@ export const schemas = {
     }),
     questions: z
       .array(
-        z.object({
-          question: z.string().min(1).max(2000),
-          options: z.array(z.string().min(1).max(500)).max(12),
-          correct_answer: z.string().min(1).max(1000),
-        }),
+        z
+          .object({
+            question: z.string().min(1).max(2000),
+            options: z.array(z.string().min(1).max(500)).max(12),
+            correct_answer: z.string().min(1).max(1000),
+            // Optional simulation flag (mirrors QuizQuestion in lms.ts). When
+            // set, the question text must require breadboard wiring.
+            lab_task: z.boolean().optional(),
+          })
+          .superRefine((data, ctx) => {
+            const problem = labTaskWiringProblem(data);
+            if (problem) {
+              ctx.addIssue({
+                code: "custom",
+                message: problem,
+                path: ["question"],
+                input: data,
+              });
+            }
+          }),
       )
       .min(1)
       .max(100),
@@ -523,7 +564,18 @@ export const schemas = {
         required: z.boolean(),
         image_url: z.string().max(2_000_000).nullable(),
       })
-      .partial(),
+      .partial()
+      .superRefine((data, ctx) => {
+        const problem = labTaskWiringProblem(data);
+        if (problem) {
+          ctx.addIssue({
+            code: "custom",
+            message: problem,
+            path: ["question"],
+            input: data,
+          });
+        }
+      }),
     ...token,
   }),
   announcementMaterialUpload: z.object({
