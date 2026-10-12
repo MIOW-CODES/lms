@@ -16,6 +16,11 @@ Kept current through the review loop; entries are addressed or accepted before m
 - **Reset migration first** (`20261013000000`): soft-deletes the old active `Quiz 1…7`
   rows (wrongly-based content + attempt history preserved but hidden), then the new
   set is inserted. Old rows never hard-deleted. PRELIM/FINAL rows never matched.
+- **Legacy all-caps clones** (`20261013000030`): the TVE100 assessment clone left
+  `QUIZ 1`…`QUIZ 4` rows (all-caps titles) that the reset's mixed-case match missed —
+  they duplicated the weekly set in the UI (13 cards instead of 9). Soft-deleted with
+  a double guard (`title = upper(title)` AND `^QUIZ [0-9]+$`) so the live mixed-case
+  set can never be caught. These are the "quiz 1-3" the user asked to remove.
 - **Weekly quizzes: 10 questions / 20 minutes** each (question count unspecified; kept
   the 10-item convention). **FINAL EXAMINATION (Coverage: Weeks 1-7): 100 questions /
   60 minutes**, authored as two range-scoped halves (1–50 TVE100 weeks, 51–100 ICT1
