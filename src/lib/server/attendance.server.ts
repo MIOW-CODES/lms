@@ -74,7 +74,7 @@ async function recordTapForProfile(raw: any, atISO?: string) {
   let status: "on-time" | "late" = "on-time";
   let matched: any = null;
   if (scan_type === "in") {
-    const courses = await listCourses();
+    const courses = await listCourses({ id: raw.id, role: raw.role });
     const enrolled = raw.role === "student" ? new Set(await enrollmentsForStudent(raw.id)) : null;
     const today = DAY_CODES[at.getDay()];
     const atMin = at.getHours() * 60 + at.getMinutes();

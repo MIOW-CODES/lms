@@ -206,7 +206,12 @@ let _courseMapCache: Map<string, any> | null = null;
 
 async function courseMap(): Promise<Map<string, any>> {
   if (_courseMapCache) return _courseMapCache;
-  const courses = await lms.listCourses();
+  // Full-catalog title lookup cache: every tool that surfaces this data
+  // re-filters by enrollment/teaching (list_courses, list_my_assignments) or
+  // serves staff-only views, so the map must resolve names for ANY course id.
+  // A neutral non-student caller keeps the catalog unscoped — never pass a
+  // student here or their grade rows would lose course names after unenrollment.
+  const courses = await lms.listCourses({ id: "chat-tools", role: "admin" });
   _courseMapCache = new Map(courses.map((c: any) => [c.id, c]));
   return _courseMapCache;
 }

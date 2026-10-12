@@ -17,8 +17,38 @@ import { type ProfileRole } from "@/lib/server/db-types";
 import { ENROLLMENT_ERRORS, type BulkAddResult, type BulkAddRowOutcome } from "@/lib/enrollment";
 import { dispatchNotification } from "@/lib/server/notifications.server";
 
-export async function listCourses() {
+/**
+ * Pure course-visibility rule (unit-tested): staff (teacher/admin) can see any
+ * course; a student can only see a course they are enrolled in. Mirrors the
+ * course-content gate in `auth.server requireEnrollment`.
+ */
+export function hasCourseAccess(role: ProfileRole, enrolled: boolean): boolean {
+  return role !== "student" || enrolled;
+}
+
+/**
+ * Pure catalog filter (unit-tested): apply {@link hasCourseAccess} over the
+ * full course list against the caller's enrollment set. Students get only the
+ * courses they are enrolled in; staff get the full catalog.
+ */
+export function filterCoursesForCaller<T extends { id: string }>(
+  courses: T[],
+  enrolledIds: readonly string[],
+  role: ProfileRole,
+): T[] {
+  const enrolled = new Set(enrolledIds);
+  return courses.filter((c) => hasCourseAccess(role, enrolled.has(c.id)));
+}
+
+/**
+ * Course catalog. Caller-aware: students only ever receive the courses they
+ * are enrolled in (server-side gate — client filters are display-only);
+ * staff (teacher/admin) keep the full catalog many staff pages depend on.
+ */
+export async function listCourses(caller: { id: string; role: ProfileRole }) {
   const courses = await unwrap<any[]>(db.from("courses").select("*").order("code"));
+  const enrolledIds = caller.role === "student" ? await enrolledCourseIds(caller.id) : [];
+  const visible = filterCoursesForCaller(courses, enrolledIds, caller.role);
   const teachers = await unwrap<Array<{ id: string; full_name: string }>>(
     db
       .from("profiles")
@@ -27,7 +57,7 @@ export async function listCourses() {
       .is("deleted_at", null),
   );
   const byId = new Map(teachers.map((t) => [t.id, t.full_name]));
-  return courses.map((c) => ({
+  return visible.map((c) => ({
     ...c,
     teacher_name: c.teacher_id ? byId.get(c.teacher_id) : undefined,
   }));

@@ -74,7 +74,8 @@ function GradesPage() {
 
   // Attendance component (10%) comes from the student's gate logs.
   const att = attendancePercent(logs ?? []);
-  const myCourses = (courses ?? []).filter((c) => c.grade_level === profile.grade_level);
+  // Server returns the enrolled courses only — no client-side scoping needed.
+  const myCourses = courses ?? [];
   const rows = myCourses.map((c) => {
     const g = (grades ?? []).find((x) => x.course_id === c.id && x.quarter === quarter);
     return { course: c, grade: g };

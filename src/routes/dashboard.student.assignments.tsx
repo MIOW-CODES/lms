@@ -109,7 +109,8 @@ function AssignmentsPage() {
       </AppShell>
     );
 
-  const myCourses = (courses ?? []).filter((c) => c.grade_level === profile.grade_level);
+  // Server returns the enrolled courses only — no client-side scoping needed.
+  const myCourses = courses ?? [];
   const courseIds = new Set(myCourses.map((c) => c.id));
   const myAssignments = (assignments ?? []).filter((a) => courseIds.has(a.course_id));
   const subByAssignment = new Map((submissions ?? []).map((s) => [s.assignment_id, s]));
