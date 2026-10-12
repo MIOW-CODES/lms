@@ -220,8 +220,8 @@ export const listAnnouncementAttachmentsFn = createServerFn({ method: "POST" })
 export const listCoursesFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.session.parse(data))
   .handler(async ({ data }) => {
-    await server.requireSession(data.token);
-    return server.listCourses();
+    const caller = await server.requireSession(data.token);
+    return server.listCourses(caller);
   });
 
 // Course lifecycle: teachers and admins may create courses. Teachers may only
@@ -664,7 +664,11 @@ export const listQuizScoresForCourseFn = createServerFn({ method: "POST" })
 export const listCourseMeetingsFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.courseScoped.parse(data))
   .handler(async ({ data }) => {
-    await server.requireSession(data.token);
+    const caller = await server.requireSession(data.token);
+    // Students may only read the timetable of courses they are enrolled in —
+    // a guessed courseId must not leak another course's meeting schedule.
+    // Staff (teacher/admin) keep unrestricted access (requireEnrollment no-ops).
+    await server.requireEnrollment(data.courseId, caller);
     return server.listCourseMeetings(data.courseId);
   });
 

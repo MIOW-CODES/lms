@@ -291,12 +291,10 @@ function QuizzesPage() {
       </AppShell>
     );
 
-  // Enrollment is the source of truth (mixed college sections); grade level is a
-  // fallback so a student with no enrollment rows still sees their year's work.
+  // Server returns enrolled courses only; enrollment check is display-only.
+  // Grade level is never a fallback — it must not widen visibility.
   const enrolled = new Set(enrolledCourseIds ?? []);
-  const myCourses = (courses ?? []).filter(
-    (c) => enrolled.has(c.id) || c.grade_level === profile.grade_level,
-  );
+  const myCourses = (courses ?? []).filter((c) => enrolled.has(c.id));
   const courseIds = new Set(myCourses.map((c) => c.id));
   const myQuizzes = (quizzes ?? []).filter((q) => courseIds.has(q.course_id));
 

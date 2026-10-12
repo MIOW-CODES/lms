@@ -114,9 +114,10 @@ function StudentDashboard() {
     logsLoading ||
     enrollmentsLoading;
 
+  // Server returns enrolled courses only; enrollment check is display-only.
   const myCourses = (courses ?? []).filter((c) => {
     const enrolled = new Set(enrolledCourseIds ?? []);
-    return enrolled.has(c.id) || String(c.grade_level) === String(profile.grade_level);
+    return enrolled.has(c.id);
   });
   const courseIds = new Set(myCourses.map((c) => c.id));
   const submittedIds = new Set(

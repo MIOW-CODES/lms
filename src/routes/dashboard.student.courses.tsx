@@ -102,14 +102,13 @@ function StudentCoursesPage() {
     enabled: !!profile?.id,
   });
 
-  // A student may belong to several year levels within one course (mixed college
-  // sections), so enrollment is the source of truth — grade level is a fallback.
+  // The server returns only the courses this student is enrolled in; keep the
+  // enrollment check as display-only belt-and-braces. Grade level is NOT a
+  // fallback — it must never widen visibility beyond enrollment.
   const myCourses = useMemo(() => {
     const enrolled = new Set(enrolledCourseIds ?? []);
-    return (courses ?? []).filter(
-      (c) => enrolled.has(c.id) || c.grade_level === profile?.grade_level,
-    );
-  }, [courses, enrolledCourseIds, profile?.grade_level]);
+    return (courses ?? []).filter((c) => enrolled.has(c.id));
+  }, [courses, enrolledCourseIds]);
 
   const courseIds = useMemo(() => new Set(myCourses.map((c) => c.id)), [myCourses]);
   const myAssignments = (assignments ?? []).filter((a) => courseIds.has(a.course_id));
