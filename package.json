@@ -26,6 +26,7 @@
     "db:seed": "bun run scripts/seed.ts",
     "db:import-subjects": "bun run scripts/import-subjects.ts",
     "db:attach-it10-materials": "bun run scripts/attach-it10-materials.ts",
+    "db:attach-ict1-materials": "bun run scripts/attach-ict1-materials.ts",
     "db:wait": "bun run scripts/wait-for-pg.ts",
     "db:reset": "docker compose down -v && docker compose up -d postgres && bun run db:wait && bun run db:migrate"
   },
