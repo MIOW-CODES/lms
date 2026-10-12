@@ -54,6 +54,11 @@ Kept current through the review loop; entries are addressed or accepted before m
   Quiz/assignment/material access was already enrollment-guarded server-side (only
   course shells leaked). Secondary fix: `listCourseMeetings` now requires enrollment
   for students (timetable of arbitrary courses was readable by id).
+- **Verified in prod UI** (post-deploy): a student with zero enrollment rows now
+  correctly sees **zero** courses (before the fix they saw every same-grade course).
+  Example: Benejol (2nd Yr · B8) is not in the ICT1 roster ("0 of 46 learners") and
+  her Courses page is empty — correct, not a regression. If B8 students should
+  access the ICT1 lab, that is an admin "Enroll students" data action, not code.
 
 ## ICT1 slide-based quizzes (Quiz 1–3, 5–6)
 
