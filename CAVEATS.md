@@ -99,7 +99,15 @@ No commit was rated "Needs changes". Dispositions:
   the DB trigger remains the backstop. (2) Client `logAudit` looked like a possible
   duplicate of the server `writeAuditLog` — **confirmed**: `logAudit`
   (src/lib/settings.ts) writes localStorage only (presentational demo panel); the server
-  audit trail (`writeAuditLog`) is the single persistent record.
+  audit trail (`writeAuditLog`) is the single persistent record. Re-review
+  (after `97aaa29`) rated the PR **LGTM** pending two verifications, both now
+  confirmed: (a) student route tree is fully nested under `dashboard.student.tsx`
+  (all 7 pages are its children; `/` redirects to `/auth`) so no student-reachable
+  route escapes the lockdown; (b) the `db` client runs as service_role / the
+  `DATABASE_URL` table owner (see the DB role note in `app-settings.server.ts`) —
+  both see through the `app_settings` RLS policy. Accepted suggestions left as-is:
+  typed error for `updateQuestion`, backfill length guard (2 rows, sub-2000 chars),
+  60s disable-propagation delay.
 
 - **Accepted, minor (deliberate)**: `document.exitFullscreen().catch(() => {})` swallows
   benign "not fullscreen" rejections; `RAISE NOTICE` visibility matches every other seed
