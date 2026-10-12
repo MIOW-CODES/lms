@@ -93,6 +93,14 @@ No commit was rated "Needs changes". Dispositions:
   store; React batching cannot interleave demand updates); `=== true` strictness in
   `shouldKioskLockdown` is deliberate (rejects `"true"` strings from a JSON column);
   `ORDER BY created_at LIMIT 1` on course lookup is deliberate determinism.
+- **PR #56 review (Hermes) — "Minor issues"**: (1) `questionUpdate` superRefine could
+  not see the stored `lab_task` when a patch omitted it — **closed**: `updateQuestion`
+  (question-bank.server.ts) now validates the effective post-update state before writing;
+  the DB trigger remains the backstop. (2) Client `logAudit` looked like a possible
+  duplicate of the server `writeAuditLog` — **confirmed**: `logAudit`
+  (src/lib/settings.ts) writes localStorage only (presentational demo panel); the server
+  audit trail (`writeAuditLog`) is the single persistent record.
+
 - **Accepted, minor (deliberate)**: `document.exitFullscreen().catch(() => {})` swallows
   benign "not fullscreen" rejections; `RAISE NOTICE` visibility matches every other seed
   migration in this repo; `refetchInterval: 60s` matches the kiosk-polling pattern in

@@ -84,7 +84,7 @@ export const LAB_TASK_WIRING_MSG =
  * (lab_task = true) questions are constrained — lab_task = false (or unset) is
  * free-form. Returns the violation message, or null when acceptable.
  */
-function labTaskWiringProblem(data: {
+export function labTaskWiringProblem(data: {
   question?: string | undefined;
   lab_task?: boolean | undefined;
 }): string | null {
