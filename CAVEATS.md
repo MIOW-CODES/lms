@@ -3,6 +3,53 @@
 Known limitations, assumptions, and deliberate trade-offs for this change set.
 Kept current through the review loop; entries are addressed or accepted before merge.
 
+---
+
+# Caveats — batch 2 (feat/ict1-weekly-quizzes-and-fixes)
+
+## ICT1 weekly quiz restructure (Quiz 1–7 + Final Exam)
+
+- **Quiz N = Week N** (new convention): Quiz 1–4 grounded in TVE100 Week 1–4 PDFs
+  (Introduction/TVET System, Teacher as Professional, Teacher & Community, School
+  Culture), Quiz 5–7 in ICT1 Week 5–7 decks (Online Collaboration, LMS, Multimedia).
+  Supersedes the batch-1 numbering (which skipped Quiz 4 and mapped Quiz 1→Week 2).
+- **Reset migration first** (`20261013000000`): soft-deletes the old active `Quiz 1…7`
+  rows (wrongly-based content + attempt history preserved but hidden), then the new
+  set is inserted. Old rows never hard-deleted. PRELIM/FINAL rows never matched.
+- **Weekly quizzes: 10 questions / 20 minutes** each (question count unspecified; kept
+  the 10-item convention). **FINAL EXAMINATION (Coverage: Weeks 1-7): 100 questions /
+  60 minutes**, authored as two range-scoped halves (1–50 TVE100 weeks, 51–100 ICT1
+  weeks) so parallel seeding never collides.
+- **Availability**: fresh rows get `opens_at NULL, closes_at now()+14d` (repo seed
+  convention); existing rows keep availability/release state on re-runs.
+
+## Materials on quizzes
+
+- **ICT1** (`20261013000020`): each quiz gets its week's file copied **from the
+  PRELIM EXAMINATION row's attachments** (files already in Supabase storage — no
+  re-upload, URLs copied verbatim). Matching is by exact attachment `name`; a stored
+  name mismatch (spelling/underscore) skips that file with a NOTICE. Locally the
+  migration NOTICE-skips (prelim attachments exist only in prod storage) — expected.
+- **IT10** (`scripts/attach-it10-materials.ts` + CI job): uploads the 5 source PDFs
+  from the repo root to `course-materials` and attaches them per quiz; `1st Quarter
+  Exam` gets the 4 study PDFs as reviewers. **Teacher copy (answer key), the exam
+  .docx (live questions) and the TOS are hard-blocked from ever being attached.**
+  Idempotent (skip by attachment name). **"Programming with Arduino.pdf" is 29.3 MB**
+  — over the app's 25 MB UI cap but under Supabase's 50 MB; the script uploads it with
+  an explicit warning (UI drag-drop of that one file would be rejected).
+- Prod service-role key is not machine-readable locally (vercel env redacts secrets);
+  the CI `workflow_dispatch` job derives it from `SUPABASE_ACCESS_TOKEN` at run time.
+
+## Student course-visibility leak (verified, fixed)
+
+- Confirmed real: `listCourses()` returned the **entire catalog to any session** and
+  5 student pages filtered client-side with `|| grade_level` fallbacks — students saw
+  every course in their grade level regardless of enrollment.
+- Fix is **server-side** (student ⇒ enrolled courses only; staff keep full catalog).
+  Quiz/assignment/material access was already enrollment-guarded server-side (only
+  course shells leaked). Secondary fix: `listCourseMeetings` now requires enrollment
+  for students (timetable of arbitrary courses was readable by id).
+
 ## ICT1 slide-based quizzes (Quiz 1–3, 5–6)
 
 - **Hermes review (commit 9ada899) — accepted findings**: upserts use SELECT-then-INSERT
