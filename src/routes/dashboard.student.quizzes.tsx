@@ -127,6 +127,13 @@ function QuizzesPage() {
   // Auto-generated wiring description from the Virtual Arduino Lab (manual wires)
   const [connSummary, setConnSummary] = useState("");
   const [secondsLeft, setSecondsLeft] = useState(0);
+  // Which worksheet the timer/answers below belong to, and whether the current
+  // attempt has finished loading. Both are guards against a newly selected
+  // worksheet inheriting the previous one's countdown/answers while its async
+  // fetch is still resolving — timer and answers are persisted per quiz id, so
+  // a stale write under the new id would leak the old attempt's state forward.
+  const [readyQuizId, setReadyQuizId] = useState<string | null>(null);
+  const [loadingAttempt, setLoadingAttempt] = useState(false);
   const [result, setResult] = useState<QuizSuccess | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // Persist timer + answers per quiz so closing/reopening or accidental reload doesn't reset progress
@@ -237,31 +244,39 @@ function QuizzesPage() {
     } else {
       setSecondsLeft(attempt.duration);
     }
+    // Arm the guard only once this worksheet's own questions/answers/timer are
+    // all applied, so the persistence effects never write them under another id.
+    setReadyQuizId(id);
   };
 
   useEffect(() => {
     if (activeId) {
       submittedRef.current = false;
-      void beginAttempt(activeId);
+      // Disarm the guard for the async window: the render right after the id
+      // change still holds the previous worksheet's state, and beginAttempt
+      // re-arms it when the fresh attempt is applied.
+      setReadyQuizId(null);
+      setLoadingAttempt(true);
+      void beginAttempt(activeId).finally(() => setLoadingAttempt(false));
     }
   }, [activeId]);
 
   useEffect(() => {
-    if (!activeId || result || secondsLeft <= 0) return;
+    if (!activeId || readyQuizId !== activeId || result || secondsLeft <= 0) return;
     // Persist remaining time so closing/reopening or reload preserves it
     savedTimerRef.current.set(activeId, secondsLeft);
     setStoredTimer(activeId, secondsLeft);
     const t = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
     return () => clearTimeout(t);
-  }, [activeId, secondsLeft, result]);
+  }, [activeId, readyQuizId, secondsLeft, result]);
 
   // Persist answers per quiz so closing/reopening preserves progress
   useEffect(() => {
-    if (activeId && Object.keys(answers).length > 0) {
+    if (activeId && readyQuizId === activeId && !result && Object.keys(answers).length > 0) {
       savedAnswersRef.current.set(activeId, answers);
       setStoredAnswers(activeId, answers);
     }
-  }, [activeId, answers]);
+  }, [activeId, readyQuizId, answers, result]);
 
   // Clear saved progress on successful submission
   useEffect(() => {
@@ -277,8 +292,9 @@ function QuizzesPage() {
   const submittedRef = useRef(false);
 
   useEffect(() => {
-    if (secondsLeft === 0 && finishRef.current) finishRef.current();
-  }, [secondsLeft]);
+    if (activeId && readyQuizId === activeId && secondsLeft === 0 && finishRef.current)
+      finishRef.current();
+  }, [activeId, readyQuizId, secondsLeft]);
 
   const isLoading = !courses || !quizzes || !summaries || !enrolledCourseIds;
 
@@ -619,6 +635,8 @@ function QuizzesPage() {
               </div>
             </div>
           )
+        ) : loadingAttempt ? (
+          <LoadingSkeleton />
         ) : (
           <>
             {/* Hard lock: fullscreen was exited mid-exam — block the paper

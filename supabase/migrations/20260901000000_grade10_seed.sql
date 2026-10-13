@@ -210,10 +210,14 @@ INSERT INTO public.profiles (student_id, email, pin, full_name, role, rfid_uid, 
 ('2026-0120', 'christiannibiel.villaruz@g.msuiit.edu.ph', '1234', 'Christianni Biel Villaruz', 'student', NULL, 10, 'Tau', 'https://ui-avatars.com/api/?name=Christianni+Biel+Villaruz&background=ea580c&color=fff'),
 ('2026-0121', 'aiman.yahya@g.msuiit.edu.ph', '1234', 'Aiman Yahya', 'student', NULL, 10, 'Tau', 'https://ui-avatars.com/api/?name=Aiman+Yahya&background=f97316&color=fff');
 
--- ── Enroll ALL students in IT10 ──────────────────────────────────────────────
+-- ── Enroll Grade 10 students in IT10 ─────────────────────────────────────────
+-- IT10 is a Grade 10 subject: only enroll grade-10 students (the previous
+-- `WHERE p.role = 'student'` enrolled the entire school, leaking IT10 into every
+-- learner's course list).
 INSERT INTO public.enrollments (student_id, course_id)
 SELECT p.id, c.id FROM public.profiles p, public.courses c
-WHERE c.code = 'IT10' AND p.role = 'student';
+WHERE c.code = 'IT10' AND p.role = 'student' AND p.grade_level = 10
+ON CONFLICT (student_id, course_id) DO NOTHING;
 
 -- ── Admin profile (needed as announcement author) ──────────────────────────
 INSERT INTO public.profiles (id, student_id, email, pin, full_name, role, rfid_uid, avatar_url, grade_level, section) VALUES
