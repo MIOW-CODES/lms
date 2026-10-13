@@ -71,6 +71,22 @@ export function selectQuestionBank<T extends { id: string; required?: boolean }>
   return [...pinned, ...unused, ...seen].slice(0, need + pinned.length);
 }
 
+/**
+ * Jumble a worksheet's presentation: shuffle the question order AND, within
+ * each question, the answer options. Options are matched by TEXT during
+ * scoring (`scoreQuiz` compares the chosen text to `correct_answer`), so
+ * permuting them never changes correctness — it only removes positional bias
+ * (e.g. a bank authored with the correct answer always at index 0, which would
+ * otherwise always render as "letter A").
+ */
+export function randomizeQuestions(questions: any[]): any[] {
+  return shuffleInPlace([...questions]).map((q, i) => {
+    const opts = Array.isArray(q.options) ? q.options : [];
+    const options = opts.length > 1 ? shuffleInPlace([...opts]) : opts;
+    return { ...q, options, position: i + 1 };
+  });
+}
+
 export async function getQuizPublic(id: string, studentId?: string) {
   const quiz = await unwrap<any>(
     db.from("quizzes").select("*").eq("id", id).is("deleted_at", null).single(),
@@ -96,6 +112,7 @@ export async function getQuizPublic(id: string, studentId?: string) {
   // Question bank: if question_count > 0, take a random subset that avoids
   // questions this student already answered in prior attempts when possible.
   const questionCount = quiz.question_count ?? 0;
+  let selected = questions;
   if (questionCount > 0 && questions.length > questionCount) {
     let usedIds: string[] = [];
     if (studentId) {
@@ -110,10 +127,13 @@ export async function getQuizPublic(id: string, studentId?: string) {
       );
       usedIds = prior.flatMap((a) => (Array.isArray(a.question_ids) ? a.question_ids : []));
     }
-    const selected = selectQuestionBank(questions, questionCount, usedIds);
-    // Randomize presentation order, then re-number positions.
-    questions = shuffleInPlace([...selected]).map((q, i) => ({ ...q, position: i + 1 }));
+    selected = selectQuestionBank(questions, questionCount, usedIds);
   }
+  // Assessment integrity: ALWAYS jumble the presentation (question order and
+  // per-question option order), not only when a subset is drawn. Without this a
+  // full-length exam (question_count === bank size) renders in authored order
+  // and, if the seed placed the correct option first, every answer is "A".
+  questions = randomizeQuestions(selected);
   return { quiz, questions };
 }
 

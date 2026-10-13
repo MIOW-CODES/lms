@@ -60,6 +60,40 @@ Kept current through the review loop; entries are addressed or accepted before m
   her Courses page is empty — correct, not a regression. If B8 students should
   access the ICT1 lab, that is an admin "Enroll students" data action, not code.
 
+## Course-list mismatch — over-broad seed enrollments (data, not code)
+
+- **Symptom** (user report): "students see all courses / courses don't correspond
+  to their enrolled course." **Not a visibility-code bug** — `listCourses`,
+  `listQuizzes`, `listAssignments`, grades, meetings and materials are all
+  enrollment-gated server-side and the student pages double-filter.
+- **Root cause**: two seeds enrolled far more students than intended, so the
+  course list legitimately contained courses that weren't the learner's class:
+  - `20260901000000_grade10_seed.sql` enrolled **every** student into **IT10**
+    (`WHERE p.role='student'`, no grade filter). IT10 is a Grade 10 subject.
+  - `20261010000009_seed_iae106_*.sql` + `seed-iae106.server.ts` enrolled
+    **every** student into **IAE 106**, though both described a College-2nd-Year
+    / BTLED / B8 / test-account cohort the SQL never actually applied.
+  - (Separately) `20261012000001_enroll_liveuser_courses.sql` deliberately puts
+    the demo account `test@g.msuiit.edu.ph` in **all** courses. Verifying the
+    visibility fix while signed in as that account in "student" role-view shows
+    the full catalog **by design** — use a real student account to verify.
+- **Fix (code)**: the two seed queries now scope to the intended cohort —
+  IT10 ⇒ `grade_level = 10`; IAE 106 ⇒ `grade_level = 14` OR `section ILIKE
+  'BTLED%'` OR `section = 'B8'` OR test accounts (`2026-0000` /
+  `test@g.msuiit.edu.ph`). Re-seeding a fresh DB is now correct.
+- **Fix (data)** `20261013000080_cleanup_overbroad_course_enrollments.sql`:
+  repairs already-seeded databases by deleting IT10/IAE 106 enrollments outside
+  those cohorts. Scope-limited to those two course codes; staff rows untouched;
+  idempotent (`DELETE ... USING profiles`, `RAISE NOTICE` counts). Verified
+  against PGlite: an injected out-of-cohort learner enrolled in both courses is
+  removed on run (2→0) and 0 out-of-cohort rows remain afterward.
+- **Assumption**: college years map to `grade_level = 12 + year` (College 2nd
+  Year = 14), and `section` carries program-section strings (`BTLED-IA`,
+  `BTLED-HE`, `B8`) — matches the ICT1 roster seed convention. If a student is
+  wrongly removed, the migration footer shows the one-line re-enroll undo.
+- **Manual verify still wanted in prod**: sign in as a real ICT1 student and
+  confirm the course list shows only their actual courses.
+
 ## ICT1 slide-based quizzes (Quiz 1–3, 5–6)
 
 - **Hermes review (commit 9ada899) — accepted findings**: upserts use SELECT-then-INSERT

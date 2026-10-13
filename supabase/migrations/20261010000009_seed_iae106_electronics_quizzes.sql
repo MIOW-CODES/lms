@@ -190,12 +190,23 @@ BEGIN
     (20, 'What is parallax error when reading an analog meter scale, and how is it eliminated?', '["An apparent shift in needle position when viewed at an angle; eliminated by lining up the needle with its mirror image","A calibration drift caused by ambient temperature changes; eliminated by cooling the meter","A friction error in the jeweled meter bearings; eliminated by tapping the meter case","A reading error caused by depleted batteries; eliminated by replacing batteries"]', 'An apparent shift in needle position when viewed at an angle; eliminated by lining up the needle with its mirror image')
   ) AS q(pos, question, options, correct_answer);
 
-  -- 4. Auto-enroll eligible college students (all students in section B8 or BTLED or 2026-0000)
+  -- 4. Auto-enroll the intended IAE 106 cohort only: College 2nd-year
+  --    (grade_level = 14), BTLED sections, section B8, and known demo/test
+  --    accounts (2026-0000 / test@). Previously this enrolled EVERY student
+  --    (its comment described a cohort the SQL never applied), which made
+  --    IAE 106 appear in every learner's course list.
   INSERT INTO public.enrollments (student_id, course_id)
   SELECT p.id, v_course
   FROM public.profiles p
   WHERE p.role = 'student'
     AND p.deleted_at IS NULL
+    AND (
+      p.grade_level = 14
+      OR p.section ILIKE 'BTLED%'
+      OR p.section = 'B8'
+      OR p.student_id = '2026-0000'
+      OR lower(coalesce(p.email, '')) = 'test@g.msuiit.edu.ph'
+    )
   ON CONFLICT (student_id, course_id) DO NOTHING;
 
 END $$;

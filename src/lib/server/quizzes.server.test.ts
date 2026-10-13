@@ -10,7 +10,67 @@ import {
   selectQuestionBank,
   validateAttemptQuestionIds,
   gateAttemptResults,
+  randomizeQuestions,
 } from "./quizzes.server";
+
+/* ---------- randomizeQuestions (exam jumbling) ---------- */
+
+describe("randomizeQuestions", () => {
+  const mcq = (id: string, n: number) => ({
+    id,
+    options: Array.from({ length: n }, (_, i) => `${id}-opt${i}`),
+    position: 0,
+  });
+
+  it("keeps every question and preserves each question's option set", () => {
+    const input = [mcq("a", 4), mcq("b", 4), mcq("c", 4)];
+    const out = randomizeQuestions(input);
+    expect(out.map((q) => q.id).sort()).toEqual(["a", "b", "c"]);
+    for (const q of out) {
+      const original = input.find((x) => x.id === q.id)!;
+      expect([...q.options].sort()).toEqual([...original.options].sort());
+    }
+  });
+
+  it("jumbles the question order and renumbers positions sequentially", () => {
+    const input = Array.from({ length: 12 }, (_, i) => mcq(`q${i}`, 4));
+    expect(randomizeQuestions(input).map((q) => q.position)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+    ]);
+    // Over many runs the authored order cannot be preserved every time.
+    const anyReordered = Array.from({ length: 20 }, () =>
+      randomizeQuestions(input).map((q) => q.id),
+    ).some((order) => order.join() !== input.map((q) => q.id).join());
+    expect(anyReordered).toBe(true);
+  });
+
+  it("removes positional answer bias: the correct option is not always first", () => {
+    // Authored like the ICT1 seed: correct answer is always option index 0.
+    const input = Array.from({ length: 10 }, (_, i) => ({
+      id: `q${i}`,
+      options: [`CORRECT-${i}`, `wrong-a-${i}`, `wrong-b-${i}`, `wrong-c-${i}`],
+      position: 0,
+    }));
+    const firstIsCorrect = Array.from(
+      { length: 25 },
+      () =>
+        randomizeQuestions(input).filter((q) => q.options[0] === `CORRECT-${q.id.slice(1)}`).length,
+    );
+    // ~1/4 expected by chance; assert it is not the authored 10/10 every run.
+    expect(firstIsCorrect.some((n) => n < input.length)).toBe(true);
+    expect(firstIsCorrect.some((n) => n === input.length)).toBe(false);
+  });
+
+  it("leaves single-option and option-less (essay) questions untouched", () => {
+    const input = [
+      { id: "essay", options: [], position: 0 },
+      { id: "tf", options: ["True"], position: 0 },
+    ];
+    const out = randomizeQuestions(input);
+    expect(out.find((q) => q.id === "essay")!.options).toEqual([]);
+    expect(out.find((q) => q.id === "tf")!.options).toEqual(["True"]);
+  });
+});
 
 /* ---------- selectQuestionBank ---------- */
 
