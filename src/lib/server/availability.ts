@@ -89,6 +89,17 @@ export function availabilityStatus(row: AvailabilityRow, now: Date): Availabilit
 }
 
 /**
+ * Staff editability: a worksheet is protected ONLY while it has an explicit
+ * schedule (non-null opens_at) whose window is currently open. Legacy rows with
+ * opens_at NULL (always-open seeds) are never locked, so ordinary editing is
+ * unaffected.
+ */
+export function isAssessmentEditable(row: AvailabilityRow, now: Date): boolean {
+  const scheduled = toMs(row.opens_at) != null;
+  return !scheduled || availabilityStatus(row, now) !== "open";
+}
+
+/**
  * Hard-block guard for attempt/submission write paths: throws
  * {@link AvailabilityError} unless the item is currently open. Staff callers
  * bypass at the call sites (grading/preview).

@@ -5,6 +5,7 @@ import {
   hasClosed,
   deadlineOf,
   availabilityStatus,
+  isAssessmentEditable,
   requireOpen,
   AvailabilityError,
   canViewAssessment,
@@ -124,6 +125,44 @@ describe("requireOpen", () => {
     expect(availabilityStatus({ opens_at: at(+MIN) }, NOW)).toBe("not_yet_open");
     expect(availabilityStatus({}, NOW)).toBe("open");
     expect(availabilityStatus({ closes_at: at(-1) }, NOW)).toBe("closed");
+  });
+});
+
+/* ---------- isAssessmentEditable — staff edit lock during open windows ---------- */
+
+describe("isAssessmentEditable (staff edit lock)", () => {
+  it("legacy always-open rows (opens_at NULL) are NEVER locked", () => {
+    expect(isAssessmentEditable({}, NOW)).toBe(true);
+    expect(isAssessmentEditable({ opens_at: null }, NOW)).toBe(true);
+    expect(isAssessmentEditable({ opens_at: undefined }, NOW)).toBe(true);
+  });
+
+  it("a scheduled window that has not opened yet is editable", () => {
+    expect(isAssessmentEditable({ opens_at: at(+MIN), closes_at: at(+2 * MIN) }, NOW)).toBe(true);
+  });
+
+  it("locks while the scheduled window is open (opens_at past, closes_at future)", () => {
+    expect(isAssessmentEditable({ opens_at: at(-MIN), closes_at: at(+MIN) }, NOW)).toBe(false);
+  });
+
+  it("locks exactly AT opens_at (inclusive lower boundary)", () => {
+    expect(isAssessmentEditable({ opens_at: at(0), closes_at: at(+MIN) }, NOW)).toBe(false);
+  });
+
+  it("still locks exactly AT closes_at (window is still open there)", () => {
+    expect(isAssessmentEditable({ opens_at: at(-MIN), closes_at: at(0) }, NOW)).toBe(false);
+  });
+
+  it("unlocks once the window has closed (after closes_at)", () => {
+    expect(isAssessmentEditable({ opens_at: at(-MIN), closes_at: at(-SEC) }, NOW)).toBe(true);
+    const row = { opens_at: at(-2 * MIN), closes_at: at(0) };
+    expect(isAssessmentEditable(row, NOW)).toBe(false); // at closes_at → still locked
+    expect(isAssessmentEditable(row, new Date(NOW.getTime() + SEC))).toBe(true); // +1s → editable
+  });
+
+  it("locks scheduled rows with no closes_at (open-ended exam in progress)", () => {
+    expect(isAssessmentEditable({ opens_at: at(-MIN) }, NOW)).toBe(false);
+    expect(isAssessmentEditable({ opens_at: at(-MIN), closes_at: null }, NOW)).toBe(false);
   });
 });
 
