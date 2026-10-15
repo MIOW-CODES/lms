@@ -266,6 +266,9 @@ export const schemas = {
     content: z.string().min(1).max(5000),
     category: z.enum(["urgent", "event", "academic"]),
     target_audience: z.string().max(50).optional(),
+    // Pin-on-create: without this the field is stripped by the schema and the
+    // insert never persists it (announcementPatch already allows pinned).
+    pinned: z.boolean().optional(),
     author_id: uuid.nullable().optional(),
     ...token,
   }),
@@ -435,6 +438,27 @@ export const schemas = {
                 code: "custom",
                 message: problem,
                 path: ["question"],
+                input: data,
+              });
+            }
+          })
+          // MCQ answer-key sanity (create path only): a correct answer that is
+          // not one of the options can never be selected, making the question
+          // impossible to answer correctly. Option-less items and essay
+          // ("Rubric:") keys are exempt; multi-variant keys ("answerA ||
+          // answerB") are judged on their first variant. Deliberately NOT
+          // applied to updateQuestion / quizUpdate so existing rows and edits
+          // are unaffected.
+          .superRefine((data, ctx) => {
+            if (data.options.length === 0) return;
+            if (data.correct_answer.startsWith("Rubric:")) return;
+            const primary = (data.correct_answer.split("||")[0] ?? "").trim();
+            const optionKeys = data.options.map((o) => o.trim());
+            if (!optionKeys.includes(primary)) {
+              ctx.addIssue({
+                code: "custom",
+                message: "correct answer must be one of the options",
+                path: ["correct_answer"],
                 input: data,
               });
             }

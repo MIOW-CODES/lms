@@ -101,11 +101,17 @@ export function useExamLock(active: boolean): ExamLockState {
       }
     };
     const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    // Paste is allowed in textareas so students can paste code into
+    // free-text / code answers; it stays blocked everywhere else.
+    const onPaste = (e: Event) => {
+      if ((e.target as HTMLElement)?.tagName === "TEXTAREA") return;
+      e.preventDefault();
+    };
 
     document.addEventListener("contextmenu", prevent);
     document.addEventListener("copy", prevent);
     document.addEventListener("cut", prevent);
-    document.addEventListener("paste", prevent);
+    document.addEventListener("paste", onPaste);
     document.addEventListener("selectstart", onSelectStart);
     document.addEventListener("dragstart", prevent);
     document.addEventListener("keydown", onKeyDown, true);
@@ -114,7 +120,7 @@ export function useExamLock(active: boolean): ExamLockState {
       document.removeEventListener("contextmenu", prevent);
       document.removeEventListener("copy", prevent);
       document.removeEventListener("cut", prevent);
-      document.removeEventListener("paste", prevent);
+      document.removeEventListener("paste", onPaste);
       document.removeEventListener("selectstart", onSelectStart);
       document.removeEventListener("dragstart", prevent);
       document.removeEventListener("keydown", onKeyDown, true);
