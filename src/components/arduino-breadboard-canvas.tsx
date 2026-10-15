@@ -168,8 +168,8 @@ const UNO_POWER_MM: Record<string, number> = {
   GND: 38.07,
   GND2: 40.61,
 };
-const UNO_TOP_Y_MM = 2.54;
-const UNO_BOTTOM_Y_MM = 50.8;
+const UNO_TOP_Y_MM = 3.6;
+const UNO_BOTTOM_Y_MM = 49.6;
 
 interface UnoTerminal {
   key: string;
@@ -177,28 +177,18 @@ interface UnoTerminal {
   label: string;
   mmX: number;
   mmY: number;
-  /**
-   * Vertical stagger in px. Header pins sit at a 2.54mm (≈9.6px) pitch —
-   * tighter than the 26px touch hit area — so alternating pins are nudged
-   * up/down (two interleaved rows) to keep every terminal clickable.
-   */
-  yNudge: number;
 }
 
 function buildUnoTerminals(): UnoTerminal[] {
-  const stagger = (arr: Array<Omit<UnoTerminal, "yNudge">>): UnoTerminal[] =>
-    arr.map((t, i) => ({ ...t, yNudge: i % 2 === 0 ? -8 : 8 }));
   return [
-    ...stagger(
-      [13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((n) => ({
-        key: `uno-D${n}`,
-        pin: n as UnoPinRef | "GND2",
-        label: `${n}`,
-        mmX: UNO_DIGITAL_MM[n]!,
-        mmY: UNO_TOP_Y_MM,
-      })),
-    ),
-    ...stagger([
+    ...[13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((n) => ({
+      key: `uno-D${n}`,
+      pin: n as UnoPinRef | "GND2",
+      label: `${n}`,
+      mmX: UNO_DIGITAL_MM[n]!,
+      mmY: UNO_TOP_Y_MM,
+    })),
+    ...[
       {
         key: "uno-3V3",
         pin: "3V3" as UnoPinRef | "GND2",
@@ -227,16 +217,14 @@ function buildUnoTerminals(): UnoTerminal[] {
         mmX: UNO_POWER_MM["GND2"]!,
         mmY: UNO_BOTTOM_Y_MM,
       },
-    ]),
-    ...stagger(
-      [0, 1, 2, 3, 4, 5].map((a) => ({
-        key: `uno-A${a}`,
-        pin: (14 + a) as UnoPinRef | "GND2",
-        label: `A${a}`,
-        mmX: UNO_ANALOG_MM[a]!,
-        mmY: UNO_BOTTOM_Y_MM,
-      })),
-    ),
+    ],
+    ...[0, 1, 2, 3, 4, 5].map((a) => ({
+      key: `uno-A${a}`,
+      pin: (14 + a) as UnoPinRef | "GND2",
+      label: `A${a}`,
+      mmX: UNO_ANALOG_MM[a]!,
+      mmY: UNO_BOTTOM_Y_MM,
+    })),
   ];
 }
 
@@ -332,9 +320,9 @@ export function InteractiveBreadboardCanvas({
 
   /* ---------- Terminal registry (key → canvas coordinate) ---------- */
   const unoCoord = useCallback(
-    (t: { mmX: number; mmY: number; yNudge?: number }) => ({
+    (t: { mmX: number; mmY: number }) => ({
       x: unoPos.x + (t.mmX + 4) * MM,
-      y: unoPos.y + t.mmY * MM + (t.yNudge ?? 0),
+      y: unoPos.y + t.mmY * MM,
     }),
     [unoPos],
   );
@@ -697,6 +685,7 @@ export function InteractiveBreadboardCanvas({
     onDown?: (e: React.PointerEvent) => void,
     testid?: string,
     stub?: { x1: number; y1: number; x2: number; y2: number },
+    showLabel = true,
   ) => {
     const isHover = hoverKey === key;
     const isPending = pendingKey === key;
@@ -734,17 +723,20 @@ export function InteractiveBreadboardCanvas({
           strokeWidth="2"
           style={{ pointerEvents: "none" }}
         />
-        <text
-          x={coord.x + 10}
-          y={coord.y + 3.5}
-          fontSize="9.5"
-          fontWeight="bold"
-          fontFamily="ui-monospace, monospace"
-          fill={isPending || isSnap ? "#6ee7b7" : "#cbd5e1"}
-          style={{ pointerEvents: "none", userSelect: "none" }}
-        >
-          {label}
-        </text>
+        {showLabel && (
+          <text
+            x={coord.x}
+            y={coord.y - 10}
+            textAnchor="middle"
+            fontSize="9"
+            fontWeight="bold"
+            fontFamily="ui-monospace, monospace"
+            fill={isPending || isSnap ? "#6ee7b7" : "#cbd5e1"}
+            style={{ pointerEvents: "none", userSelect: "none" }}
+          >
+            {label}
+          </text>
+        )}
         <circle
           cx={coord.x}
           cy={coord.y}
@@ -1345,6 +1337,8 @@ export function InteractiveBreadboardCanvas({
                 "#cbd5e1",
                 (e) => handleTerminalDown(e, t.key),
                 `term-${t.key}`,
+                undefined,
+                false, // Uno SVG graphic already prints D0-D13/PWR labels clearly
               ),
             )}
 
