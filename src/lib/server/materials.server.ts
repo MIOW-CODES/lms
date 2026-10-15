@@ -7,7 +7,12 @@ import { db, supabaseAdmin } from "@/integrations/db/client.server";
 import { unwrap, withoutToken } from "@/lib/server/utils.server";
 import { requireStaff, isEnrolledIn } from "@/lib/server/auth.server";
 import { requireCourseOwnerOrAdmin } from "@/lib/server/courses.server";
-import { isMaterialOpen, requireOpen, type AvailabilityRow } from "@/lib/server/availability";
+import {
+  isAssessmentEditable,
+  isMaterialOpen,
+  requireOpen,
+  type AvailabilityRow,
+} from "@/lib/server/availability";
 import { sessionSecret } from "@/lib/server/sessions.server";
 
 const MATERIAL_BUCKET = "course-materials";
@@ -346,7 +351,12 @@ export async function updateAssignment(
   id: string,
   patch: Record<string, unknown>,
 ) {
-  await requireAssignmentOwnerOrAdmin(tokenStr, id);
+  const { row } = await requireAssignmentOwnerOrAdmin(tokenStr, id);
+  if (row && !isAssessmentEditable(row, new Date())) {
+    throw new Error(
+      "This assignment is locked while its scheduled assessment window is active. Edits cannot be saved now.",
+    );
+  }
   const safePatch = Object.fromEntries(
     Object.entries(patch).filter(([key]) => ALLOWED_ASSIGNMENT_COLUMNS.has(key)),
   );
@@ -356,6 +366,11 @@ export async function updateAssignment(
 
 export async function deleteAssignment(tokenStr: string, id: string, mode: "soft" | "hard") {
   const { row } = await requireAssignmentOwnerOrAdmin(tokenStr, id);
+  if (row && !isAssessmentEditable(row, new Date())) {
+    throw new Error(
+      "This assignment is locked while its scheduled assessment window is active. It cannot be deleted now.",
+    );
+  }
   if (mode === "soft") {
     await unwrap(
       db.from("assignments").update({ deleted_at: new Date().toISOString() }).eq("id", id),
