@@ -141,6 +141,12 @@ export async function getQuizPublic(id: string, studentId?: string) {
     }
     selected = selectQuestionBank(questions, questionCount, usedIds);
   }
+  // Restore the teacher's authored order before jumbling. `selectQuestionBank`
+  // returns pinned questions first, which would drag a fixed end-section (e.g.
+  // the Part IV problem-solving essays) up to the front of the paper. Re-sorting
+  // by authored `position` lets randomizeQuestions keep every required item in
+  // its real slot (Part I … Part IV last) while shuffling the flexible body.
+  selected = [...selected].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
   // Assessment integrity: ALWAYS jumble the presentation (question order and
   // per-question option order), not only when a subset is drawn. Without this a
   // full-length exam (question_count === bank size) renders in authored order
