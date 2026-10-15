@@ -1014,7 +1014,13 @@ export function InteractiveBreadboardCanvas({
         <div className="flex flex-wrap items-center gap-2">
           {pendingKey ? (
             <div className="flex items-center gap-2 rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-200 animate-pulse">
-              <span>Connecting from terminal: <strong className="text-white underline">{pendingKey.replace("term-", "").replace("part-", "")}</strong> → click any destination pin</span>
+              <span>
+                Connecting from terminal:{" "}
+                <strong className="text-white underline">
+                  {pendingKey.replace("term-", "").replace("part-", "")}
+                </strong>{" "}
+                → click any destination pin
+              </span>
               <button
                 type="button"
                 onClick={() => {
@@ -1407,7 +1413,10 @@ export function InteractiveBreadboardCanvas({
       <div className="flex items-start gap-2 text-xs text-muted-foreground">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
         <span>
-          <strong>Simple wiring:</strong> Click any pin or terminal to start a jumper wire, then click another pin to connect. You can also use <strong>Auto-Wire Task</strong> to connect guide wires instantly, or click a wire and press Delete (or the ✕) to remove it. Drag components anywhere on the board.
+          <strong>Simple wiring:</strong> Click any pin or terminal to start a jumper wire, then
+          click another pin to connect. You can also use <strong>Auto-Wire Task</strong> to connect
+          guide wires instantly, or click a wire and press Delete (or the ✕) to remove it. Drag
+          components anywhere on the board.
         </span>
       </div>
     </div>
