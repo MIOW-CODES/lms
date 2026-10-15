@@ -1081,8 +1081,8 @@ export function InteractiveBreadboardCanvas({
         </div>
       </div>
 
-      {/* Scrollable workbench — stays usable at 390px mobile widths */}
-      <div className="w-full overflow-x-auto rounded-2xl">
+      {/* Responsive workbench container — fits full width without awkward scroll on desktop */}
+      <div className="w-full overflow-hidden rounded-2xl">
         <div
           ref={containerRef}
           onClick={handleCanvasClick}
@@ -1104,7 +1104,7 @@ export function InteractiveBreadboardCanvas({
           }}
           data-testid="arduino-workbench"
           className={cn(
-            "relative h-[640px] w-[1080px] select-none overflow-hidden rounded-2xl border-2 shadow-2xl",
+            "relative h-[620px] w-full min-w-[720px] select-none overflow-hidden rounded-2xl border-2 shadow-2xl",
             dragOver ? "border-emerald-400 ring-2 ring-emerald-400/40" : "border-emerald-900/60",
             drawMode && "cursor-crosshair",
           )}
