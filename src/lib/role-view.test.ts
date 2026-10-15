@@ -1,7 +1,9 @@
 import { describe, it, expect } from "bun:test";
 import {
   TEST_ACCOUNT_EMAIL,
+  TEST_STUDENT_EMAIL,
   isTestAccount,
+  isTestStudent,
   assertTestAccount,
   parseRoleView,
   applyRoleView,
@@ -22,6 +24,22 @@ describe("role-view allowlist", () => {
     expect(isTestAccount("")).toBe(false);
     expect(isTestAccount(null)).toBe(false);
     expect(isTestAccount(undefined)).toBe(false);
+  });
+
+  describe("isTestStudent", () => {
+    it("recognizes designated test student accounts", () => {
+      expect(isTestStudent(TEST_STUDENT_EMAIL)).toBe(true);
+      expect(isTestStudent("IT10@G.MSUIIT.EDU.PH ")).toBe(true);
+      expect(isTestStudent("it10")).toBe(true);
+      expect(isTestStudent(TEST_ACCOUNT_EMAIL)).toBe(true);
+    });
+
+    it("rejects non-test student accounts", () => {
+      expect(isTestStudent("regular.student@g.msuiit.edu.ph")).toBe(false);
+      expect(isTestStudent("")).toBe(false);
+      expect(isTestStudent(null)).toBe(false);
+      expect(isTestStudent(undefined)).toBe(false);
+    });
   });
 
   describe("assertTestAccount (security guard for the switch fn)", () => {

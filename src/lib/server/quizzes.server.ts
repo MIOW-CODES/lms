@@ -17,6 +17,7 @@ import {
   isAssessmentEditable,
   AvailabilityError,
 } from "@/lib/server/availability";
+import { isTestStudent } from "@/lib/role-view";
 import { schemas } from "@/lib/server/schemas.server";
 import type { IntegrityEventType } from "@/lib/integrity";
 import type { ProfileRole } from "@/lib/server/db-types";
@@ -112,7 +113,9 @@ export async function getQuizPublic(id: string, studentId?: string) {
     if (!profile) throw new Error("Unauthorized");
     if (profile.role === "student") {
       await requireEnrollment(quiz.course_id, profile);
-      requireOpen(quiz, new Date());
+      if (!isTestStudent(profile.email)) {
+        requireOpen(quiz, new Date());
+      }
     }
   }
   let questions = await unwrap<any[]>(
@@ -520,7 +523,9 @@ export async function submitQuizAttempt(
   // attempt and are never gated. Staff bypass for grading/preview.
   if (caller.role === "student") {
     await requireEnrollment(quiz.course_id, caller);
-    requireOpen(quiz, new Date());
+    if (!isTestStudent(caller.email)) {
+      requireOpen(quiz, new Date());
+    }
   }
 
   const [attempts, extra] = await Promise.all([
@@ -528,7 +533,7 @@ export async function submitQuizAttempt(
     extraAttemptsFor(quiz_id, caller.id),
   ]);
   const ceiling = attemptCeiling(quiz, extra);
-  if (ceiling != null && attempts.length >= ceiling) {
+  if (!isTestStudent(caller.email) && ceiling != null && attempts.length >= ceiling) {
     return {
       ok: false as const,
       reason: (!quiz.allow_retake && extra === 0 ? "retakes_disabled" : "max_attempts") as
@@ -647,7 +652,11 @@ export async function quizAttemptInfo(quiz_id: string, token: string) {
     retake_score_policy: quiz.retake_score_policy,
     attempts_used: attempts.length,
     attempts_allowed: ceiling,
-    can_retake: attempts.length === 0 || ceiling == null || attempts.length < ceiling,
+    can_retake:
+      isTestStudent(caller.email) ||
+      attempts.length === 0 ||
+      ceiling == null ||
+      attempts.length < ceiling,
     effective_score: isScoreReleased ? (eff?.score ?? null) : null,
     effective_total: isScoreReleased ? (eff?.total ?? null) : null,
     extra_attempts: extra,
@@ -698,7 +707,11 @@ export async function listMyQuizSummaries(token: string) {
       quiz_id: quiz.id,
       attempts_used: list.length,
       attempts_allowed: ceiling,
-      can_retake: list.length === 0 || ceiling == null || list.length < ceiling,
+      can_retake:
+        isTestStudent(caller.email) ||
+        list.length === 0 ||
+        ceiling == null ||
+        list.length < ceiling,
       effective_score: isScoreReleased ? (eff?.score ?? null) : null,
       effective_total: isScoreReleased ? (eff?.total ?? null) : null,
       score_released: isScoreReleased,

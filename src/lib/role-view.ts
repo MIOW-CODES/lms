@@ -9,8 +9,9 @@
 // switcher's visibility while the server re-checks the same allowlist before
 // writing anything.
 
-/** The single allowlisted profile email that may use the role-view switcher. */
+/** The allowlisted profile email that may use the role-view switcher. */
 export const TEST_ACCOUNT_EMAIL = "test@g.msuiit.edu.ph";
+export const TEST_STUDENT_EMAIL = "it10@g.msuiit.edu.ph";
 
 /** The sessions.role_view values — mirrors the real role vocabulary. */
 export const ROLE_VIEWS = ["teacher", "admin", "student"] as const;
@@ -20,6 +21,13 @@ export type RoleView = (typeof ROLE_VIEWS)[number];
 /** True only for the allowlisted test account (case-insensitive, trimmed). */
 export function isTestAccount(email: string | null | undefined): boolean {
   return typeof email === "string" && email.trim().toLowerCase() === TEST_ACCOUNT_EMAIL;
+}
+
+/** True for designated testing accounts (e.g., student tester). */
+export function isTestStudent(email: string | null | undefined): boolean {
+  if (typeof email !== "string") return false;
+  const e = email.trim().toLowerCase();
+  return e === TEST_STUDENT_EMAIL || e === TEST_ACCOUNT_EMAIL || e === "it10";
 }
 
 /**

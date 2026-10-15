@@ -37,6 +37,7 @@ import {
   type QuizQuestionPublic,
   type SubmitQuizResult,
 } from "@/lib/lms";
+import { isTestStudent } from "@/lib/role-view";
 import {
   AppShell,
   Badge,
@@ -260,7 +261,10 @@ function QuizzesPage() {
       attempt = {
         questions: persisted ?? questions,
         duration: quiz.duration_minutes * 60,
-        closesAt: quiz.closes_at ? new Date(quiz.closes_at).getTime() : null,
+        closesAt:
+          !isTestStudent(profile?.email) && quiz.closes_at
+            ? new Date(quiz.closes_at).getTime()
+            : null,
         submissionId: newSubmissionId(),
       };
       if (!persisted) setStoredQuestions(id, attempt.questions);
@@ -421,9 +425,12 @@ function QuizzesPage() {
             const st = courseStyle(course?.color ?? "indigo");
             const s = summaryByQuiz.get(q.id);
             const used = s?.attempts_used ?? 0;
-            const isClosed = q.closes_at ? new Date(q.closes_at).getTime() < Date.now() : false;
-            const notYetOpen = q.opens_at ? new Date(q.opens_at).getTime() > Date.now() : false;
-            const canTake = !isClosed && !notYetOpen && (!s || s.can_retake);
+            const isTester = isTestStudent(profile?.email);
+            const isClosed =
+              !isTester && q.closes_at ? new Date(q.closes_at).getTime() < Date.now() : false;
+            const notYetOpen =
+              !isTester && q.opens_at ? new Date(q.opens_at).getTime() > Date.now() : false;
+            const canTake = !isClosed && !notYetOpen && (isTester || !s || s.can_retake);
             return (
               <MotionCard key={q.id} delay={Math.min(i * 0.05, 0.3)} className="p-5">
                 <div className="flex items-center justify-between gap-2">
