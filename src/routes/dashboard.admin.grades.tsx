@@ -189,11 +189,10 @@ export function GradebookPage() {
       </AppShell>
     );
 
-  const roster = (students ?? []).filter((s) =>
-    enrolledIds && enrolledIds.length > 0
-      ? enrolledIds.includes(s.id)
-      : s.grade_level === course?.grade_level,
-  );
+  // Roster is strictly the course's enrolled students — no grade-level
+  // fallback, so a failed/empty enrollment query yields an empty roster
+  // instead of widening it to the whole grade level.
+  const roster = (students ?? []).filter((s) => !!enrolledIds?.includes(s.id));
   const sections = [
     ...new Set(roster.map((s) => s.section).filter((x): x is string => !!x)),
   ].sort();
@@ -476,13 +475,19 @@ export function GradebookPage() {
           >
             <FileSpreadsheet className="h-4 w-4" /> Excel
           </button>
-          <button
-            onClick={saveAll}
-            disabled={saving || !courseId}
-            className="flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-          >
-            <Send className="h-4 w-4" /> {saving ? "Publishing…" : "Save & publish"}
-          </button>
+          {profile.role === "teacher" ? (
+            <button
+              onClick={saveAll}
+              disabled={saving || !courseId}
+              className="flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            >
+              <Send className="h-4 w-4" /> {saving ? "Publishing…" : "Save & publish"}
+            </button>
+          ) : (
+            <p className="self-center text-xs text-muted-foreground">
+              View-only — only the course teacher can publish grades.
+            </p>
+          )}
         </div>
       </div>
 
