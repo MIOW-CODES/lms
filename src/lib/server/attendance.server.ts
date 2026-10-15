@@ -38,6 +38,34 @@ const toMinutes = (t: string) => {
   return h! * 60 + m!;
 };
 
+/** Asia/Manila is UTC+8 year-round (no DST). All schedule evaluation is done on
+ * the UTC instant shifted by this offset so the host process TZ never matters. */
+const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+/** Day-of-week code ("sun".."sat") of an ISO instant as seen in Asia/Manila.
+ * Pure: derived from the UTC instant, independent of the process timezone. */
+export function manilaDayCode(atISO: string): string {
+  const shifted = new Date(new Date(atISO).getTime() + MANILA_OFFSET_MS);
+  return DAY_CODES[shifted.getUTCDay()]!;
+}
+
+/** Minutes since Asia/Manila midnight (0–1439) of an ISO instant.
+ * Pure: derived from the UTC instant, independent of the process timezone. */
+export function manilaMinutesOfDay(atISO: string): number {
+  const shifted = new Date(new Date(atISO).getTime() + MANILA_OFFSET_MS);
+  return shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
+}
+
+/** Start (00:00 Asia/Manila) of the Manila calendar day containing `at`,
+ * as a fresh Date. Pure: never mutates the input. */
+function manilaDayStart(at: Date): Date {
+  const shifted = new Date(at.getTime() + MANILA_OFFSET_MS);
+  return new Date(
+    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) -
+      MANILA_OFFSET_MS,
+  );
+}
+
 export async function recordTap(uid: string, atISO?: string) {
   const raw = await unwrap<any>(
     db.from("profiles").select("*").eq("rfid_uid", uid).is("deleted_at", null).maybeSingle(),
@@ -58,8 +86,9 @@ async function recordTapForProfile(raw: any, atISO?: string) {
   const parsed = atISO ? new Date(atISO) : new Date();
   const at = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 
-  const dayStart = new Date(at);
-  dayStart.setHours(0, 0, 0, 0);
+  // Manila-local midnight of the tap's day — deterministic regardless of the
+  // server process timezone (Manila has no DST, fixed UTC+8).
+  const dayStart = manilaDayStart(at);
   const lastToday = await unwrap<Array<{ scan_type: string }>>(
     db
       .from("attendance_logs")
@@ -76,8 +105,8 @@ async function recordTapForProfile(raw: any, atISO?: string) {
   if (scan_type === "in") {
     const courses = await listCourses({ id: raw.id, role: raw.role });
     const enrolled = raw.role === "student" ? new Set(await enrollmentsForStudent(raw.id)) : null;
-    const today = DAY_CODES[at.getDay()];
-    const atMin = at.getHours() * 60 + at.getMinutes();
+    const today = manilaDayCode(at.toISOString());
+    const atMin = manilaMinutesOfDay(at.toISOString());
     const sessions = courses.filter(
       (c: any) =>
         Array.isArray(c.days_of_week) &&

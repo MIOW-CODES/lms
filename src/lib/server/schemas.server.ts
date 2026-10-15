@@ -446,7 +446,11 @@ export const schemas = {
   }),
   quizGrade: z.object({
     quiz_id: uuid,
-    answers: z.record(z.string().uuid(), z.string().max(500)),
+    // Generous cap: Part IV lab_task items require full Arduino sketches /
+    // multi-line connection write-ups, which easily exceed 500 chars. A hard
+    // 500-char limit made those answers un-submittable (ZodError, no attempt
+    // recorded). 5000 chars comfortably fits realistic sketches.
+    answers: z.record(z.string().uuid(), z.string().max(5000)),
     question_ids: z.array(uuid).optional(),
     tab_switches: z
       .array(
