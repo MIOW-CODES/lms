@@ -5,6 +5,7 @@
 import { db } from "@/integrations/db/client.server";
 import { unwrap, asJsonParam } from "@/lib/server/utils.server";
 import { requireStaff } from "@/lib/server/auth.server";
+import { isAssessmentEditable } from "@/lib/server/availability";
 import { writeAuditLog } from "@/lib/server/audit.server";
 import { labTaskWiringProblem } from "@/lib/server/schemas.server";
 
@@ -83,6 +84,23 @@ export async function updateQuestion(
   patch: QuestionPatch,
 ): Promise<QuestionBankRow> {
   const caller = await requireStaff(token);
+
+  // Live scoring-key lock: look up the question's quiz_id and the parent
+  // worksheet's window; refuse edits while the scheduled window is open so the
+  // answer key cannot change under in-progress attempts. Legacy always-open
+  // worksheets (opens_at NULL) are never locked.
+  const parent = await unwrap<any>(
+    db.from("quiz_questions").select("quiz_id").eq("id", id).maybeSingle(),
+  );
+  if (!parent) throw new Error("Not found");
+  const quiz = await unwrap<any>(
+    db.from("quizzes").select("opens_at, closes_at").eq("id", parent.quiz_id).maybeSingle(),
+  );
+  if (quiz && !isAssessmentEditable(quiz, new Date())) {
+    throw new Error(
+      "This worksheet's scheduled window is open — question edits are locked until it closes.",
+    );
+  }
 
   const row: Record<string, any> = {};
   if (patch.question !== undefined) row["question"] = patch.question;

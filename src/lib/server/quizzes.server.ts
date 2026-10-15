@@ -14,6 +14,7 @@ import {
   hasOpened,
   requireOpen,
   canViewAssessment,
+  isAssessmentEditable,
   AvailabilityError,
 } from "@/lib/server/availability";
 import { schemas } from "@/lib/server/schemas.server";
@@ -1093,6 +1094,18 @@ export async function updateQuiz(
   questions?: Array<{ question: string; options: string[]; correct_answer: string }>,
 ) {
   await requireQuizOwnerOrAdmin(tokenStr, id);
+  // Replacing questions wipes every attempt and rewrites the live answer key,
+  // so it is locked while a scheduled window is open. Config-only patches
+  // (release flags, retake policy, …) stay allowed, and legacy always-open
+  // worksheets (opens_at NULL) are never locked.
+  if (questions && questions.length) {
+    const config = await getQuizConfig(id);
+    if (!isAssessmentEditable(config, new Date())) {
+      throw new Error(
+        "This worksheet's scheduled window is open — question edits are locked until it closes.",
+      );
+    }
+  }
   const safePatch = Object.fromEntries(
     Object.entries(patch).filter(([key]) => ALLOWED_QUIZ_COLUMNS.has(key)),
   );
@@ -1119,13 +1132,21 @@ export async function updateQuiz(
 
 export async function deleteQuiz(tokenStr: string, id: string, mode: "soft" | "hard") {
   await requireQuizOwnerOrAdmin(tokenStr, id);
+  const row = await unwrap<any>(
+    db.from("quizzes").select("attachments, opens_at, closes_at").eq("id", id).maybeSingle(),
+  );
+  // Deleting mid-exam wipes attempts and pulls the worksheet out from under
+  // in-progress takers — locked while a scheduled window is open (legacy
+  // always-open worksheets are never locked).
+  if (row && !isAssessmentEditable(row, new Date())) {
+    throw new Error(
+      "This worksheet's scheduled window is open — deletion is locked until it closes.",
+    );
+  }
   if (mode === "soft") {
     await unwrap(db.from("quizzes").update({ deleted_at: new Date().toISOString() }).eq("id", id));
     return { mode };
   }
-  const row = await unwrap<any>(
-    db.from("quizzes").select("attachments").eq("id", id).maybeSingle(),
-  );
   await unwrap(db.from("quiz_attempts").delete().eq("quiz_id", id));
   await unwrap(db.from("quiz_retake_grants").delete().eq("quiz_id", id));
   await unwrap(db.from("quiz_questions").delete().eq("quiz_id", id));
