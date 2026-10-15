@@ -1,4 +1,5 @@
 import { test as base, expect, type Page, type BrowserContext } from "@playwright/test";
+import { Pool } from "pg";
 
 /**
  * Arduino manual-wiring E2E (mobile 390×844).
@@ -167,6 +168,27 @@ function collectConsoleErrors(page: Page): string[] {
 }
 
 describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
+  // IT10 assessments are date-gated for production (Open Fri 2026-10-16
+  // 08:00–10:00 Asia/Manila). The e2e DB is built from the same migrations, so
+  // the worksheet under test would be unreachable ("not yet open"). Open the
+  // IT10 window for the duration of the test run only — this is a test fixture,
+  // not a change to the production window.
+  test.beforeAll(async () => {
+    const url = process.env["DATABASE_URL"];
+    if (!url) return;
+    const pool = new Pool({ connectionString: url });
+    try {
+      await pool.query(
+        `UPDATE public.quizzes
+            SET opens_at = NULL, closes_at = now() + interval '30 days'
+          WHERE deleted_at IS NULL
+            AND course_id = (SELECT id FROM public.courses WHERE code = 'IT10')`,
+      );
+    } finally {
+      await pool.end();
+    }
+  });
+
   test("worksheet lab_task: manual wiring lights the wired LED, summary inserts", async ({
     page,
   }, testInfo) => {
@@ -194,6 +216,14 @@ describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
           timeout: 20000,
         });
       }
+      // The quiz runner now persists the drawn question set per quiz so a reload
+      // resumes the SAME questions. Clear it between attempts so each attempt
+      // draws a fresh random subset (the point of this retry loop).
+      await page.evaluate(() => {
+        for (const k of Object.keys(localStorage)) {
+          if (k.startsWith("miow_quiz_")) localStorage.removeItem(k);
+        }
+      });
       await startBtn.click();
       await dismissExamLock(page);
 
