@@ -307,7 +307,8 @@ export function InteractiveBreadboardCanvas({
   const [wires, setWires] = useState<CanvasWire[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
-  const [unoPos, setUnoPos] = useState({ x: 24, y: 40 });
+  // Arduino Uno board starts lower with generous headroom for terminal pins & wires
+  const [unoPos, setUnoPos] = useState({ x: 40, y: 80 });
 
   /* ---------- Manual pin-to-pin wiring (Tinkercad-style) ---------- */
   const [drawMode, setDrawMode] = useState(false);
@@ -571,8 +572,8 @@ export function InteractiveBreadboardCanvas({
     if (dragRef.current && containerRef.current) {
       const { id, startX, startY, elemX, elemY } = dragRef.current;
       const rect = containerRef.current.getBoundingClientRect();
-      const newX = Math.max(4, Math.min(rect.width - 80, elemX + (e.clientX - startX)));
-      const newY = Math.max(4, Math.min(rect.height - 60, elemY + (e.clientY - startY)));
+      const newX = Math.max(16, Math.min(rect.width - 290, elemX + (e.clientX - startX)));
+      const newY = Math.max(50, Math.min(rect.height - 220, elemY + (e.clientY - startY)));
       if (id === "arduino-uno") {
         setUnoPos({ x: newX, y: newY });
       } else {
