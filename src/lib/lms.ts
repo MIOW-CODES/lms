@@ -120,9 +120,12 @@ export interface Profile {
   section: string | null;
   created_at: string;
   /** Faculty identity fields (teachers/admins). */
-  employee_id?: string | null;
-  prefix?: string | null;
-  department?: string | null;
+  employee_id?: string | null | undefined;
+  prefix?: string | null | undefined;
+  department?: string | null | undefined;
+  phone?: string | null | undefined;
+  bio?: string | null | undefined;
+  office_hours?: string | null | undefined;
   /** Server-set indicators; credential values themselves are never sent to the browser. */
   has_pin?: boolean;
   has_rfid?: boolean;
@@ -885,6 +888,11 @@ export async function updateTeacherSettings(patch: {
   full_name?: string;
   email?: string | null;
   avatar_url?: string | null;
+  prefix?: string | null;
+  department?: string | null;
+  phone?: string | null;
+  bio?: string | null;
+  office_hours?: string | null;
   pin?: string | null;
   rfid_uid?: string | null;
 }): Promise<Profile> {
@@ -895,6 +903,11 @@ export async function updateTeacherSettings(patch: {
     full_name: updated.full_name,
     email: updated.email,
     avatar_url: updated.avatar_url,
+    prefix: updated.prefix,
+    department: updated.department,
+    phone: updated.phone,
+    bio: updated.bio,
+    office_hours: updated.office_hours,
     has_pin: updated.has_pin ?? false,
     has_rfid: updated.has_rfid ?? false,
   });

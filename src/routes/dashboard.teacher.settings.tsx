@@ -112,16 +112,26 @@ function TeacherSettingsPage() {
   useEffect(() => {
     if (profile && !loaded) {
       const s = getTeacherSettings(profile.id);
-      setSettings(s);
+      const prefix = profile.prefix ?? s.prefix;
+      const department = profile.department ?? s.department;
+      const bio = profile.bio ?? s.bio;
+      const officeHours = profile.office_hours ?? s.officeHours;
+      setSettings({
+        ...s,
+        prefix,
+        department,
+        bio,
+        officeHours,
+      });
       setName(profile.full_name);
       setEmail(profile.email ?? "");
       setSavedProfile({
         name: profile.full_name,
         email: profile.email ?? "",
-        prefix: s.prefix,
-        department: s.department,
-        bio: s.bio,
-        officeHours: s.officeHours,
+        prefix,
+        department,
+        bio,
+        officeHours,
       });
       setLoaded(true);
     }
@@ -200,7 +210,14 @@ function TeacherSettingsPage() {
       // session token, saves the record, then we refresh the global session
       // store so the sidebar pill + header pill re-render instantly.
       const full_name = displayName();
-      await updateTeacherSettings({ full_name, email: email.trim() || null });
+      await updateTeacherSettings({
+        full_name,
+        email: email.trim() || null,
+        prefix: settings.prefix || null,
+        department: settings.department || null,
+        bio: settings.bio || null,
+        office_hours: settings.officeHours || null,
+      });
       setName(full_name);
       persist({ ...settings });
       queryClient.invalidateQueries({ queryKey: ["staff"] });
@@ -320,8 +337,8 @@ function TeacherSettingsPage() {
             <Card className="p-6">
               <h2 className="font-display text-lg font-bold">Profile & Identity</h2>
               <p className="mb-5 text-xs text-muted-foreground">
-                Your name, prefix, and email are saved to the faculty records system and sync
-                everywhere instantly.
+                Your name, prefix, department, bio, office hours, and email are saved to the faculty
+                records system and sync across devices.
               </p>
 
               <div className="mb-6 flex items-center gap-4">
@@ -577,10 +594,13 @@ function TeacherSettingsPage() {
           {tab === "teaching" && (
             <>
               <Card className="p-6">
-                <h2 className="font-display text-lg font-bold">Attendance defaults</h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="font-display text-lg font-bold">Attendance defaults</h2>
+                  <Badge tone="slate">Device preference</Badge>
+                </div>
                 <p className="mb-4 text-xs text-muted-foreground">
-                  Grace period applied to new class schedules — taps after this many minutes past
-                  the start time are automatically marked late.
+                  Saved on this device. Grace period applied to new class schedules — taps after
+                  this many minutes past the start time are automatically marked late.
                 </p>
                 <div className="flex items-center gap-4">
                   <input
@@ -604,9 +624,12 @@ function TeacherSettingsPage() {
               </Card>
 
               <Card className="p-6">
-                <h2 className="font-display text-lg font-bold">Worksheet retake defaults</h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="font-display text-lg font-bold">Worksheet retake defaults</h2>
+                  <Badge tone="slate">Device preference</Badge>
+                </div>
                 <p className="mb-4 text-xs text-muted-foreground">
-                  Pre-filled when you create a new worksheet or assignment.
+                  Saved on this device. Pre-filled when you create a new worksheet or assignment.
                 </p>
                 <Toggle
                   label="Allow retakes by default"
@@ -658,11 +681,14 @@ function TeacherSettingsPage() {
               </Card>
 
               <Card className="p-6">
-                <h2 className="flex items-center gap-1.5 font-display text-lg font-bold">
-                  <Bell className="h-4 w-4" /> Notifications
-                </h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="flex items-center gap-1.5 font-display text-lg font-bold">
+                    <Bell className="h-4 w-4" /> Notifications
+                  </h2>
+                  <Badge tone="slate">Device preference</Badge>
+                </div>
                 <p className="mb-4 text-xs text-muted-foreground">
-                  Alerts for classroom activity in your assigned courses.
+                  Saved on this device. Alerts for classroom activity in your assigned courses.
                 </p>
                 <div className="space-y-2">
                   <Toggle

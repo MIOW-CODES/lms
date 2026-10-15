@@ -26,6 +26,8 @@ export interface ProfileRow {
   prefix: string | null;
   department: string | null;
   phone: string | null;
+  bio: string | null;
+  office_hours: string | null;
 }
 
 export interface CourseRow {

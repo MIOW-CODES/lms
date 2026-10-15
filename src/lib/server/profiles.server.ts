@@ -49,6 +49,8 @@ export function safeProfile(p: ProfileRow & { pin_must_change?: boolean | null }
     prefix: p.prefix,
     department: p.department,
     phone: p.phone ?? null,
+    bio: p.bio ?? null,
+    office_hours: p.office_hours ?? null,
     // Credentials never leave the server.
     pin: null,
     rfid_uid: null,
