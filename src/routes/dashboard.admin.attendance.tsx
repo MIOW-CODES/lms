@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { createFileRoute, useRouter, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
@@ -187,6 +187,8 @@ export function AttendanceKiosk() {
 
   const [uid, setUid] = useState("");
   const [busy, setBusy] = useState(false);
+  // Synchronous reentrancy guard for handleTapPayload (see below).
+  const tapGuard = useRef(false);
   const [muted, setMuted] = useState(false);
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [reportFilter, setReportFilter] = useState<FeedFilter>("all");
@@ -207,7 +209,13 @@ export function AttendanceKiosk() {
   /** Process one reader payload ({ uid, timestamp }) — shared by the hardware
    * scanner, the manual form, and the simulated mock reader. */
   const handleTapPayload = async (payload: TapPayload, mock = false) => {
-    if (busy) return;
+    // Synchronous reentrancy guard: `busy` is async state, so two invocations in
+    // the same tick (a double Enter firing both the scanner and the form submit)
+    // both see a stale `busy === false` and record a spurious in+out pair. The
+    // ref flips immediately and is reset in `finally`, so exactly one tap is
+    // processed per Enter.
+    if (tapGuard.current) return;
+    tapGuard.current = true;
     setBusy(true);
     if (mock) {
       // UI status feedback that the mock dispatcher's payload was received.
@@ -234,6 +242,7 @@ export function AttendanceKiosk() {
       playTone(false, muted);
       toast.error("Scan failed — try again.");
     } finally {
+      tapGuard.current = false;
       setBusy(false);
       setUid("");
     }

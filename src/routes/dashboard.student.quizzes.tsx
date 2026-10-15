@@ -156,6 +156,7 @@ function QuizzesPage() {
     try {
       localStorage.removeItem(`miow_quiz_timer_${id}`);
       localStorage.removeItem(`miow_quiz_answers_${id}`);
+      localStorage.removeItem(`miow_quiz_questions_${id}`);
     } catch {
       /* ignore storage access error */
     }
@@ -175,6 +176,29 @@ function QuizzesPage() {
       /* ignore storage quota or access error */
     }
   };
+  // Persist the drawn question set per quiz so a mid-exam reload resumes the
+  // SAME questions (the server draws a fresh random subset per getQuiz call,
+  // which would orphan answers to the previously drawn items).
+  const getStoredQuestions = (id: string): QuizQuestionPublic[] | null => {
+    try {
+      const v = localStorage.getItem(`miow_quiz_questions_${id}`);
+      const parsed: unknown = v ? JSON.parse(v) : null;
+      return Array.isArray(parsed) &&
+        parsed.length > 0 &&
+        parsed.every((q) => typeof q?.id === "string")
+        ? (parsed as QuizQuestionPublic[])
+        : null;
+    } catch {
+      return null;
+    }
+  };
+  const setStoredQuestions = (id: string, qs: QuizQuestionPublic[]) => {
+    try {
+      localStorage.setItem(`miow_quiz_questions_${id}`, JSON.stringify(qs));
+    } catch {
+      /* ignore storage quota or access error */
+    }
+  };
 
   const savedTimerRef = useRef<Map<string, number>>(new Map());
   const savedAnswersRef = useRef<Map<string, Record<string, string>>>(new Map());
@@ -182,7 +206,17 @@ function QuizzesPage() {
   // worksheet keeps the SAME questions (answers stay mapped). Cleared on submit,
   // so the next attempt (retake) fetches a fresh, non-overlapping bank subset.
   const savedAttemptRef = useRef<
-    Map<string, { questions: QuizQuestionPublic[]; duration: number; submissionId: string }>
+    Map<
+      string,
+      {
+        questions: QuizQuestionPublic[];
+        duration: number;
+        // Hard availability deadline (epoch ms) — the server rejects any submit
+        // after closes_at, so the countdown must be clamped to this window.
+        closesAt: number | null;
+        submissionId: string;
+      }
+    >
   >(new Map());
 
   const activeQuiz = useMemo(
@@ -219,11 +253,17 @@ function QuizzesPage() {
     let attempt = savedAttemptRef.current.get(id);
     if (!attempt) {
       const { quiz, questions } = await getQuiz(id);
+      // A reload mid-exam must resume the SAME drawn subset — prefer the
+      // persisted set over the server's fresh draw. Cleared on submit/retake,
+      // so a NEW attempt still fetches a fresh set.
+      const persisted = getStoredQuestions(id);
       attempt = {
-        questions,
+        questions: persisted ?? questions,
         duration: quiz.duration_minutes * 60,
+        closesAt: quiz.closes_at ? new Date(quiz.closes_at).getTime() : null,
         submissionId: newSubmissionId(),
       };
+      if (!persisted) setStoredQuestions(id, attempt.questions);
       savedAttemptRef.current.set(id, attempt);
     }
     setQuestions(attempt.questions);
@@ -235,14 +275,23 @@ function QuizzesPage() {
       Object.keys(localAnswers).length > 0 ? localAnswers : (inMemAnswers ?? {});
     setAnswers(restoredAnswers);
     setIdx(0);
-    // Restore saved timer or start fresh
+    // The server hard-blocks any submit after closes_at, so the countdown must
+    // never run past the window: clamp the starting seconds to the time
+    // remaining until closes_at (effective = min(duration, window remaining)).
+    const windowSec =
+      attempt.closesAt != null
+        ? Math.max(0, Math.floor((attempt.closesAt - Date.now()) / 1000))
+        : Number.POSITIVE_INFINITY;
+    const startSec = Math.min(attempt.duration, windowSec);
+    // Restore saved timer or start fresh. Restored time is clamped to the
+    // window too, so a resumed attempt can't exceed closes_at either.
     const localTimer = getStoredTimer(id);
     const saved = savedTimerRef.current.get(id);
     const activeSec = localTimer ?? saved;
     if (activeSec != null && activeSec > 0) {
-      setSecondsLeft(activeSec);
+      setSecondsLeft(Math.min(activeSec, windowSec));
     } else {
-      setSecondsLeft(attempt.duration);
+      setSecondsLeft(startSec);
     }
     // Arm the guard only once this worksheet's own questions/answers/timer are
     // all applied, so the persistence effects never write them under another id.

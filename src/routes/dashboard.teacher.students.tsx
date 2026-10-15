@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
-import { GRADE_LEVELS } from "@/components/courses/constants";
+import { ATTENDANCE_LIMIT_REPORTS, GRADE_LEVELS } from "@/components/courses/constants";
 import {
   Select,
   SelectContent,
@@ -63,10 +63,13 @@ function TeacherStudentsPage() {
     enabled: !!profile,
   });
 
-  // Batch-fetch all attendance (single query instead of N)
+  // Batch-fetch recent attendance (single query instead of N). The server
+  // schema caps `limit` at 500, so 10000 always threw and silently blanked the
+  // stats. Distinct queryKey from the admin page's ["attendance-all"] feed to
+  // stop the cache collision (shared entry + shared error state).
   const { data: allAttendance } = useQuery({
-    queryKey: ["attendance-all"],
-    queryFn: () => listAllAttendance(10000),
+    queryKey: ["attendance-all", "teacher-students"],
+    queryFn: () => listAllAttendance(ATTENDANCE_LIMIT_REPORTS),
     enabled: !!profile,
   });
 
