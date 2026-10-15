@@ -670,13 +670,12 @@ export async function listMyQuizSummaries(token: string) {
     ),
     unwrap<any[]>(db.from("quizzes").select(QUIZ_CONFIG_COLS).is("deleted_at", null)),
   ]);
-  // Students only see summaries for enrolled courses' opened worksheets (same
+  // Students see summaries for enrolled courses' worksheets (same
   // scoping rule as listQuizzes); staff see everything.
   let visibleQuizzes = (quizzes ?? []) as Array<QuizConfig & { course_id: string }>;
   if (caller.role === "student") {
     const enrolled = new Set(await enrolledCourseIds(caller.id));
-    const now = new Date();
-    visibleQuizzes = visibleQuizzes.filter((q) => enrolled.has(q.course_id) && hasOpened(q, now));
+    visibleQuizzes = visibleQuizzes.filter((q) => enrolled.has(q.course_id));
   }
   const configById = new Map<string, QuizConfig>(
     visibleQuizzes.map((q: any) => [q.id as string, q as QuizConfig]),

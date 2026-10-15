@@ -422,7 +422,8 @@ function QuizzesPage() {
             const s = summaryByQuiz.get(q.id);
             const used = s?.attempts_used ?? 0;
             const isClosed = q.closes_at ? new Date(q.closes_at).getTime() < Date.now() : false;
-            const canTake = !isClosed && (!s || s.can_retake);
+            const notYetOpen = q.opens_at ? new Date(q.opens_at).getTime() > Date.now() : false;
+            const canTake = !isClosed && !notYetOpen && (!s || s.can_retake);
             return (
               <MotionCard key={q.id} delay={Math.min(i * 0.05, 0.3)} className="p-5">
                 <div className="flex items-center justify-between gap-2">
@@ -430,7 +431,9 @@ function QuizzesPage() {
                     {course?.code}
                   </span>
                   <div className="flex items-center gap-1.5">
-                    {isClosed ? (
+                    {notYetOpen && q.opens_at ? (
+                      <Badge tone="amber">Opens {fmtDateTime(q.opens_at)}</Badge>
+                    ) : isClosed ? (
                       <Badge tone="red">Closed</Badge>
                     ) : q.closes_at ? (
                       <Badge tone="sky">Closes {fmtDateTime(q.closes_at)}</Badge>
@@ -469,18 +472,33 @@ function QuizzesPage() {
                 )}
                 <button
                   onClick={() => {
-                    // Fullscreen needs a user gesture — request it here so the
-                    // exam opens in kiosk mode before the first render.
-                    examLock.lock();
-                    setActiveId(q.id);
+                    toast(
+                      `Are you sure you want to start "${q.title}"? Your timer will begin immediately.`,
+                      {
+                        action: {
+                          label: "Start",
+                          onClick: () => {
+                            examLock.lock();
+                            setActiveId(q.id);
+                          },
+                        },
+                        cancel: {
+                          label: "Cancel",
+                          onClick: () => {},
+                        },
+                        duration: 8000,
+                      },
+                    );
                   }}
                   disabled={!canTake}
                   title={
-                    isClosed
-                      ? "The deadline for this worksheet has passed."
-                      : !canTake
-                        ? "Maximum attempts reached. Contact your teacher to request a retake."
-                        : undefined
+                    notYetOpen && q.opens_at
+                      ? `This worksheet opens on ${fmtDateTime(q.opens_at)}.`
+                      : isClosed
+                        ? "The deadline for this worksheet has passed."
+                        : !canTake
+                          ? "Maximum attempts reached. Contact your teacher to request a retake."
+                          : undefined
                   }
                   className={cn(
                     "mt-4 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl text-sm font-semibold",
@@ -490,13 +508,15 @@ function QuizzesPage() {
                   )}
                 >
                   {used > 0 && canTake && <RotateCcw className="h-3.5 w-3.5" />}
-                  {isClosed
-                    ? "Submission closed"
-                    : used === 0
-                      ? "Start worksheet"
-                      : canTake
-                        ? `Retake — ${attemptLabel(used, s?.attempts_allowed ?? null, true)}`
-                        : "Max attempts reached"}
+                  {notYetOpen
+                    ? "Opens soon"
+                    : isClosed
+                      ? "Submission closed"
+                      : used === 0
+                        ? "Start worksheet"
+                        : canTake
+                          ? `Retake — ${attemptLabel(used, s?.attempts_allowed ?? null, true)}`
+                          : "Max attempts reached"}
                 </button>
               </MotionCard>
             );
@@ -900,7 +920,26 @@ function QuizzesPage() {
                 </button>
               ) : (
                 <button
-                  onClick={finish}
+                  onClick={() => {
+                    const unans = questions.length - answeredCount;
+                    const warn =
+                      unans > 0
+                        ? `You have ${unans} unanswered question${unans === 1 ? "" : "s"}. Are you sure you want to submit?`
+                        : "Are you sure you want to submit your answers? This attempt will be finalized.";
+                    toast(warn, {
+                      action: {
+                        label: "Submit",
+                        onClick: () => {
+                          void finish();
+                        },
+                      },
+                      cancel: {
+                        label: "Review",
+                        onClick: () => {},
+                      },
+                      duration: 9000,
+                    });
+                  }}
                   disabled={submitting}
                   className="h-11 flex-1 rounded-xl bg-emerald-600 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                 >

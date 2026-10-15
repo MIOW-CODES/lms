@@ -217,8 +217,8 @@ describe("canViewAssessment (list scoping)", () => {
     expect(canViewAssessment(unopened, "admin", NOW)).toBe(true);
   });
 
-  it("students never see not-yet-open items in lists", () => {
-    expect(canViewAssessment({ opens_at: at(+MIN) }, "student", NOW)).toBe(false);
+  it("students see scheduled items in lists even before they open", () => {
+    expect(canViewAssessment({ opens_at: at(+MIN) }, "student", NOW)).toBe(true);
   });
 
   it("students see open items and RETAIN visibility after close (review)", () => {
