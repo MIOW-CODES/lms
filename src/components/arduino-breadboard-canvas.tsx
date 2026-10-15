@@ -533,7 +533,7 @@ export function InteractiveBreadboardCanvas({
   /* ---------- Terminal interactions ---------- */
   const handleTerminalDown = (e: React.PointerEvent, key: string) => {
     e.stopPropagation();
-    if (!drawMode) return;
+    // Allow wiring in both drawMode AND select mode (seamless wiring experience)
     if (!pendingKey) {
       setPendingKey(key);
       setCursorPos(localPoint(e));
@@ -549,8 +549,12 @@ export function InteractiveBreadboardCanvas({
 
   const handleTerminalClick = (e: React.MouseEvent, key: string) => {
     e.stopPropagation();
-    if (!drawMode) {
-      // Select mode: clicking a terminal selects its part
+    if (pendingKey && pendingKey !== key) {
+      createWire(pendingKey, key);
+      return;
+    }
+    if (!drawMode && !pendingKey) {
+      // Select mode without pending wire: clicking a terminal selects its part
       const ep = keyToEndpoint(key);
       if (ep?.kind === "part") {
         setSelectedId(ep.partId);
@@ -696,7 +700,7 @@ export function InteractiveBreadboardCanvas({
     const isHover = hoverKey === key;
     const isPending = pendingKey === key;
     const isSnap = Boolean(pendingKey) && hoverKey === key && pendingKey !== key;
-    const r = isPending || isSnap ? 7.5 : isHover ? 6.5 : 5;
+    const r = isPending || isSnap ? 8.5 : isHover ? 7.5 : 6;
     return (
       <g key={key}>
         {stub && (
@@ -714,9 +718,9 @@ export function InteractiveBreadboardCanvas({
         <circle
           cx={coord.x}
           cy={coord.y}
-          r={r + 6}
+          r={r + 8}
           fill={
-            isSnap ? "rgba(52,211,153,0.35)" : isPending ? "rgba(52,211,153,0.28)" : "transparent"
+            isSnap ? "rgba(52,211,153,0.4)" : isPending ? "rgba(52,211,153,0.3)" : "transparent"
           }
           style={{ pointerEvents: "none" }}
         />
@@ -726,15 +730,16 @@ export function InteractiveBreadboardCanvas({
           r={r}
           fill={isPending || isSnap ? "#34d399" : accent}
           stroke={isPending || isSnap ? "#a7f3d0" : "#475569"}
-          strokeWidth="1.5"
+          strokeWidth="2"
           style={{ pointerEvents: "none" }}
         />
         <text
-          x={coord.x + 9}
-          y={coord.y + 3}
-          fontSize="8.5"
+          x={coord.x + 10}
+          y={coord.y + 3.5}
+          fontSize="9.5"
+          fontWeight="bold"
           fontFamily="ui-monospace, monospace"
-          fill={isPending || isSnap ? "#6ee7b7" : "#94a3b8"}
+          fill={isPending || isSnap ? "#6ee7b7" : "#cbd5e1"}
           style={{ pointerEvents: "none", userSelect: "none" }}
         >
           {label}
@@ -742,7 +747,7 @@ export function InteractiveBreadboardCanvas({
         <circle
           cx={coord.x}
           cy={coord.y}
-          r={13}
+          r={16}
           fill="transparent"
           data-term-key={key}
           data-testid={testid}
@@ -752,7 +757,7 @@ export function InteractiveBreadboardCanvas({
           onPointerLeave={() => setHoverKey((h) => (h === key ? null : h))}
           style={{
             pointerEvents: "auto",
-            cursor: drawMode ? "crosshair" : "pointer",
+            cursor: "pointer",
             touchAction: "none",
           }}
         />
@@ -871,7 +876,7 @@ export function InteractiveBreadboardCanvas({
           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground mr-1">
             Real Hardware Parts:
           </span>
-          {/* Tool toggle: Select vs Draw wire */}
+          {/* Tool toggle: Select vs Draw wire (both support click-to-wire) */}
           <div className="flex items-center rounded-lg border border-border/70 bg-background p-0.5 mr-1">
             <button
               onClick={() => {
@@ -880,7 +885,7 @@ export function InteractiveBreadboardCanvas({
                 setCursorPos(null);
               }}
               aria-pressed={!drawMode}
-              title="Select, move and press components"
+              title="Select, move and press components (you can still click terminals to wire!)"
               data-testid="tool-select"
               className={cn(
                 "inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition",
@@ -911,6 +916,44 @@ export function InteractiveBreadboardCanvas({
               <Spline className="h-3.5 w-3.5" /> Draw wire
             </button>
           </div>
+
+          {ghostGuides.length > 0 && (
+            <button
+              type="button"
+              data-testid="auto-wire-task"
+              onClick={() => {
+                // Instantly connects all dashed ghost wires for the active task
+                ghostGuides.forEach((g) => {
+                  const from = endpointCoord(g.from);
+                  const to = endpointCoord(g.to);
+                  if (!from || !to) return;
+                  const fKey = endpointKey(g.from);
+                  const tKey = endpointKey(g.to);
+                  createWire(fKey, tKey);
+                });
+              }}
+              className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition shadow-sm mr-1"
+              title="Automatically connect all guide wires for this task"
+            >
+              <Zap className="h-3.5 w-3.5 text-amber-400" /> Auto-Wire Task
+            </button>
+          )}
+
+          {wires.length > 0 && (
+            <button
+              type="button"
+              data-testid="clear-all-wires"
+              onClick={() => {
+                setWires([]);
+                setSelectedWireId(null);
+                setPendingKey(null);
+              }}
+              className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-semibold text-rose-400 hover:bg-rose-500/20 transition shadow-sm mr-1"
+              title="Clear all jumper wires"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Clear Wires
+            </button>
+          )}
           {(
             [
               ["wokwi-led", "LED", "bg-red-500"],
@@ -967,16 +1010,41 @@ export function InteractiveBreadboardCanvas({
             );
           })()}
 
-        {drawMode && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              data-testid="wire-hint"
-              className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-300"
-            >
-              {pendingKey
-                ? "Click the destination terminal to finish — Esc cancels"
-                : "Click a terminal to start the wire"}
-            </span>
+        {/* Wire Routing & Status bar */}
+        <div className="flex flex-wrap items-center gap-2">
+          {pendingKey ? (
+            <div className="flex items-center gap-2 rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-200 animate-pulse">
+              <span>
+                Connecting from terminal:{" "}
+                <strong className="text-white underline">
+                  {pendingKey.replace("term-", "").replace("part-", "")}
+                </strong>{" "}
+                → click any destination pin
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingKey(null);
+                  setCursorPos(null);
+                  wireDraggingRef.current = false;
+                }}
+                className="ml-1 rounded bg-black/40 px-1.5 py-0.5 text-[10px] text-zinc-300 hover:text-white"
+              >
+                Cancel (Esc)
+              </button>
+            </div>
+          ) : (
+            drawMode && (
+              <span
+                data-testid="wire-hint"
+                className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-300"
+              >
+                Click any terminal to start a jumper wire
+              </span>
+            )
+          )}
+
+          {drawMode && (
             <div className="flex items-center gap-1">
               {WIRE_COLORS.map((w) => (
                 <button
@@ -994,10 +1062,10 @@ export function InteractiveBreadboardCanvas({
                 />
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {selectedWireId && !drawMode && (
+        {selectedWireId && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">
               Selected: <strong className="text-foreground">Jumper wire</strong>
@@ -1314,9 +1382,8 @@ export function InteractiveBreadboardCanvas({
               }),
             )}
 
-            {/* Live rubber-band preview while routing a wire */}
-            {drawMode &&
-              pendingKey &&
+            {/* Live rubber-band preview while routing a wire (in both drawMode and quick-wire) */}
+            {pendingKey &&
               cursorPos &&
               (() => {
                 const fromEp = keyToEndpoint(pendingKey);
@@ -1330,12 +1397,12 @@ export function InteractiveBreadboardCanvas({
                       d={wirePath(from, to)}
                       fill="none"
                       stroke={snapEp ? "#34d399" : drawColor}
-                      strokeWidth="3"
+                      strokeWidth="3.5"
                       strokeDasharray={snapEp ? "none" : "6 4"}
-                      strokeOpacity="0.9"
+                      strokeOpacity="0.95"
                       strokeLinecap="round"
                     />
-                    <circle cx={from.x} cy={from.y} r={4} fill={drawColor} />
+                    <circle cx={from.x} cy={from.y} r={5} fill={drawColor} />
                   </g>
                 );
               })()}
@@ -1346,11 +1413,10 @@ export function InteractiveBreadboardCanvas({
       <div className="flex items-start gap-2 text-xs text-muted-foreground">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
         <span>
-          Draw wire mode: click a terminal (LED anode/cathode, resistor legs, Uno pins D0–D13 /
-          A0–A5 / 5V / GND), then click the destination terminal to snap a jumper wire between them
-          — or drag from terminal to terminal. Esc cancels, click a wire then Delete (or the ✕) to
-          remove it. Select mode: drag components to move them. Nothing is pre-wired — every jumper
-          is placed by you, just like in Tinkercad.
+          <strong>Simple wiring:</strong> Click any pin or terminal to start a jumper wire, then
+          click another pin to connect. You can also use <strong>Auto-Wire Task</strong> to connect
+          guide wires instantly, or click a wire and press Delete (or the ✕) to remove it. Drag
+          components anywhere on the board.
         </span>
       </div>
     </div>
