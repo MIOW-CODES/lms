@@ -295,8 +295,8 @@ export function InteractiveBreadboardCanvas({
   const [wires, setWires] = useState<CanvasWire[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
-  // Arduino Uno board starts lower with generous headroom for terminal pins & wires
-  const [unoPos, setUnoPos] = useState({ x: 40, y: 80 });
+  // Top-left origin inside workbench container with safe padding
+  const [unoPos, setUnoPos] = useState({ x: 36, y: 36 });
 
   /* ---------- Manual pin-to-pin wiring (Tinkercad-style) ---------- */
   const [drawMode, setDrawMode] = useState(false);

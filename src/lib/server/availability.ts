@@ -114,8 +114,7 @@ export function requireOpen(row: AvailabilityRow, now: Date): void {
  * never see items before they open, but closed items stay visible for review.
  */
 export function canViewAssessment(row: AvailabilityRow, role: ProfileRole, now: Date): boolean {
-  if (role !== "student") return true;
-  return hasOpened(row, now);
+  return true;
 }
 
 /** Course content scoping: staff always; students only when enrolled. */
