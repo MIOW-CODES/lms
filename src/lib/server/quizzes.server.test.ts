@@ -70,6 +70,67 @@ describe("randomizeQuestions", () => {
     expect(out.find((q) => q.id === "essay")!.options).toEqual([]);
     expect(out.find((q) => q.id === "tf")!.options).toEqual(["True"]);
   });
+
+  it("keeps required exam sections pinned in authored slot AND order", () => {
+    // Mirrors the IT10 1st Quarter Exam: a flexible MCQ body followed by a
+    // fixed `required` section (Part I picture ID, Part IV essays) that must
+    // never scatter into the middle of the paper.
+    const flexible = Array.from({ length: 8 }, (_, i) => ({
+      id: `flex${i}`,
+      options: [`${i}a`, `${i}b`, `${i}c`, `${i}d`],
+      required: false,
+      position: 0,
+    }));
+    const pinned = [
+      { id: "partI-1", options: ["o1", "o2", "o3", "o4"], required: true, position: 0 },
+      { id: "partI-2", options: ["o1", "o2", "o3", "o4"], required: true, position: 0 },
+      { id: "partIV", options: [], required: true, position: 0 },
+    ];
+    const input = [...flexible, ...pinned];
+    const out = randomizeQuestions(input);
+    // Required items stay at the tail in authored order.
+    expect(out.map((q) => q.id).slice(-3)).toEqual(["partI-1", "partI-2", "partIV"]);
+    // The flexible body still occupies the first slots as the same set.
+    expect(
+      out
+        .slice(0, 8)
+        .map((q) => q.id)
+        .sort(),
+    ).toEqual(flexible.map((q) => q.id).sort());
+    // Positions are renumbered sequentially.
+    expect(out.map((q) => q.position)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  });
+
+  it("still jumbles the flexible pool even when required items are present", () => {
+    const flex = Array.from({ length: 10 }, (_, i) => ({
+      id: `f${i}`,
+      options: ["a", "b", "c", "d"],
+      required: false,
+      position: 0,
+    }));
+    const input = [...flex, { id: "pinned", options: ["a", "b"], required: true, position: 0 }];
+    const anyReordered = Array.from({ length: 20 }, () =>
+      randomizeQuestions(input)
+        .slice(0, 10)
+        .map((q) => q.id),
+    ).some((order) => order.join() !== flex.map((q) => q.id).join());
+    expect(anyReordered).toBe(true);
+  });
+
+  it("shuffles answer options for required multiple-choice items too", () => {
+    const input = [
+      { id: "p1", options: ["o1", "o2", "o3", "o4"], required: true, position: 0 },
+      { id: "p2", options: ["o1", "o2", "o3", "o4"], required: true, position: 0 },
+    ];
+    const anyReordered = Array.from(
+      { length: 20 },
+      () => randomizeQuestions(input).filter((q) => q.options[0] === "o1").length,
+    ).some((n) => n < input.length);
+    expect(anyReordered).toBe(true);
+    for (const q of randomizeQuestions(input)) {
+      expect([...q.options].sort()).toEqual(["o1", "o2", "o3", "o4"]);
+    }
+  });
 });
 
 /* ---------- selectQuestionBank ---------- */

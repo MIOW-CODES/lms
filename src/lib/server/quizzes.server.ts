@@ -78,9 +78,21 @@ export function selectQuestionBank<T extends { id: string; required?: boolean }>
  * permuting them never changes correctness — it only removes positional bias
  * (e.g. a bank authored with the correct answer always at index 0, which would
  * otherwise always render as "letter A").
+ *
+ * Structured worksheets are respected: `required` questions (a fixed exam
+ * section, e.g. Part I picture identification and the Part IV problem-solving
+ * essays) keep their authored slots and relative order, so a jumble never
+ * scatters a section into the middle of the multiple-choice body. Only the
+ * flexible pool is shuffled.
  */
 export function randomizeQuestions(questions: any[]): any[] {
-  return shuffleInPlace([...questions]).map((q, i) => {
+  const flexSlots = questions.map((_, i) => i).filter((i) => !questions[i].required);
+  const flexValues = shuffleInPlace(flexSlots.map((i) => questions[i]));
+  const result = [...questions];
+  flexSlots.forEach((slot, k) => {
+    result[slot] = flexValues[k];
+  });
+  return result.map((q, i) => {
     const opts = Array.isArray(q.options) ? q.options : [];
     const options = opts.length > 1 ? shuffleInPlace([...opts]) : opts;
     return { ...q, options, position: i + 1 };
