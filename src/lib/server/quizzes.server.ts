@@ -728,6 +728,12 @@ export async function updateQuizRetakePolicy(
   token: string,
 ) {
   await requireQuizOwnerOrAdmin(token, id);
+  const config = await getQuizConfig(id);
+  if (!isAssessmentEditable(config, new Date())) {
+    throw new Error(
+      "This worksheet is locked while its scheduled assessment window is active. Retake policy cannot be changed now.",
+    );
+  }
   await unwrap(db.from("quizzes").update(patch).eq("id", id));
 }
 

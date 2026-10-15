@@ -127,7 +127,7 @@ async function recordTapForProfile(raw: any, atISO?: string) {
   // Course-scoped toggle: check last log today for this student and matched course (or null)
   let query = db
     .from("attendance_logs")
-    .select("scan_type")
+    .select("scan_type, timestamp")
     .eq("student_id", raw.id)
     .gte("timestamp", dayStart.toISOString());
 
@@ -137,9 +137,33 @@ async function recordTapForProfile(raw: any, atISO?: string) {
     query = query.is("course_id", null);
   }
 
-  const lastToday = await unwrap<Array<{ scan_type: string }>>(
+  const lastToday = await unwrap<Array<{ scan_type: string; timestamp: string }>>(
     query.order("timestamp", { ascending: false }).limit(1),
   );
+
+  // Debounce rapid double-taps within 5 seconds for the same scope
+  if (lastToday[0]?.timestamp) {
+    const elapsedMs = at.getTime() - new Date(lastToday[0].timestamp).getTime();
+    if (elapsedMs >= 0 && elapsedMs < 5000) {
+      return {
+        profile: safeProfile(raw),
+        scan_type: lastToday[0].scan_type as "in" | "out",
+        status,
+        course: matched
+          ? {
+              id: matched.id as string,
+              code: matched.code as string,
+              title: matched.title as string,
+              start_time: matched.start_time as string,
+              end_time: matched.end_time as string,
+              late_threshold_minutes: matched.late_threshold_minutes as number,
+            }
+          : null,
+        at: at.toISOString(),
+      };
+    }
+  }
+
   const scan_type: "in" | "out" = lastToday[0]?.scan_type === "in" ? "out" : "in";
 
   await unwrap(
