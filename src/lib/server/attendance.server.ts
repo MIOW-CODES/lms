@@ -89,54 +89,67 @@ async function recordTapForProfile(raw: any, atISO?: string) {
   // Manila-local midnight of the tap's day — deterministic regardless of the
   // server process timezone (Manila has no DST, fixed UTC+8).
   const dayStart = manilaDayStart(at);
+
+  // Match course schedule first so in/out toggling is course-scoped
+  const courses = await listCourses({ id: raw.id, role: raw.role });
+  const enrolled = raw.role === "student" ? new Set(await enrollmentsForStudent(raw.id)) : null;
+  const today = manilaDayCode(at.toISOString());
+  const atMin = manilaMinutesOfDay(at.toISOString());
+  const sessions = courses.filter(
+    (c: any) =>
+      Array.isArray(c.days_of_week) &&
+      c.days_of_week.includes(today) &&
+      c.start_time &&
+      c.end_time &&
+      (enrolled ? enrolled.has(c.id) : c.teacher_id === raw.id),
+  );
+
+  let matched: any = null;
+  let status: "on-time" | "late" = "on-time";
+
+  if (sessions.length > 0) {
+    const inWindow = sessions.find(
+      (c: any) => atMin >= toMinutes(c.start_time) - 30 && atMin <= toMinutes(c.end_time),
+    );
+    matched =
+      inWindow ??
+      sessions.reduce((best: any, c: any) =>
+        Math.abs(toMinutes(c.start_time) - atMin) < Math.abs(toMinutes(best.start_time) - atMin)
+          ? c
+          : best,
+      );
+    const grace = matched.late_threshold_minutes ?? 10;
+    status = atMin <= toMinutes(matched.start_time) + grace ? "on-time" : "late";
+  } else {
+    status = atMin <= 7 * 60 + 30 + 10 ? "on-time" : "late";
+  }
+
+  // Course-scoped toggle: check last log today for this student and matched course (or null)
+  let query = db
+    .from("attendance_logs")
+    .select("scan_type")
+    .eq("student_id", raw.id)
+    .gte("timestamp", dayStart.toISOString());
+
+  if (matched?.id) {
+    query = query.eq("course_id", matched.id);
+  } else {
+    query = query.is("course_id", null);
+  }
+
   const lastToday = await unwrap<Array<{ scan_type: string }>>(
-    db
-      .from("attendance_logs")
-      .select("scan_type")
-      .eq("student_id", raw.id)
-      .gte("timestamp", dayStart.toISOString())
-      .order("timestamp", { ascending: false })
-      .limit(1),
+    query.order("timestamp", { ascending: false }).limit(1),
   );
   const scan_type: "in" | "out" = lastToday[0]?.scan_type === "in" ? "out" : "in";
 
-  let status: "on-time" | "late" = "on-time";
-  let matched: any = null;
-  if (scan_type === "in") {
-    const courses = await listCourses({ id: raw.id, role: raw.role });
-    const enrolled = raw.role === "student" ? new Set(await enrollmentsForStudent(raw.id)) : null;
-    const today = manilaDayCode(at.toISOString());
-    const atMin = manilaMinutesOfDay(at.toISOString());
-    const sessions = courses.filter(
-      (c: any) =>
-        Array.isArray(c.days_of_week) &&
-        c.days_of_week.includes(today) &&
-        c.start_time &&
-        c.end_time &&
-        (enrolled ? enrolled.has(c.id) : c.teacher_id === raw.id),
-    );
-    if (sessions.length > 0) {
-      const inWindow = sessions.find(
-        (c: any) => atMin >= toMinutes(c.start_time) - 30 && atMin <= toMinutes(c.end_time),
-      );
-      matched =
-        inWindow ??
-        sessions.reduce((best: any, c: any) =>
-          Math.abs(toMinutes(c.start_time) - atMin) < Math.abs(toMinutes(best.start_time) - atMin)
-            ? c
-            : best,
-        );
-      const grace = matched.late_threshold_minutes ?? 10;
-      status = atMin <= toMinutes(matched.start_time) + grace ? "on-time" : "late";
-    } else {
-      status = atMin <= 7 * 60 + 30 + 10 ? "on-time" : "late";
-    }
-  }
-
   await unwrap(
-    db
-      .from("attendance_logs")
-      .insert({ student_id: raw.id, scan_type, status, timestamp: at.toISOString() }),
+    db.from("attendance_logs").insert({
+      student_id: raw.id,
+      course_id: matched?.id ?? null,
+      scan_type,
+      status,
+      timestamp: at.toISOString(),
+    }),
   );
   return {
     profile: safeProfile(raw),

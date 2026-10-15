@@ -18,8 +18,9 @@ import {
   formatQuestionTypes,
   type WorksheetQuestionType,
 } from "@/lib/worksheet-types";
-import { Modal } from "@/components/lms";
+import { Modal, useProfile } from "@/components/lms";
 import { PolicyFields } from "@/components/courses/policy-fields";
+import { getTeacherSettings } from "@/lib/settings";
 import {
   EMPTY_POLICY,
   EMPTY_MANUAL_Q,
@@ -50,7 +51,25 @@ export function CreateQuizModal({
   onSaved,
 }: CreateQuizModalProps) {
   const qc = useQueryClient();
+  const profile = useProfile(["teacher", "admin"]);
   const [saving, setSaving] = useState(false);
+
+  const getInitialPolicy = () => {
+    if (!profile) return EMPTY_POLICY;
+    const s = getTeacherSettings(profile.id);
+    const policyMap: Record<string, "highest_score" | "latest_attempt" | "average_score"> = {
+      highest_score: "highest_score",
+      latest_score: "latest_attempt",
+      average_score: "average_score",
+    };
+    return {
+      allow_retake: s.allowRetakesByDefault,
+      unlimited: s.defaultMaxAttempts === 0,
+      max_attempts: String(s.defaultMaxAttempts || 1),
+      retake_score_policy: policyMap[s.defaultScorePolicy] ?? "highest_score",
+    };
+  };
+
   const [quizForm, setQuizForm] = useState({
     ...EMPTY_POLICY,
     course_id: "",
@@ -61,6 +80,16 @@ export function CreateQuizModal({
     opens_at: "",
     closes_at: "",
   });
+
+  useEffect(() => {
+    if (open && profile) {
+      const policy = getInitialPolicy();
+      setQuizForm((f) => ({
+        ...f,
+        ...policy,
+      }));
+    }
+  }, [open, profile?.id]);
   const [quizMode, setQuizMode] = useState<QuizMode>("classmate");
   const [manualQuestions, setManualQuestions] = useState<ManualQuestion[]>([]);
   const [quizFileDrag, setQuizFileDrag] = useState(false);

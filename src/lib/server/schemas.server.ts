@@ -40,6 +40,8 @@ const profileFields = {
   prefix: z.string().max(20).nullable().optional(),
   department: z.string().max(100).nullable().optional(),
   phone: z.string().max(30).nullable().optional(),
+  bio: z.string().max(2000).nullable().optional(),
+  office_hours: z.string().max(500).nullable().optional(),
   pin: z
     .string()
     .regex(/^\d{4,8}$/)
@@ -249,6 +251,11 @@ export const schemas = {
         full_name: z.string().min(1).max(200),
         email: z.string().max(320).nullable(),
         avatar_url: avatarUrl.nullable(),
+        prefix: z.string().max(20).nullable().optional(),
+        department: z.string().max(100).nullable().optional(),
+        phone: z.string().max(30).nullable().optional(),
+        bio: z.string().max(2000).nullable().optional(),
+        office_hours: z.string().max(500).nullable().optional(),
         pin: z
           .string()
           .regex(/^\d{4,6}$/)
