@@ -871,89 +871,186 @@ export function InteractiveBreadboardCanvas({
   return (
     <div className="space-y-4">
       {/* Component Palette Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border/80 bg-card/90 p-3 shadow-sm backdrop-blur-md">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground mr-1">
-            Real Hardware Parts:
-          </span>
-          {/* Tool toggle: Select vs Draw wire (both support click-to-wire) */}
-          <div className="flex items-center rounded-lg border border-border/70 bg-background p-0.5 mr-1">
-            <button
-              onClick={() => {
-                setDrawMode(false);
-                setPendingKey(null);
-                setCursorPos(null);
-              }}
-              aria-pressed={!drawMode}
-              title="Select, move and press components (you can still click terminals to wire!)"
-              data-testid="tool-select"
-              className={cn(
-                "inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition",
-                !drawMode
-                  ? "bg-emerald-500/20 text-emerald-300 shadow-inner"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <MousePointer2 className="h-3.5 w-3.5" /> Select
-            </button>
-            <button
-              onClick={() => {
-                setDrawMode((v) => !v);
-                setPendingKey(null);
-                setCursorPos(null);
-                setSelectedWireId(null);
-              }}
-              aria-pressed={drawMode}
-              title="Draw a jumper wire between two terminals"
-              data-testid="tool-wire"
-              className={cn(
-                "inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition",
-                drawMode
-                  ? "bg-emerald-500/20 text-emerald-300 shadow-inner"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Spline className="h-3.5 w-3.5" /> Draw wire
-            </button>
+      <div className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-card/90 p-3.5 shadow-sm backdrop-blur-md">
+        {/* Row 1: Primary Controls & Tools */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground mr-1">
+              Wiring Mode:
+            </span>
+            {/* Tool toggle: Select vs Draw wire (both support click-to-wire) */}
+            <div className="flex items-center rounded-lg border border-border/70 bg-background p-0.5">
+              <button
+                onClick={() => {
+                  setDrawMode(false);
+                  setPendingKey(null);
+                  setCursorPos(null);
+                }}
+                aria-pressed={!drawMode}
+                title="Select, move and press components (you can still click terminals to wire!)"
+                data-testid="tool-select"
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition",
+                  !drawMode
+                    ? "bg-emerald-500/20 text-emerald-300 shadow-inner"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <MousePointer2 className="h-3.5 w-3.5" /> Select / Move
+              </button>
+              <button
+                onClick={() => {
+                  setDrawMode((v) => !v);
+                  setPendingKey(null);
+                  setCursorPos(null);
+                  setSelectedWireId(null);
+                }}
+                aria-pressed={drawMode}
+                title="Draw a jumper wire between two terminals"
+                data-testid="tool-wire"
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition",
+                  drawMode
+                    ? "bg-emerald-500/20 text-emerald-300 shadow-inner"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Spline className="h-3.5 w-3.5" /> Draw Wire
+              </button>
+            </div>
+
+            {ghostGuides.length > 0 && (
+              <button
+                type="button"
+                data-testid="auto-wire-task"
+                onClick={() => {
+                  ghostGuides.forEach((g) => {
+                    const from = endpointCoord(g.from);
+                    const to = endpointCoord(g.to);
+                    if (!from || !to) return;
+                    const fKey = endpointKey(g.from);
+                    const tKey = endpointKey(g.to);
+                    createWire(fKey, tKey);
+                  });
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25 transition shadow-sm"
+                title="Automatically connect all guide wires for this task"
+              >
+                <Zap className="h-3.5 w-3.5 text-amber-400" /> Auto-Wire Task
+              </button>
+            )}
+
+            {wires.length > 0 && (
+              <button
+                type="button"
+                data-testid="clear-all-wires"
+                onClick={() => {
+                  setWires([]);
+                  setSelectedWireId(null);
+                  setPendingKey(null);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-400 hover:bg-rose-500/20 transition shadow-sm"
+                title="Clear all jumper wires"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Clear Wires
+              </button>
+            )}
           </div>
 
-          {ghostGuides.length > 0 && (
-            <button
-              type="button"
-              data-testid="auto-wire-task"
-              onClick={() => {
-                // Instantly connects all dashed ghost wires for the active task
-                ghostGuides.forEach((g) => {
-                  const from = endpointCoord(g.from);
-                  const to = endpointCoord(g.to);
-                  if (!from || !to) return;
-                  const fKey = endpointKey(g.from);
-                  const tKey = endpointKey(g.to);
-                  createWire(fKey, tKey);
-                });
-              }}
-              className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition shadow-sm mr-1"
-              title="Automatically connect all guide wires for this task"
-            >
-              <Zap className="h-3.5 w-3.5 text-amber-400" /> Auto-Wire Task
-            </button>
-          )}
+          {/* Wire Colors & Selection Status */}
+          <div className="flex flex-wrap items-center gap-2">
+            {pendingKey ? (
+              <div className="flex items-center gap-2 rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-200 animate-pulse">
+                <span>
+                  From:{" "}
+                  <strong className="text-white underline">
+                    {pendingKey.replace("term-", "").replace("part-", "")}
+                  </strong>{" "}
+                  → click pin
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingKey(null);
+                    setCursorPos(null);
+                    wireDraggingRef.current = false;
+                  }}
+                  className="ml-1 rounded bg-black/40 px-1.5 py-0.5 text-[10px] text-zinc-300 hover:text-white"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 bg-background/60 border border-border/60 rounded-lg px-2 py-1">
+                <span className="text-[11px] font-medium text-muted-foreground mr-1">
+                  Wire Color:
+                </span>
+                {WIRE_COLORS.map((w) => (
+                  <button
+                    key={w.name}
+                    onClick={() => setDrawColor(w.stroke)}
+                    data-testid={`wire-color-${w.name}`}
+                    className={cn(
+                      "h-3.5 w-3.5 rounded-full transition-transform",
+                      drawColor === w.stroke
+                        ? "scale-125 ring-2 ring-white"
+                        : "opacity-75 hover:opacity-100 hover:scale-110",
+                    )}
+                    style={{ backgroundColor: w.stroke }}
+                    title={`${w.name} wire`}
+                  />
+                ))}
+              </div>
+            )}
 
-          {wires.length > 0 && (
-            <button
-              type="button"
-              data-testid="clear-all-wires"
-              onClick={() => {
-                setWires([]);
-                setSelectedWireId(null);
-                setPendingKey(null);
-              }}
-              className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-semibold text-rose-400 hover:bg-rose-500/20 transition shadow-sm mr-1"
-              title="Clear all jumper wires"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Clear Wires
-            </button>
-          )}
+            {selectedWireId && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => removeWire(selectedWireId)}
+                  data-testid="remove-wire"
+                  className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-xs font-semibold text-rose-400 hover:bg-rose-500/20 transition"
+                  title="Delete selected wire"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Remove wire
+                </button>
+              </div>
+            )}
+
+            {selectedPart &&
+              !drawMode &&
+              (() => {
+                const selVisual = visuals[selectedPart.id];
+                return (
+                  <div className="flex items-center gap-2 rounded-lg bg-background/60 border border-border/60 px-2.5 py-1">
+                    <span className="text-xs text-muted-foreground">
+                      Selected: <strong className="text-foreground">{selectedPart.label}</strong>
+                      {selVisual && (
+                        <span className="ml-1 font-mono text-[10px] text-emerald-300">
+                          {selVisual.connectedPins.length > 0
+                            ? `→ ${selVisual.connectedPins.join(", ")}`
+                            : "→ unwired"}
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      onClick={removeSelected}
+                      data-testid="remove-part"
+                      className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[11px] font-semibold text-rose-400 hover:bg-rose-500/20 transition ml-1"
+                      title="Delete component"
+                    >
+                      <Trash2 className="h-3 w-3" /> Remove
+                    </button>
+                  </div>
+                );
+              })()}
+          </div>
+        </div>
+
+        {/* Row 2: Real Hardware Parts Palette */}
+        <div className="flex flex-wrap items-center gap-2 border-t border-border/50 pt-2.5">
+          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground mr-1">
+            Hardware Palette:
+          </span>
           {(
             [
               ["wokwi-led", "LED", "bg-red-500"],
@@ -981,105 +1078,6 @@ export function InteractiveBreadboardCanvas({
             </button>
           ))}
         </div>
-
-        {selectedPart &&
-          !drawMode &&
-          (() => {
-            const selVisual = visuals[selectedPart.id];
-            return (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">
-                  Selected: <strong className="text-foreground">{selectedPart.label}</strong>
-                  {selVisual && (
-                    <span className="ml-1 font-mono text-[10px] text-emerald-300">
-                      {selVisual.connectedPins.length > 0
-                        ? `→ ${selVisual.connectedPins.join(", ")}`
-                        : "→ unwired"}
-                    </span>
-                  )}
-                </span>
-                <button
-                  onClick={removeSelected}
-                  data-testid="remove-part"
-                  className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-semibold text-rose-400 hover:bg-rose-500/20 transition"
-                  title="Delete component"
-                >
-                  <Trash2 className="h-3.5 w-3.5" /> Remove
-                </button>
-              </div>
-            );
-          })()}
-
-        {/* Wire Routing & Status bar */}
-        <div className="flex flex-wrap items-center gap-2">
-          {pendingKey ? (
-            <div className="flex items-center gap-2 rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-200 animate-pulse">
-              <span>
-                Connecting from terminal:{" "}
-                <strong className="text-white underline">
-                  {pendingKey.replace("term-", "").replace("part-", "")}
-                </strong>{" "}
-                → click any destination pin
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setPendingKey(null);
-                  setCursorPos(null);
-                  wireDraggingRef.current = false;
-                }}
-                className="ml-1 rounded bg-black/40 px-1.5 py-0.5 text-[10px] text-zinc-300 hover:text-white"
-              >
-                Cancel (Esc)
-              </button>
-            </div>
-          ) : (
-            drawMode && (
-              <span
-                data-testid="wire-hint"
-                className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-300"
-              >
-                Click any terminal to start a jumper wire
-              </span>
-            )
-          )}
-
-          {drawMode && (
-            <div className="flex items-center gap-1">
-              {WIRE_COLORS.map((w) => (
-                <button
-                  key={w.name}
-                  onClick={() => setDrawColor(w.stroke)}
-                  data-testid={`wire-color-${w.name}`}
-                  className={cn(
-                    "h-3.5 w-3.5 rounded-full transition-transform",
-                    drawColor === w.stroke
-                      ? "scale-125 ring-2 ring-white"
-                      : "opacity-80 hover:opacity-100",
-                  )}
-                  style={{ backgroundColor: w.stroke }}
-                  title={`${w.name} wire`}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {selectedWireId && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">
-              Selected: <strong className="text-foreground">Jumper wire</strong>
-            </span>
-            <button
-              onClick={() => removeWire(selectedWireId)}
-              data-testid="remove-wire"
-              className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-semibold text-rose-400 hover:bg-rose-500/20 transition"
-              title="Delete wire"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Remove wire
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Scrollable workbench — stays usable at 390px mobile widths */}
