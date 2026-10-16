@@ -144,7 +144,7 @@ void loop() {
 async function runSketch(page: Page, code: string) {
   const editor = page.getByPlaceholder(/Type or paste your Arduino C\+\+ sketch/);
   await editor.fill(code);
-  await page.getByRole("button", { name: "Start Simulation" }).click();
+  await page.getByRole("button", { name: "Run code", exact: true }).click();
 }
 
 /** Screenshot the full 1080px workbench (element shot ignores viewport clip). */
