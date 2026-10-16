@@ -235,10 +235,7 @@ export function applyIntegrityPenalty(
   rawScore: number,
   events: Array<{ type: string }>,
 ): { score: number; penalty: number } {
-  const penalty = Math.min(
-    Math.max(0, rawScore),
-    events.length * INTEGRITY_PENALTY_PER_EVENT,
-  );
+  const penalty = Math.min(Math.max(0, rawScore), events.length * INTEGRITY_PENALTY_PER_EVENT);
   return { score: Math.max(0, rawScore - penalty), penalty };
 }
 
@@ -641,10 +638,14 @@ export async function submitQuizAttempt(
   }
 
   const used = attempts.length + 1;
-  return gatedResponse(quiz, { attempt_number, score: integrity.score, total }, results, used, ceiling, [
-    ...attempts,
+  return gatedResponse(
+    quiz,
     { attempt_number, score: integrity.score, total },
-  ]);
+    results,
+    used,
+    ceiling,
+    [...attempts, { attempt_number, score: integrity.score, total }],
+  );
 }
 
 export async function quizAttemptInfo(quiz_id: string, token: string) {
@@ -919,7 +920,9 @@ export async function listStudentAttemptDetail(quiz_id: string, student_id: stri
     unwrap<any[]>(
       db
         .from("quiz_attempts")
-        .select("attempt_number, score, raw_score, integrity_penalty, total, created_at, results, tab_switches")
+        .select(
+          "attempt_number, score, raw_score, integrity_penalty, total, created_at, results, tab_switches",
+        )
         .eq("quiz_id", quiz_id)
         .eq("student_id", student_id)
         .order("attempt_number"),

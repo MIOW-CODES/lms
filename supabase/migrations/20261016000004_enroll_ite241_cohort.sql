@@ -14,7 +14,8 @@ BEGIN
    LIMIT 1;
 
   IF v_course IS NULL THEN
-    RAISE EXCEPTION 'ITE241 enrollment failed: course not found';
+    RAISE NOTICE 'ITE241 enrollment skipped: course not found';
+    RETURN;
   END IF;
 
   INSERT INTO public.enrollments (student_id, course_id)
