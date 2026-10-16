@@ -745,10 +745,13 @@ export function InteractiveBreadboardCanvas({
             {label}
           </text>
         )}
-        <circle
+        <ellipse
           cx={coord.x}
           cy={coord.y}
-          r={16}
+          // Uno pins are about 15px apart: keep their targets separate while
+          // retaining a generous vertical target for touch wiring.
+          rx={key.startsWith("uno-") ? 7 : 16}
+          ry={16}
           fill="transparent"
           data-term-key={key}
           data-testid={testid}

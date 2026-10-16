@@ -246,6 +246,8 @@ describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
         }
       });
       await startBtn.click();
+      await page.getByRole("button", { name: "Start", exact: true }).click();
+      await expect(page.getByTestId("question-nav-1")).toBeVisible();
       await dismissExamLock(page);
 
       // Scan the shuffled paper for the lab_task question
