@@ -504,10 +504,7 @@ export function ArduinoLab({ onConnectionsChange }: ArduinoLabProps = {}) {
                 data-testid="task-hint"
                 className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] leading-relaxed text-emerald-200"
               >
-                <strong className="font-semibold">
-                  {activeTask.title.replace(/^Simulation Task [A-Z] — /, "")}:
-                </strong>{" "}
-                {activeTask.hint}
+                <strong className="font-semibold">{activeTask.title}:</strong> {activeTask.hint}
               </p>
             )}
           </div>
