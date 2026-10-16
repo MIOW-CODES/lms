@@ -101,7 +101,7 @@ const test = base.extend<
   },
 });
 
-test.use({ viewport: { width: 390, height: 844 } });
+test.use({ viewport: { width: 390, height: 844 }, actionTimeout: 15_000 });
 
 /** The exam hard-lock overlay appears if fullscreen was entered and lost. */
 async function dismissExamLock(page: Page) {
