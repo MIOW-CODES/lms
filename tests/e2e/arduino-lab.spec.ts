@@ -184,6 +184,27 @@ describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
           WHERE deleted_at IS NULL
             AND course_id = (SELECT id FROM public.courses WHERE code = 'IT10')`,
       );
+      const labTaskSeed = await pool.query(
+        `SELECT count(*)::int AS count, bool_and(required) AS all_required
+           FROM public.quiz_questions q
+           JOIN public.quizzes quiz ON quiz.id = q.quiz_id
+          WHERE quiz.title = 'Quiz — Arduino Part 2'
+            AND quiz.deleted_at IS NULL
+            AND quiz.course_id = (SELECT id FROM public.courses WHERE code = 'IT10')
+            AND q.lab_task = true`,
+      );
+      expect(labTaskSeed.rows[0]?.count).toBe(2);
+      expect(labTaskSeed.rows[0]?.all_required).toBe(true);
+      // This UI test targets a specific lab_task prompt. Use the full bank in
+      // the isolated CI database so the task is deterministic instead of
+      // relying on a random 20-item draw to include it.
+      await pool.query(
+        `UPDATE public.quizzes
+            SET question_count = 0
+          WHERE deleted_at IS NULL
+            AND title = 'Quiz — Arduino Part 2'
+            AND course_id = (SELECT id FROM public.courses WHERE code = 'IT10')`,
+      );
     } finally {
       await pool.end();
     }

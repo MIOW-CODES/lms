@@ -396,6 +396,14 @@ export function InteractiveBreadboardCanvas({
   useEffect(() => {
     if (!task) {
       setGhostGuides([]);
+      setParts((prev) => prev.filter((part) => !part.id.startsWith("task-")));
+      setWires((prev) =>
+        prev.filter((wire) =>
+          [wire.from, wire.to].every(
+            (endpoint) => endpoint.kind !== "part" || !endpoint.partId.startsWith("task-"),
+          ),
+        ),
+      );
       return;
     }
     const seededIds = new Set(task.parts.map((sp) => `task-${sp.key}`));
