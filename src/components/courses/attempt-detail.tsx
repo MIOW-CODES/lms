@@ -103,7 +103,13 @@ export function AttemptDetail({
                 <p className="text-sm font-semibold">
                   Attempt #{a.attempt_number} — {a.score}/{a.total}
                 </p>
-                {switches > 0 && (
+                {a.integrity_penalty > 0 && (
+                  <span className="text-xs font-medium text-rose-600 dark:text-rose-400">
+                    Raw {a.raw_score}/{a.total} · −{a.integrity_penalty} integrity point
+                    {a.integrity_penalty === 1 ? "" : "s"}
+                  </span>
+                )}
+                {switches > 0 && a.integrity_penalty === 0 && (
                   <span
                     className={cn(
                       "flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold",

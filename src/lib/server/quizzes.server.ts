@@ -228,6 +228,20 @@ export function gradeEssay(answer: string, rubric: string): boolean {
   return concepts.filter((kw) => keywordHit(answer, kw)).length >= 2;
 }
 
+/** One point is deducted for each recorded integrity event, up to raw score. */
+export const INTEGRITY_PENALTY_PER_EVENT = 1;
+
+export function applyIntegrityPenalty(
+  rawScore: number,
+  events: Array<{ type: string }>,
+): { score: number; penalty: number } {
+  const penalty = Math.min(
+    Math.max(0, rawScore),
+    events.length * INTEGRITY_PENALTY_PER_EVENT,
+  );
+  return { score: Math.max(0, rawScore - penalty), penalty };
+}
+
 /* ---------- Scoring ---------- */
 
 export type AttemptQuestionIdsValidation =
@@ -556,20 +570,24 @@ export async function submitQuizAttempt(
   if (!validated.ok) throw new Error(validated.error);
 
   // questionIds passed from client for question bank scoring
-  const { score, total, results } = await scoreQuiz(quiz_id, answers, validated.questionIds);
+  const scored = await scoreQuiz(quiz_id, answers, validated.questionIds);
+  const integrity = applyIntegrityPenalty(scored.score, tabSwitches ?? []);
+  const { total, results } = scored;
   const attempt_number = attempts.reduce((m, a) => Math.max(m, a.attempt_number), 0) + 1;
 
   const row: Record<string, unknown> = {
     quiz_id,
     student_id: caller.id,
     attempt_number,
-    score,
+    score: integrity.score,
     total,
     // `results` and `tab_switches` are jsonb columns — wrap the JS arrays.
     // `question_ids` is a native uuid[] column and stays a plain array.
     results: asJsonParam(results),
     question_ids: validated.questionIds ?? [],
     tab_switches: asJsonParam(tabSwitches ?? []),
+    raw_score: scored.score,
+    integrity_penalty: integrity.penalty,
   };
   if (submissionId) row["submission_id"] = submissionId;
 
@@ -623,9 +641,9 @@ export async function submitQuizAttempt(
   }
 
   const used = attempts.length + 1;
-  return gatedResponse(quiz, { attempt_number, score, total }, results, used, ceiling, [
+  return gatedResponse(quiz, { attempt_number, score: integrity.score, total }, results, used, ceiling, [
     ...attempts,
-    { attempt_number, score, total },
+    { attempt_number, score: integrity.score, total },
   ]);
 }
 
@@ -901,7 +919,7 @@ export async function listStudentAttemptDetail(quiz_id: string, student_id: stri
     unwrap<any[]>(
       db
         .from("quiz_attempts")
-        .select("attempt_number, score, total, created_at, results, tab_switches")
+        .select("attempt_number, score, raw_score, integrity_penalty, total, created_at, results, tab_switches")
         .eq("quiz_id", quiz_id)
         .eq("student_id", student_id)
         .order("attempt_number"),
@@ -926,6 +944,8 @@ export async function listStudentAttemptDetail(quiz_id: string, student_id: stri
     attempts: (attempts ?? []).map((a: any) => ({
       attempt_number: a.attempt_number as number,
       score: a.score as number,
+      raw_score: (a.raw_score as number | null) ?? (a.score as number),
+      integrity_penalty: (a.integrity_penalty as number | null) ?? 0,
       total: a.total as number,
       created_at: (a.created_at as string) ?? "",
       results: Array.isArray(a.results) ? a.results : [],

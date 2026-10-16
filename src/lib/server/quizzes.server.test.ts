@@ -7,6 +7,7 @@ process.env["SUPABASE_PUBLISHABLE_KEY"] ??= "test-publishable-key";
 import {
   parseKeywordCategories,
   gradeEssay,
+  applyIntegrityPenalty,
   selectQuestionBank,
   validateAttemptQuestionIds,
   gateAttemptResults,
@@ -469,6 +470,19 @@ describe("gradeEssay", () => {
           "| Keywords: core = well-known, mitosis",
         ),
       ).toBe(true);
+    });
+  });
+});
+
+describe("applyIntegrityPenalty", () => {
+  it("deducts one point per event and never makes a score negative", () => {
+    expect(applyIntegrityPenalty(10, [{ type: "blur" }, { type: "paste" }])).toEqual({
+      score: 8,
+      penalty: 2,
+    });
+    expect(applyIntegrityPenalty(1, [{ type: "blur" }, { type: "paste" }])).toEqual({
+      score: 0,
+      penalty: 1,
     });
   });
 });
