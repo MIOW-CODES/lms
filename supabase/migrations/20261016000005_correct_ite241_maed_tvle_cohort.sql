@@ -36,7 +36,7 @@ BEGIN
    LIMIT 1;
 
   IF v_course IS NULL THEN
-    RAISE NOTICE 'ITE241 Master's roster correction skipped: course not found';
+    RAISE NOTICE 'ITE241 Master roster correction skipped: course not found';
     RETURN;
   END IF;
 
