@@ -294,6 +294,8 @@ export interface AttemptDetail {
   attempts: Array<{
     attempt_number: number;
     score: number;
+    raw_score: number;
+    integrity_penalty: number;
     total: number;
     created_at: string;
     results: Array<{

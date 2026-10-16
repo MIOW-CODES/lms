@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Save, Trash2, Wand2, X } from "lucide-react";
+import { courseLevelLabel } from "@/lib/course-levels";
 import { toast } from "sonner";
 import {
   deleteTos,
@@ -293,7 +294,7 @@ export function TosView({
           >
             {courses.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.code} — {c.title} (G{c.grade_level})
+                {c.code} — {c.title} ({courseLevelLabel(c)})
               </option>
             ))}
           </select>

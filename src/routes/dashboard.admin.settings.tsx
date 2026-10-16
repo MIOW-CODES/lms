@@ -71,6 +71,7 @@ import {
   type AuditEntry,
 } from "@/lib/settings";
 import { cn } from "@/lib/utils";
+import { courseLevelLabel } from "@/lib/course-levels";
 import { LoadingSkeleton } from "@/components/ui-elements";
 import { BRAND_COLORS, BRAND_LOGO_SRC } from "@/lib/brand";
 import { MiowLockup, MiowMark } from "@/components/brand";
@@ -1398,7 +1399,7 @@ function AdminSettings() {
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold">{c.title}</p>
                         <p className="text-xs text-muted-foreground">
-                          {c.code} · Grade {c.grade_level}
+                          {c.code} · {courseLevelLabel(c)}
                         </p>
                       </div>
                       <select

@@ -101,7 +101,7 @@ const test = base.extend<
   },
 });
 
-test.use({ viewport: { width: 390, height: 844 } });
+test.use({ viewport: { width: 390, height: 844 }, actionTimeout: 15_000 });
 
 /** The exam hard-lock overlay appears if fullscreen was entered and lost. */
 async function dismissExamLock(page: Page) {
@@ -144,7 +144,7 @@ void loop() {
 async function runSketch(page: Page, code: string) {
   const editor = page.getByPlaceholder(/Type or paste your Arduino C\+\+ sketch/);
   await editor.fill(code);
-  await page.getByRole("button", { name: "Start Simulation" }).click();
+  await page.getByRole("button", { name: "Run code", exact: true }).click();
 }
 
 /** Screenshot the full 1080px workbench (element shot ignores viewport clip). */
@@ -182,6 +182,27 @@ describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
         `UPDATE public.quizzes
             SET opens_at = NULL, closes_at = now() + interval '30 days'
           WHERE deleted_at IS NULL
+            AND course_id = (SELECT id FROM public.courses WHERE code = 'IT10')`,
+      );
+      const labTaskSeed = await pool.query(
+        `SELECT count(*)::int AS count, bool_and(required) AS all_required
+           FROM public.quiz_questions q
+           JOIN public.quizzes quiz ON quiz.id = q.quiz_id
+          WHERE quiz.title = 'Quiz — Arduino Part 2'
+            AND quiz.deleted_at IS NULL
+            AND quiz.course_id = (SELECT id FROM public.courses WHERE code = 'IT10')
+            AND q.lab_task = true`,
+      );
+      expect(labTaskSeed.rows[0]?.count).toBe(2);
+      expect(labTaskSeed.rows[0]?.all_required).toBe(true);
+      // This UI test targets a specific lab_task prompt. Use the full bank in
+      // the isolated CI database so the task is deterministic instead of
+      // relying on a random 20-item draw to include it.
+      await pool.query(
+        `UPDATE public.quizzes
+            SET question_count = 0
+          WHERE deleted_at IS NULL
+            AND title = 'Quiz — Arduino Part 2'
             AND course_id = (SELECT id FROM public.courses WHERE code = 'IT10')`,
       );
     } finally {
@@ -225,6 +246,8 @@ describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
         }
       });
       await startBtn.click();
+      await page.getByRole("button", { name: "Start", exact: true }).click();
+      await expect(page.getByTestId("question-nav-1")).toBeVisible();
       await dismissExamLock(page);
 
       // Scan the shuffled paper for the lab_task question
@@ -290,8 +313,10 @@ describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
     test.setTimeout(TEST_TIMEOUT);
     const errors = collectConsoleErrors(page);
     await page.goto("/dashboard/student/arduino");
-    await expect(page.getByText("Arduino Uno Virtual Lab")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText("Arduino Practice Lab")).toBeVisible({ timeout: 20000 });
 
+    // Turn off the default beginner task for the manual-palette wiring scenario.
+    await page.locator('[data-testid="task-chip-button-led"]').click();
     // Manual wiring first — parts placed from the palette, wires by hand
     await wireLedWithResistor(page);
     await runSketch(page, BLINK_BOTH_SKETCH);
@@ -327,7 +352,7 @@ describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
     });
 
     await chipB.click();
-    await expect(page.locator('[data-testid="task-hint"]')).toContainText("Task B");
+    await expect(page.locator('[data-testid="task-hint"]')).toContainText("Button and LED");
     await page.screenshot({ path: "/tmp/opencode/ard-lab-task-b.png" });
     await shotWorkbench(page, "/tmp/opencode/ard-lab-task-b-workbench.png");
     await testInfo.attach("ard-lab-ghost-guide", {
@@ -340,7 +365,7 @@ describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
     test.setTimeout(TEST_TIMEOUT);
     const errors = collectConsoleErrors(page);
     await page.goto("/dashboard/student/arduino");
-    await expect(page.getByText("Arduino Uno Virtual Lab")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText("Arduino Practice Lab")).toBeVisible({ timeout: 20000 });
 
     // Seed a task (which shows dashed ghost guides) and add a palette LED
     await page.locator('[data-testid="task-chip-traffic-light"]').click();

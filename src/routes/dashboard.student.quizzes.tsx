@@ -899,7 +899,7 @@ function QuizzesPage() {
                       </button>
                       {labOpen && (
                         <div className="max-h-[70vh] overflow-y-auto border-t border-border p-3">
-                          <ArduinoLab onConnectionsChange={setConnSummary} />
+                          <ArduinoLab initialTask={null} onConnectionsChange={setConnSummary} />
                         </div>
                       )}
                     </div>

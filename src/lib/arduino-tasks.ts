@@ -40,11 +40,11 @@ const uno = (pin: number | "5V" | "3V3" | "GND"): WireEndpoint => ({ kind: "uno"
 export const ARDUINO_TASKS: ArduinoTask[] = [
   {
     id: "traffic-light",
-    chip: "Task A · Traffic light (D8/D9/D10)",
-    title: "Simulation Task A — Traffic Light",
+    chip: "Traffic light",
+    title: "Traffic light",
     hint:
-      "Red LED → D8, yellow LED → D9, green LED → D10 — each cathode through its own 220Ω resistor to GND. " +
-      "The dashed guide shows where each jumper wire goes; click a terminal, then its destination, to place the wire yourself.",
+      "Connect red to D8, yellow to D9, and green to D10. Connect each LED through its own 220Ω resistor to GND. " +
+      "Follow the dashed lines: click one endpoint, then click the other to add a wire.",
     parts: [
       { key: "led-r", type: "wokwi-led", label: "LED1", x: 470, y: 70, color: "red" },
       { key: "led-y", type: "wokwi-led", label: "LED2", x: 610, y: 70, color: "yellow" },
@@ -67,11 +67,11 @@ export const ARDUINO_TASKS: ArduinoTask[] = [
   },
   {
     id: "button-led",
-    chip: "Task B · Button D2 + LED D13 + Serial",
-    title: "Simulation Task B — Button-Controlled LED",
+    chip: "Button and LED",
+    title: "Button and LED",
     hint:
-      "Pushbutton between D2 and GND (INPUT_PULLUP), LED anode → D13 with a 220Ω resistor from the cathode to GND. " +
-      "Place each jumper wire manually following the dashed guide, then print the button state over Serial.",
+      "Connect the button to D2 and GND. Connect the LED to D13, then connect it through a 220Ω resistor to GND. " +
+      "Follow the dashed lines and click each pair of endpoints to add a wire.",
     parts: [
       { key: "btn", type: "wokwi-pushbutton", label: "button1", x: 470, y: 90, color: "blue" },
       { key: "led", type: "wokwi-led", label: "LED1", x: 660, y: 90, color: "red" },

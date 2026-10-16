@@ -19,6 +19,14 @@ export function levelLabel(v: number): string {
   return COURSE_LEVELS.find((l) => l.value === v)?.label ?? `Level ${v}`;
 }
 
+/** Display the graduate program label when course metadata identifies MAED-TVLE. */
+export function courseLevelLabel(course: { grade_level: number; program?: string | null }): string {
+  if (/MAED\s*[-–]?\s*TVLE|MASTER OF ARTS IN EDUCATION/i.test(course.program ?? "")) {
+    return "Master's";
+  }
+  return levelLabel(course.grade_level);
+}
+
 /** Map grade_level 7-16 to education_level. */
 export function educationLevelOf(gradeLevel: number): "jhs" | "shs" | "college" {
   if (gradeLevel >= 13) return "college";

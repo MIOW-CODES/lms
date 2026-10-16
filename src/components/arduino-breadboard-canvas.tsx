@@ -396,6 +396,14 @@ export function InteractiveBreadboardCanvas({
   useEffect(() => {
     if (!task) {
       setGhostGuides([]);
+      setParts((prev) => prev.filter((part) => !part.id.startsWith("task-")));
+      setWires((prev) =>
+        prev.filter((wire) =>
+          [wire.from, wire.to].every(
+            (endpoint) => endpoint.kind !== "part" || !endpoint.partId.startsWith("task-"),
+          ),
+        ),
+      );
       return;
     }
     const seededIds = new Set(task.parts.map((sp) => `task-${sp.key}`));
@@ -737,10 +745,13 @@ export function InteractiveBreadboardCanvas({
             {label}
           </text>
         )}
-        <circle
+        <ellipse
           cx={coord.x}
           cy={coord.y}
-          r={16}
+          // Uno pins are about 15px apart: keep their targets separate while
+          // retaining a generous vertical target for touch wiring.
+          rx={key.startsWith("uno-") ? 7 : 16}
+          ry={16}
           fill="transparent"
           data-term-key={key}
           data-testid={testid}
@@ -1073,8 +1084,8 @@ export function InteractiveBreadboardCanvas({
         </div>
       </div>
 
-      {/* Responsive workbench container — fits full width without awkward scroll on desktop */}
-      <div className="w-full overflow-hidden rounded-2xl">
+      {/* Preserve the circuit's 1080px coordinate space; smaller screens scroll. */}
+      <div className="w-full overflow-x-auto rounded-2xl">
         <div
           ref={containerRef}
           onClick={handleCanvasClick}
@@ -1096,7 +1107,7 @@ export function InteractiveBreadboardCanvas({
           }}
           data-testid="arduino-workbench"
           className={cn(
-            "relative h-[620px] w-full min-w-[720px] select-none overflow-hidden rounded-2xl border-2 shadow-2xl",
+            "relative h-[620px] w-full min-w-[1080px] select-none overflow-hidden rounded-2xl border-2 shadow-2xl",
             dragOver ? "border-emerald-400 ring-2 ring-emerald-400/40" : "border-emerald-900/60",
             drawMode && "cursor-crosshair",
           )}

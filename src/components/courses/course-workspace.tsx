@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { type Assignment, type Course, type Profile, type Quiz, formatSchedule } from "@/lib/lms";
 import { Badge, Card, EmptyState, courseStyle } from "@/components/lms";
-import { levelLabel } from "@/lib/course-levels";
+import { courseLevelLabel } from "@/lib/course-levels";
 import { UserAvatar } from "@/components/ui-elements";
 import { WorksheetsSection } from "@/components/courses/worksheets-section";
 import { AssignmentsSection } from "@/components/courses/assignments-section";
@@ -72,7 +72,7 @@ export function CourseWorkspaceShell({
               <span className={cn("rounded-md px-2 py-0.5 text-[11px] font-bold", st.soft)}>
                 {course.code}
               </span>
-              <Badge tone="slate">{levelLabel(course.grade_level)}</Badge>
+              <Badge tone="slate">{courseLevelLabel(course)}</Badge>
             </div>
             <h1 className="mt-2 font-display text-xl font-bold leading-snug sm:text-2xl">
               {course.title}

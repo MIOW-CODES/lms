@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { courseLevelLabel } from "@/lib/course-levels";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, FileSpreadsheet, Search, Send } from "lucide-react";
 import { toast } from "sonner";
@@ -409,7 +410,7 @@ export function GradebookPage() {
         >
           {(courses ?? []).map((c) => (
             <option key={c.id} value={c.id}>
-              {c.code} — {c.title} (G{c.grade_level})
+              {c.code} — {c.title} ({courseLevelLabel(c)})
             </option>
           ))}
         </select>

@@ -181,9 +181,14 @@ interface ArduinoLabProps {
    * circuit changes (used by worksheet answer boxes for the keyword grader).
    */
   onConnectionsChange?: (summary: string) => void;
+  /** Override the initial task; worksheet embeds remain empty until selected. */
+  initialTask?: ArduinoTask | null;
 }
 
-export function ArduinoLab({ onConnectionsChange }: ArduinoLabProps = {}) {
+export function ArduinoLab({
+  onConnectionsChange,
+  initialTask = ARDUINO_TASKS.find((task) => task.id === "button-led") ?? null,
+}: ArduinoLabProps = {}) {
   const [selectedSketch, setSelectedSketch] = useState(0);
   const [code, setCode] = useState(STARTER_SKETCHES[0]?.code ?? "");
   const [logs, setLogs] = useState<string[]>([]);
@@ -194,7 +199,9 @@ export function ArduinoLab({ onConnectionsChange }: ArduinoLabProps = {}) {
   // View mode: 'board' (PCB view) or 'canvas' (Wokwi / TinkerCAD style interactive drag & drop breadboard)
   const [activeTab, setActiveTab] = useState<"canvas" | "board">("canvas");
   // Seeded task with a dashed ghost wiring guide (wires are still placed manually)
-  const [activeTask, setActiveTask] = useState<ArduinoTask | null>(null);
+  // Start with the shorter button + LED activity so the workbench is useful
+  // immediately instead of opening as an empty canvas.
+  const [activeTask, setActiveTask] = useState<ArduinoTask | null>(initialTask);
   // Student's manual wiring — feeds the simulator netlist + connections summary
   const [circuit, setCircuit] = useState<{ parts: CircuitPart[]; wires: CanvasWire[] }>({
     parts: [],
@@ -367,9 +374,9 @@ export function ArduinoLab({ onConnectionsChange }: ArduinoLabProps = {}) {
             <Cpu className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-foreground">Arduino Uno Virtual Lab</h2>
+            <h2 className="text-base font-bold text-foreground">Arduino Practice Lab</h2>
             <p className="text-xs text-muted-foreground">
-              ATmega328P Emulated Environment · Real-time Pin I/O &amp; Serial Monitor
+              Try a circuit, run the code, and observe what happens.
             </p>
           </div>
         </div>
@@ -387,16 +394,16 @@ export function ArduinoLab({ onConnectionsChange }: ArduinoLabProps = {}) {
               onClick={handleRun}
               className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-emerald-500"
             >
-              <Play className="h-4 w-4" /> Start Simulation
+              <Play className="h-4 w-4" /> Run code
             </button>
           )}
 
           <button
             onClick={handleReset}
             className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
-            title="Reset Board &amp; Memory"
+            title="Clear the simulation and start again"
           >
-            <RotateCcw className="h-4 w-4" /> Reset
+            <RotateCcw className="h-4 w-4" /> Start over
           </button>
         </div>
       </div>
@@ -409,6 +416,26 @@ export function ArduinoLab({ onConnectionsChange }: ArduinoLabProps = {}) {
 
       {/* Main Grid: Code Editor on Top/Left, Full Workbench on Bottom or Full-Width */}
       <div className="grid gap-6">
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm">
+          <p className="font-semibold text-foreground">Start here</p>
+          <ol className="mt-2 grid gap-1 text-muted-foreground sm:grid-cols-3">
+            <li>
+              <span className="font-semibold text-foreground">1.</span> Follow the dashed lines to
+              connect the parts.
+            </li>
+            <li>
+              <span className="font-semibold text-foreground">2.</span> Select{" "}
+              <strong className="text-foreground">Run code</strong> to start.
+            </li>
+            <li>
+              <span className="font-semibold text-foreground">3.</span> Watch the LED and messages
+              below.
+            </li>
+          </ol>
+          <p className="mt-2 text-xs text-muted-foreground">
+            You can try the code examples below without changing any code.
+          </p>
+        </div>
         {/* Hardware Workbench Simulation Row (Full width for comfortable wiring & component placement) */}
         <div className="space-y-4">
           {/* View Mode Toggle: Interactive Canvas vs Compact PCB */}
@@ -424,7 +451,7 @@ export function ArduinoLab({ onConnectionsChange }: ArduinoLabProps = {}) {
                 )}
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
-                Breadboard & Circuit Workbench (Wokwi Style)
+                Circuit view
               </button>
               <button
                 onClick={() => setActiveTab("board")}
@@ -436,7 +463,7 @@ export function ArduinoLab({ onConnectionsChange }: ArduinoLabProps = {}) {
                 )}
               >
                 <Layers className="h-3.5 w-3.5" />
-                Uno PCB
+                Pin controls
               </button>
             </div>
 
@@ -455,8 +482,8 @@ export function ArduinoLab({ onConnectionsChange }: ArduinoLabProps = {}) {
 
           {/* Seeded task hint chips + ghost wiring guide */}
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/80 bg-card/80 p-2.5 shadow-sm backdrop-blur-md">
-            <span className="inline-flex items-center gap-1.5 px-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              <Ghost className="h-3.5 w-3.5 text-primary" /> Task hints:
+            <span className="inline-flex items-center gap-1.5 px-1 text-xs font-bold tracking-wider text-muted-foreground">
+              <Ghost className="h-3.5 w-3.5 text-primary" /> Choose a practice circuit:
             </span>
             {ARDUINO_TASKS.map((t) => (
               <button
