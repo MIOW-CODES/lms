@@ -19,6 +19,7 @@ import {
   useProfile,
 } from "@/components/lms";
 import { compareWorksheetOrder } from "@/lib/question-bank-groups";
+import { courseLevelLabel } from "@/lib/course-levels";
 import { cn } from "@/lib/utils";
 
 /** One worksheet summary chip — derived from the bank rows themselves. */
@@ -264,7 +265,7 @@ export function QuestionBank({
             <option value="">All courses</option>
             {(courses ?? []).map((c) => (
               <option key={c.id} value={c.id}>
-                {c.code} — {c.title} (G{c.grade_level})
+                {c.code} — {c.title} ({courseLevelLabel(c)})
               </option>
             ))}
           </select>

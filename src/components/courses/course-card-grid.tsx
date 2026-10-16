@@ -1,7 +1,7 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { type Course, type Profile, formatSchedule } from "@/lib/lms";
 import { MotionCard, Badge, courseStyle } from "@/components/lms";
-import { levelLabel } from "@/lib/course-levels";
+import { courseLevelLabel } from "@/lib/course-levels";
 import { EnrollmentCount } from "@/components/courses/enrollment-count";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +33,7 @@ export function CourseCardGrid({
               <div className="flex items-center justify-between">
                 <p className="text-xs font-bold text-muted-foreground">{c.code}</p>
                 <div className="flex items-center gap-1">
-                  <Badge tone="slate">{levelLabel(c.grade_level)}</Badge>
+                  <Badge tone="slate">{courseLevelLabel(c)}</Badge>
                   {(isAdmin || c.teacher_id === profile.id) && (
                     <button
                       onClick={() => onEdit(c)}

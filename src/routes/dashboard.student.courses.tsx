@@ -38,7 +38,7 @@ import {
   courseStyle,
   useProfile,
 } from "@/components/lms";
-import { levelLabel } from "@/lib/course-levels";
+import { courseLevelLabel } from "@/lib/course-levels";
 import { assignmentActionLabel, worksheetActionLabel } from "@/lib/assessment-actions";
 import { cn } from "@/lib/utils";
 import { LoadingSkeleton } from "@/components/ui-elements";
@@ -227,7 +227,7 @@ function StudentCoursesPage() {
                       <div className="p-5">
                         <div className="flex items-center justify-between">
                           <p className="text-xs font-bold text-muted-foreground">{c.code}</p>
-                          <Badge tone="slate">{levelLabel(c.grade_level)}</Badge>
+                          <Badge tone="slate">{courseLevelLabel(c)}</Badge>
                         </div>
                         <button
                           type="button"

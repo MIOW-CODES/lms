@@ -1,6 +1,4 @@
--- Enroll the ITE241 Advanced Digital Electronics cohort.
--- Cohort rule follows the other College Year 2 electronics course: year 2 and
--- electronics program/section, with a grade-level fallback for roster imports.
+-- Enroll only the verified MAED-TVLE roster in section 241.
 DO $$
 DECLARE
   v_course uuid;
@@ -23,11 +21,9 @@ BEGIN
     FROM public.profiles p
    WHERE p.role = 'student'
      AND p.deleted_at IS NULL
-     AND (
-       p.grade_level = 14
-       OR coalesce(p.section, '') ILIKE '%electronics%'
-       OR coalesce(p.section, '') ILIKE 'BTLED%'
-       OR coalesce(p.section, '') ILIKE 'BTVTED%'
+     AND p.student_id IN (
+       '2013-5178','2026-3031','2014-2972','2020-4568','2014-3000','2006-6034','2013-3671',
+       '2015-5283','2012-3854','2015-6672','2013-2657','2021-0762','2001-3265','2013-2885'
      )
      AND NOT EXISTS (
        SELECT 1 FROM public.enrollments e
@@ -35,5 +31,5 @@ BEGIN
      );
 
   GET DIAGNOSTICS v_added = ROW_COUNT;
-  RAISE NOTICE 'ITE241 enrollment: added % matching second-year/electronics students', v_added;
+  RAISE NOTICE 'ITE241 enrollment: added % matching MAED-TVLE students', v_added;
 END $$;

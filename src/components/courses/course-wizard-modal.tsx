@@ -3,7 +3,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { type Course, createCourse, updateCourse } from "@/lib/lms";
 import { Modal, Badge, courseStyle } from "@/components/lms";
-import { COURSE_LEVELS, educationLevelOf, collegeYearOf, levelLabel } from "@/lib/course-levels";
+import {
+  COURSE_LEVELS,
+  educationLevelOf,
+  collegeYearOf,
+  courseLevelLabel,
+} from "@/lib/course-levels";
 import { CED_PROGRAMS, CED_DEPARTMENT_LABELS } from "@/lib/ced-programs";
 import {
   EMPTY_COURSE,
@@ -222,7 +227,12 @@ export function CourseWizardModal({
         <span className="truncate text-sm font-semibold">
           {courseForm.title.trim() || "Untitled course"}
         </span>
-        <Badge tone="indigo">{levelLabel(parseInt(courseForm.grade_level) || 10)}</Badge>
+        <Badge tone="indigo">
+          {courseLevelLabel({
+            grade_level: parseInt(courseForm.grade_level) || 10,
+            program: courseForm.program,
+          })}
+        </Badge>
         {courseForm.code && (
           <span className="text-xs font-medium text-muted-foreground">{courseForm.code}</span>
         )}
