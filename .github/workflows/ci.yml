@@ -56,6 +56,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: npx playwright install --with-deps chromium
       - run: bun run db:migrate
+      - run: bun run scripts/verify-ite241-migrations.ts
       - run: bun run test:e2e
       - name: Upload browser failure diagnostics
         if: failure()

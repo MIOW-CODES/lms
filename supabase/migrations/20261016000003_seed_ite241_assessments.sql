@@ -133,9 +133,9 @@ BEGIN
   -- Seed the ITE241 first-quarter TOS only when there is no teacher-authored row.
   IF NOT EXISTS (SELECT 1 FROM public.tos WHERE course_id=v_course AND quarter=1) THEN
     SELECT coalesce(jsonb_agg(jsonb_build_object(
-        'topic', title, 'no_of_items', question_count, 'cognitive_level', 'understanding',
-        'quiz_id', id, 'note', CASE WHEN title='1st Quarter Exam' THEN '50 multiple-choice items · 60 minutes' WHEN title LIKE 'Essay Assessment%' THEN '2 essay items · 10 minutes' ELSE '20 items · 10 minutes' END
-      ) ORDER BY ord),'[]'::jsonb)
+        'topic', q.title, 'no_of_items', q.question_count, 'cognitive_level', 'understanding',
+        'quiz_id', q.id, 'note', CASE WHEN q.title='1st Quarter Exam' THEN '50 multiple-choice items · 60 minutes' WHEN q.title LIKE 'Essay Assessment%' THEN '2 essay items · 10 minutes' ELSE '20 items · 10 minutes' END
+      ) ORDER BY x.ord),'[]'::jsonb)
       INTO v_items
       FROM (VALUES (1,v_q1),(2,v_q2),(3,v_q3),(4,v_essay),(5,v_exam)) AS x(ord,id)
       JOIN public.quizzes q ON q.id=x.id;
