@@ -181,9 +181,14 @@ interface ArduinoLabProps {
    * circuit changes (used by worksheet answer boxes for the keyword grader).
    */
   onConnectionsChange?: (summary: string) => void;
+  /** Override the initial task; worksheet embeds remain empty until selected. */
+  initialTask?: ArduinoTask | null;
 }
 
-export function ArduinoLab({ onConnectionsChange }: ArduinoLabProps = {}) {
+export function ArduinoLab({
+  onConnectionsChange,
+  initialTask = ARDUINO_TASKS.find((task) => task.id === "button-led") ?? null,
+}: ArduinoLabProps = {}) {
   const [selectedSketch, setSelectedSketch] = useState(0);
   const [code, setCode] = useState(STARTER_SKETCHES[0]?.code ?? "");
   const [logs, setLogs] = useState<string[]>([]);
@@ -196,9 +201,7 @@ export function ArduinoLab({ onConnectionsChange }: ArduinoLabProps = {}) {
   // Seeded task with a dashed ghost wiring guide (wires are still placed manually)
   // Start with the shorter button + LED activity so the workbench is useful
   // immediately instead of opening as an empty canvas.
-  const [activeTask, setActiveTask] = useState<ArduinoTask | null>(
-    ARDUINO_TASKS.find((task) => task.id === "button-led") ?? null,
-  );
+  const [activeTask, setActiveTask] = useState<ArduinoTask | null>(initialTask);
   // Student's manual wiring — feeds the simulator netlist + connections summary
   const [circuit, setCircuit] = useState<{ parts: CircuitPart[]; wires: CanvasWire[] }>({
     parts: [],

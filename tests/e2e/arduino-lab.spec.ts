@@ -290,8 +290,10 @@ describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
     test.setTimeout(TEST_TIMEOUT);
     const errors = collectConsoleErrors(page);
     await page.goto("/dashboard/student/arduino");
-    await expect(page.getByText("Arduino Uno Virtual Lab")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText("Arduino Practice Lab")).toBeVisible({ timeout: 20000 });
 
+    // Turn off the default beginner task for the manual-palette wiring scenario.
+    await page.locator('[data-testid="task-chip-button-led"]').click();
     // Manual wiring first — parts placed from the palette, wires by hand
     await wireLedWithResistor(page);
     await runSketch(page, BLINK_BOTH_SKETCH);
@@ -327,7 +329,7 @@ describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
     });
 
     await chipB.click();
-    await expect(page.locator('[data-testid="task-hint"]')).toContainText("Task B");
+    await expect(page.locator('[data-testid="task-hint"]')).toContainText("Button and LED");
     await page.screenshot({ path: "/tmp/opencode/ard-lab-task-b.png" });
     await shotWorkbench(page, "/tmp/opencode/ard-lab-task-b-workbench.png");
     await testInfo.attach("ard-lab-ghost-guide", {
@@ -340,7 +342,7 @@ describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
     test.setTimeout(TEST_TIMEOUT);
     const errors = collectConsoleErrors(page);
     await page.goto("/dashboard/student/arduino");
-    await expect(page.getByText("Arduino Uno Virtual Lab")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText("Arduino Practice Lab")).toBeVisible({ timeout: 20000 });
 
     // Seed a task (which shows dashed ghost guides) and add a palette LED
     await page.locator('[data-testid="task-chip-traffic-light"]').click();
