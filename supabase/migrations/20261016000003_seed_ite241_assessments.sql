@@ -1,5 +1,6 @@
 -- ITE241 Advanced Digital Electronics — same source coverage as IT10.
--- Quizzes: 20 drawn items / 10 minutes. Exam: 50 MC items / 60 minutes.
+-- Quizzes: 20 drawn items / 10 minutes. Essay: 2 prompts / 10 minutes.
+-- Exam: 50 MC items / 60 minutes.
 -- Existing ITE241 questions are retained; exam items are filtered to MC and
 -- the assessment configuration is normalized without touching other courses.
 DO $$
@@ -9,6 +10,7 @@ DECLARE
   v_q1 uuid;
   v_q2 uuid;
   v_q3 uuid;
+  v_essay uuid;
   v_question_ids uuid[];
   v_items jsonb;
 BEGIN
@@ -40,6 +42,23 @@ BEGIN
     INSERT INTO public.quizzes(course_id,title,duration_minutes,allow_retake,max_attempts,retake_score_policy,question_count,opens_at,closes_at)
     VALUES(v_course,'Quiz — Programming with Arduino',10,true,0,'highest_score',20,NULL,now()+interval '14 days') RETURNING id INTO v_q3;
   ELSE UPDATE public.quizzes SET duration_minutes=10,question_count=20 WHERE id=v_q3; END IF;
+
+  SELECT id INTO v_essay FROM public.quizzes WHERE course_id=v_course AND title='Essay Assessment — Electronics Applications' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1;
+  IF v_essay IS NULL THEN
+    INSERT INTO public.quizzes(course_id,title,duration_minutes,allow_retake,max_attempts,retake_score_policy,question_count,opens_at,closes_at)
+    VALUES(v_course,'Essay Assessment — Electronics Applications',10,true,0,'highest_score',2,NULL,now()+interval '14 days') RETURNING id INTO v_essay;
+  ELSE UPDATE public.quizzes SET duration_minutes=10,question_count=2 WHERE id=v_essay; END IF;
+
+  -- Essay answer keys use the existing case-insensitive keyword rubric parser.
+  INSERT INTO public.quiz_questions(quiz_id,question,options,correct_answer,position,lab_task,required)
+  SELECT v_essay,prompt,'[]'::jsonb,rubric,position,false,true
+    FROM (VALUES
+      (1,'Explain how an Arduino sensor and an actuator work together in a practical circuit. Give one example and describe the role of the program.',
+          'Rubric: | Keywords: input = sensor, input, read; processing = program, code, logic; output = actuator, output, response'),
+      (2,'Describe how you would identify a resistor value from its color bands and verify that value with a multimeter.',
+          'Rubric: | Keywords: bands = color, band, digit; calculation = multiplier, tolerance, ohm, value; verification = multimeter, measure, resistance')
+    ) AS prompts(position,prompt,rubric)
+   WHERE NOT EXISTS (SELECT 1 FROM public.quiz_questions existing WHERE existing.quiz_id=v_essay AND existing.position=prompts.position);
 
   -- Mirror the existing IT10 source banks so ITE241 quizzes are immediately
   -- usable and keep identical material coverage. Preserve any authored target
@@ -115,10 +134,10 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.tos WHERE course_id=v_course AND quarter=1) THEN
     SELECT coalesce(jsonb_agg(jsonb_build_object(
         'topic', title, 'no_of_items', question_count, 'cognitive_level', 'understanding',
-        'quiz_id', id, 'note', CASE WHEN title='1st Quarter Exam' THEN '50 multiple-choice items · 60 minutes' ELSE '20 items · 10 minutes' END
+        'quiz_id', id, 'note', CASE WHEN title='1st Quarter Exam' THEN '50 multiple-choice items · 60 minutes' WHEN title LIKE 'Essay Assessment%' THEN '2 essay items · 10 minutes' ELSE '20 items · 10 minutes' END
       ) ORDER BY ord),'[]'::jsonb)
       INTO v_items
-      FROM (VALUES (1,v_q1),(2,v_q2),(3,v_q3),(4,v_exam)) AS x(ord,id)
+      FROM (VALUES (1,v_q1),(2,v_q2),(3,v_q3),(4,v_essay),(5,v_exam)) AS x(ord,id)
       JOIN public.quizzes q ON q.id=x.id;
     INSERT INTO public.tos(course_id,quarter,title,items)
     VALUES(v_course,1,'ITE241 — First Quarter Table of Specifications',v_items);
