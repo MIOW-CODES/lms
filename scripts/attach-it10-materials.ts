@@ -18,7 +18,7 @@
  * is NOT used: the file store lives in Supabase Storage, so the same service
  * role client performs both the storage upload and the attachments update.
  *
- * Source files (repo root, plain filenames — see QUIZ_MATERIALS below):
+ * Source files (`docs/IT10/source-materials/` — see QUIZ_MATERIALS below):
  *   Arduino Part 1 - Classroom.pdf
  *   Arduino Part 2.pdf
  *   Resistor Color Code.pdf
@@ -94,23 +94,25 @@ const NEVER_ATTACH = new Set([
 ]);
 
 // ── Quiz title → source files (files live at the repo root) ────────────────
+const SOURCE_DIR = "docs/IT10/source-materials";
+const source = (name: string) => path.join(SOURCE_DIR, name);
 const QUIZ_MATERIALS: Array<{ quiz: string; files: string[] }> = [
-  { quiz: "Quiz — Arduino Part 1", files: ["Arduino Part 1 - Classroom.pdf"] },
-  { quiz: "Quiz — Arduino Part 2", files: ["Arduino Part 2.pdf"] },
-  { quiz: "Quiz — Resistor Color Code", files: ["Resistor Color Code.pdf"] },
-  { quiz: "Quiz — Programming with Arduino", files: ["Programming with Arduino.pdf"] },
+  { quiz: "Quiz — Arduino Part 1", files: [source("Arduino Part 1 - Classroom.pdf")] },
+  { quiz: "Quiz — Arduino Part 2", files: [source("Arduino Part 2.pdf")] },
+  { quiz: "Quiz — Resistor Color Code", files: [source("Resistor Color Code.pdf")] },
+  { quiz: "Quiz — Programming with Arduino", files: [source("Programming with Arduino.pdf")] },
   {
     quiz: "Quiz — Lab Activity 1 (Blinking LED)",
-    files: ["Lab Activity 1_Blinking LED (WordFile_PDF) - Classroom.pdf"],
+    files: [source("Lab Activity 1_Blinking LED (WordFile_PDF) - Classroom.pdf")],
   },
   {
     quiz: "1st Quarter Exam",
     // Review materials only — the exam itself / answer key are NEVER attached.
     files: [
-      "Arduino Part 1 - Classroom.pdf",
-      "Arduino Part 2.pdf",
-      "Resistor Color Code.pdf",
-      "Programming with Arduino.pdf",
+      source("Arduino Part 1 - Classroom.pdf"),
+      source("Arduino Part 2.pdf"),
+      source("Resistor Color Code.pdf"),
+      source("Programming with Arduino.pdf"),
     ],
   },
 ];
@@ -223,6 +225,7 @@ async function main() {
       let current = attachmentList(quiz.attachments);
 
       for (const fileName of entry.files) {
+        const displayName = path.basename(fileName);
         // Hard rule: answer key / live exam / TOS files never get attached.
         if (NEVER_ATTACH.has(path.basename(fileName))) {
           plan.push({
@@ -234,7 +237,7 @@ async function main() {
           continue;
         }
 
-        const existing = current.find((a) => a?.name === fileName.slice(0, 200));
+        const existing = current.find((a) => a?.name === displayName.slice(0, 200));
         if (existing) {
           plan.push({ fileName, action: "skip-existing", detail: "already attached" });
           totalSkipped++;
@@ -295,7 +298,7 @@ async function main() {
           if (upErr) throw new Error(`Storage upload failed (${upErr.message})`);
 
           const attachment: Attachment = {
-            name: fileName.slice(0, 200),
+            name: displayName.slice(0, 200),
             url: materialUrlForPath(objectPath),
             size: buffer.byteLength,
             type: contentType,

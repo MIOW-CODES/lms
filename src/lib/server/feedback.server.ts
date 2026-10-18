@@ -3,6 +3,7 @@ import { db } from "@/integrations/db/client.server";
 import { requireAdmin, requireSession } from "@/lib/server/auth.server";
 import { schemas } from "@/lib/server/schemas.server";
 import { unwrap } from "@/lib/server/utils.server";
+import { dispatchNotification } from "@/lib/server/notifications.server";
 
 export type FeedbackReport = {
   id: string;
@@ -74,6 +75,15 @@ export async function createFeedbackReport(
       )
       .single(),
   );
+  await dispatchNotification({
+    type: "feedback",
+    title: `New issue report: ${input.subject.trim()}`,
+    body: `${input.category}: ${input.description.trim()}\nReported by: ${caller.email ?? caller.id}`,
+    target_audience: "admins",
+  }).catch((err) => {
+    console.error("[feedback] Failed to dispatch notification:", err);
+    return null;
+  });
   return withReporter([row])[0]!;
 }
 
