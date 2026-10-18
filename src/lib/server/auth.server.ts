@@ -11,7 +11,7 @@ import { COOKIE_SESSION_MARKER } from "@/lib/session";
 export const SESSION_COOKIE_NAME =
   process.env["NODE_ENV"] === "production" ? "__Host-miow_session" : "miow_session";
 
-function resolveSessionToken(token: string): string {
+export function resolveSessionToken(token: string): string {
   const resolved = token === COOKIE_SESSION_MARKER ? getCookie(SESSION_COOKIE_NAME) : token;
   if (!resolved) throw new Error("Unauthorized");
   return resolved;

@@ -11,7 +11,7 @@
 
 import { assertTestAccount, applyRoleView, type RoleView } from "@/lib/role-view";
 import { sessionJti, setSessionRoleView } from "@/lib/server/sessions.server";
-import { requireSession } from "@/lib/server/auth.server";
+import { requireSession, resolveSessionToken } from "@/lib/server/auth.server";
 import type { SafeProfile } from "@/lib/server/profiles.server";
 
 /**
@@ -20,6 +20,9 @@ import type { SafeProfile } from "@/lib/server/profiles.server";
  * login always starts back at the real role (new session row → NULL view).
  */
 export async function setTestRoleView(token: string, view: RoleView): Promise<SafeProfile> {
+  // Resolve the HttpOnly cookie once so validation and the JTI update use
+  // the same signed token, rather than parsing the browser's cookie marker.
+  token = resolveSessionToken(token);
   const profile = await requireSession(token);
   // Hard allowlist guard — the fn throws for every non-test account.
   assertTestAccount(profile.email);
