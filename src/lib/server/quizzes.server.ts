@@ -17,7 +17,7 @@ import {
   isAssessmentEditable,
   AvailabilityError,
 } from "@/lib/server/availability";
-import { isTestStudent } from "@/lib/role-view";
+import { isTestAccount, isTestStudent } from "@/lib/role-view";
 import { schemas } from "@/lib/server/schemas.server";
 import type { IntegrityEventType } from "@/lib/integrity";
 import type { ProfileRole } from "@/lib/server/db-types";
@@ -118,7 +118,7 @@ export async function getQuizPublic(id: string, studentId?: string) {
         extraAttemptsFor(id, profile.id),
       ]);
       const ceiling = attemptCeiling(quiz, extra);
-      if (ceiling != null && attempts.length >= ceiling) {
+      if (!isTestAccount(profile.email) && ceiling != null && attempts.length >= ceiling) {
         throw new Error(
           "This worksheet has already been submitted. Ask your teacher to grant a retake.",
         );
@@ -617,7 +617,7 @@ export async function submitQuizAttempt(
     extraAttemptsFor(quiz_id, caller.id),
   ]);
   const ceiling = attemptCeiling(quiz, extra);
-  if (ceiling != null && attempts.length >= ceiling) {
+  if (!isTestAccount(caller.email) && ceiling != null && attempts.length >= ceiling) {
     return {
       ok: false as const,
       reason: (!quiz.allow_retake && extra === 0 ? "retakes_disabled" : "max_attempts") as
@@ -744,7 +744,11 @@ export async function quizAttemptInfo(quiz_id: string, token: string) {
     retake_score_policy: quiz.retake_score_policy,
     attempts_used: attempts.length,
     attempts_allowed: ceiling,
-    can_retake: attempts.length === 0 || ceiling == null || attempts.length < ceiling,
+    can_retake:
+      isTestAccount(caller.email) ||
+      attempts.length === 0 ||
+      ceiling == null ||
+      attempts.length < ceiling,
     effective_score: isScoreReleased ? (eff?.score ?? null) : null,
     effective_total: isScoreReleased ? (eff?.total ?? null) : null,
     extra_attempts: extra,
@@ -795,7 +799,11 @@ export async function listMyQuizSummaries(token: string) {
       quiz_id: quiz.id,
       attempts_used: list.length,
       attempts_allowed: ceiling,
-      can_retake: list.length === 0 || ceiling == null || list.length < ceiling,
+      can_retake:
+        isTestAccount(caller.email) ||
+        list.length === 0 ||
+        ceiling == null ||
+        list.length < ceiling,
       effective_score: isScoreReleased ? (eff?.score ?? null) : null,
       effective_total: isScoreReleased ? (eff?.total ?? null) : null,
       score_released: isScoreReleased,
