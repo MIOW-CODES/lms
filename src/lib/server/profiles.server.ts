@@ -27,6 +27,14 @@ export function isValidPinFormat(pin: string): boolean {
   return PIN_FORMAT_RE.test(pin);
 }
 
+/** Temporary, administrator-issued credentials may be non-numeric until changed. */
+export function canVerifyPinCandidate(
+  pin: string,
+  pinMustChange: boolean | null | undefined,
+): boolean {
+  return isValidPinFormat(pin) || pinMustChange === true;
+}
+
 /** All roles must replace an explicitly issued temporary PIN. */
 export function pinGateRequiredForRole(role: ProfileRole): boolean {
   return role === "student" || role === "teacher" || role === "admin";
@@ -92,7 +100,7 @@ async function verifyPin(p: ProfileRow, pin: string): Promise<boolean> {
     throw err;
   }
   let ok = false;
-  if (!/^\d{4,8}$/.test(pin)) return false;
+  if (!canVerifyPinCandidate(pin, p.pin_must_change)) return false;
   if (typeof p.pin_hash === "string" && p.pin_hash) {
     try {
       ok = await bcrypt.compare(pin, p.pin_hash);

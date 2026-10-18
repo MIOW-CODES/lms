@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { Pool } from "pg";
 
 // This regression deliberately uses the local IT10 tester: its historical
 // deadlines must never be interpreted before its test-account profile loads.
@@ -25,6 +26,16 @@ describeLocal("IT10 worksheet startup", () => {
       page,
     }) => {
       test.setTimeout(120_000);
+      // This suite runs only against an explicitly local database. Normalize
+      // the disposable IT10 tester credential so it follows current PIN policy.
+      const pool = new Pool({ connectionString: databaseUrl });
+      try {
+        await pool.query(
+          "UPDATE profiles SET pin = '1010', pin_hash = NULL, pin_must_change = false WHERE username = 'it10' OR student_id = 'it10'",
+        );
+      } finally {
+        await pool.end();
+      }
       await page.setViewportSize(viewport);
       await page.goto("/auth");
       // Authenticate through the same RPC as the login UI. This awaits module
@@ -32,7 +43,7 @@ describeLocal("IT10 worksheet startup", () => {
       await page.evaluate(async () => {
         const modulePath = "/src/lib/lms.ts";
         const lms = await import(modulePath);
-        const result = await lms.pinLogin("it10", "it10");
+        const result = await lms.pinLogin("it10", "1010");
         if (!result.ok) throw new Error("Local IT10 tester login failed");
         lms.saveSession(result.profile);
       });

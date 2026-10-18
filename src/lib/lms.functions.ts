@@ -117,7 +117,12 @@ export const updateProfileFn = createServerFn({ method: "POST" })
 // rate limiting as sign-in applies on the server.
 export const changeOwnPinFn = createServerFn({ method: "POST" })
   .validator((data) => parseChangeOwnPinInput(data))
-  .handler(async ({ data }) => changeOwnPin(data.token, data.new_pin, data.current_pin ?? null));
+  .handler(async ({ data }) => {
+    const token =
+      data.token === COOKIE_SESSION_MARKER ? getCookie(SESSION_COOKIE_NAME) : data.token;
+    if (!token) throw new Error("Unauthorized");
+    return changeOwnPin(token, data.new_pin, data.current_pin ?? null);
+  });
 
 // User removal is ADMIN-only (teachers cannot remove accounts) and runs
 // as a soft delete with self-deletion and last-admin safeguards.

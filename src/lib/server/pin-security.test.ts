@@ -5,6 +5,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   isValidPinFormat,
+  canVerifyPinCandidate,
   pinGateRequiredForRole,
   hasPinWrite,
   safeProfile,
@@ -114,5 +115,18 @@ describe("isValidPinFormat — PIN validation rules", () => {
     expect(isValidPinFormat("１２３４")).toBe(false);
     expect(isValidPinFormat("12.4")).toBe(false);
     expect(isValidPinFormat("-1234")).toBe(false);
+  });
+});
+
+describe("canVerifyPinCandidate — temporary credential compatibility", () => {
+  it("permits a non-numeric temporary credential only while change is required", () => {
+    expect(canVerifyPinCandidate("2026-0099", true)).toBe(true);
+    expect(canVerifyPinCandidate("it10", true)).toBe(true);
+    expect(canVerifyPinCandidate("it10", false)).toBe(false);
+    expect(canVerifyPinCandidate("it10", null)).toBe(false);
+  });
+
+  it("continues to accept valid numeric PINs", () => {
+    expect(canVerifyPinCandidate("1234", false)).toBe(true);
   });
 });
