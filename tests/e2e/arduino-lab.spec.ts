@@ -287,9 +287,7 @@ describeLocalDB("Arduino manual wiring (Tinkercad-style)", () => {
     test.setTimeout(TEST_TIMEOUT);
     const errors = collectConsoleErrors(page);
     await page.goto("/dashboard/student/arduino");
-    await expect(page.getByRole("heading", { name: "Arduino Lab" })).toBeVisible({
-      timeout: 20000,
-    });
+    await expect(page.locator("h1")).toHaveText("Arduino Lab", { timeout: 20000 });
 
     // Turn off the default beginner task for the manual-palette wiring scenario.
     await page.locator('[data-testid="task-chip-button-led"]').click();
@@ -341,9 +339,7 @@ describeLocalDB("Arduino manual wiring (Tinkercad-style)", () => {
     test.setTimeout(TEST_TIMEOUT);
     const errors = collectConsoleErrors(page);
     await page.goto("/dashboard/student/arduino");
-    await expect(page.getByRole("heading", { name: "Arduino Lab" })).toBeVisible({
-      timeout: 20000,
-    });
+    await expect(page.locator("h1")).toHaveText("Arduino Lab", { timeout: 20000 });
 
     // Seed a task (which shows dashed ghost guides) and add a palette LED
     await page.locator('[data-testid="task-chip-traffic-light"]').click();
