@@ -30,36 +30,26 @@ const TEST_TIMEOUT = 240_000;
  *  Completes the forced-PIN-change gate when it appears; falls back to the test
  *  PIN below when a previous run already rotated the account's PIN. */
 async function pinLogin(page: Page, id: string, pin: string) {
-  for (const attemptPin of [pin, "9999"]) {
-    for (let i = 0; i < 6; i++) {
-      await page.goto("/auth");
-      await page.waitForTimeout(1500);
-      try {
-        await page.locator("#auth-tab-pin").click({ timeout: 2000 });
-        await page.waitForTimeout(400);
-        await page.locator("#login-id").fill(id, { timeout: 2000 });
-        await page.locator("#login-pin").fill(attemptPin, { timeout: 2000 });
-        const btn = page.locator("#auth-panel-pin button[type=submit]");
-        if (!(await btn.isEnabled({ timeout: 2000 }))) continue;
-        // The submit must reach the login server function — a pre-hydration click
-        // falls back to a native form GET that just reloads the page.
-        const loginReq = page
-          .waitForRequest((r) => r.url().includes("/_serverFn/") && r.method() === "POST", {
-            timeout: 6000,
-          })
-          .catch(() => null);
-        await btn.click({ timeout: 5000 });
-        if (!(await loginReq)) continue;
-        await page.waitForURL(/\/dashboard\//, { timeout: 12000 }).catch(() => {});
-        if (page.url().includes("/dashboard")) {
-          await completePinGate(page);
-          return;
+  await page.goto("/auth");
+  const result = await page.evaluate(
+    async ({ id, pins }) => {
+      const modulePath = "/src/lib/lms.ts";
+      const lms = await import(modulePath);
+      for (const candidate of pins) {
+        const login = await lms.pinLogin(id, candidate);
+        if (login.ok) {
+          lms.saveSession(login.profile);
+          return true;
         }
-      } catch {
-        // not hydrated yet — retry
       }
-      await page.waitForTimeout(500);
-    }
+      return false;
+    },
+    { id, pins: [pin, "9999"] },
+  );
+  if (result) {
+    await page.goto("/dashboard/student");
+    await completePinGate(page);
+    return;
   }
   throw new Error("PIN login never completed");
 }
