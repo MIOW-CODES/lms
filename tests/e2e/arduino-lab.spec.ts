@@ -61,7 +61,7 @@ async function pinLogin(page: Page, id: string, pin: string) {
  *  blocks until a private PIN is chosen. Set the test PIN and proceed. */
 async function completePinGate(page: Page, newPin = "9999") {
   const gate = page.getByTestId("pin-gate");
-  if (!(await gate.isVisible({ timeout: 5000 }).catch(() => false))) return;
+  await gate.waitFor({ state: "visible", timeout: 20000 });
   await page.getByTestId("pin-gate-new").fill(newPin);
   await page.getByTestId("pin-gate-confirm").fill(newPin);
   await page.getByTestId("pin-gate-submit").click();
@@ -210,6 +210,22 @@ describeLocalDB("Arduino manual wiring (Tinkercad-style)", () => {
       await pool.query(
         `UPDATE public.quizzes
             SET question_count = 0
+          WHERE deleted_at IS NULL
+            AND title = 'Quiz — Arduino Part 2'
+            AND course_id = (SELECT id FROM public.courses WHERE code = 'IT10')`,
+      );
+    } finally {
+      await pool.end();
+    }
+  });
+
+  test.afterAll(async () => {
+    if (!databaseUrl || !localDatabase) return;
+    const pool = new Pool({ connectionString: databaseUrl });
+    try {
+      await pool.query(
+        `UPDATE public.quizzes
+            SET question_count = 20
           WHERE deleted_at IS NULL
             AND title = 'Quiz — Arduino Part 2'
             AND course_id = (SELECT id FROM public.courses WHERE code = 'IT10')`,
