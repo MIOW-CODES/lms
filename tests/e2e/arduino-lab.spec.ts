@@ -13,15 +13,17 @@ import { Pool } from "pg";
  *  - the Arduino Lab route shows the seeded task chips with a dashed ghost
  *    wiring guide
  *
- * Requires a real database session (prod Supabase envs are fine).
+ * Uses a local seed account so the test can run without touching remote data.
  *
  * NOTE: the login rate limiter allows only 5 attempts / 15 min per account,
  * so authentication happens ONCE per worker (worker-scoped storage state)
  * and every test reuses that session.
  */
 
-const describeRealDB =
-  process.env.PLAYWRIGHT_REAL_DB || process.env.DATABASE_URL ? base.describe : base.describe.skip;
+const databaseUrl = process.env["DATABASE_URL"];
+const localDatabase =
+  databaseUrl && ["localhost", "127.0.0.1", "::1"].includes(new URL(databaseUrl).hostname);
+const describeLocalDB = localDatabase ? base.describe : base.describe.skip;
 
 const TEST_TIMEOUT = 240_000;
 
@@ -73,11 +75,28 @@ const test = base.extend<
 >({
   sessionState: [
     async ({ browser }, provide) => {
+      if (!databaseUrl || !localDatabase)
+        throw new Error("Arduino E2E setup requires the disposable local test database");
+      const pool = new Pool({ connectionString: databaseUrl });
+      try {
+        // Later migrations intentionally defer the student PIN gate. Restore
+        // this one seeded account to the documented temporary-ID fixture and
+        // clear auth attempts left by preceding tests in this local DB only.
+        await pool.query("DELETE FROM auth_rate_limits");
+        const seededStudent = await pool.query(
+          "UPDATE profiles SET pin = $1, pin_hash = NULL, pin_must_change = TRUE, failed_login_attempts = 0, locked_until = NULL WHERE student_id = $1",
+          ["2026-0099"],
+        );
+        if (seededStudent.rowCount !== 1)
+          throw new Error("Arduino E2E seed student 2026-0099 was not found");
+      } finally {
+        await pool.end();
+      }
       const ctx = await browser.newContext({
         baseURL: process.env["PLAYWRIGHT_BASE_URL"] ?? "http://localhost:3000",
       });
       const page = await ctx.newPage();
-      // Student 2026-0099 — PIN is the student ID (student_pin_is_id migration)
+      // The disposable fixture models student-ID temporary PIN onboarding.
       await pinLogin(page, "2026-0099", "2026-0099");
       await page.waitForURL(/\/dashboard\/student/, { timeout: 30000 });
       const state = await ctx.storageState();
@@ -157,7 +176,7 @@ function collectConsoleErrors(page: Page): string[] {
   return errors;
 }
 
-describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
+describeLocalDB("Arduino manual wiring (Tinkercad-style)", () => {
   // IT10 assessments are date-gated for production (Open Fri 2026-10-16
   // 08:00–10:00 Asia/Manila). The e2e DB is built from the same migrations, so
   // the worksheet under test would be unreachable ("not yet open"). Open the
