@@ -163,6 +163,8 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
   const [loadingAttempt, setLoadingAttempt] = useState(true);
   const [result, setResult] = useState<QuizSuccess | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const finishRef = useRef<(() => Promise<void>) | null>(null);
+  const warnedAttemptRef = useRef<string | null>(null);
   const attemptLoadRef = useRef(0);
   const savedTimerRef = useRef<Map<string, number>>(new Map());
   const savedAnswersRef = useRef<Map<string, Record<string, string>>>(new Map());
@@ -192,7 +194,22 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
   }, [taking]);
 
   // Anti-cheat: detect tab switches / devtools / paste during active assessment
-  const { tabSwitches, switchCount, counts, showFlash, flashType } = useAntiCheat(taking);
+  const integrityActive =
+    taking && readyQuizId === activeId && !loadingAttempt && questions.length > 0;
+  const handleFirstIntegrityEvent = useCallback(
+    (event: { type: Parameters<typeof integrityLabel>[0] }) => {
+      toast.warning("Integrity rule triggered", {
+        description: `${integrityLabel(event.type)} detected. Your worksheet is being submitted automatically.`,
+        duration: 6000,
+      });
+      void finishRef.current?.();
+    },
+    [],
+  );
+  const { tabSwitches, switchCount, counts, showFlash, flashType } = useAntiCheat(
+    integrityActive,
+    handleFirstIntegrityEvent,
+  );
   // Hard lock while taking: fullscreen + input blocking (installed PWA kiosk).
   // The exam demand joins the app-wide kiosk lockdown through the single
   // shared activation (LockdownProvider in the student layout) so the two
@@ -311,6 +328,24 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
   }, [activeId, beginAttempt, profile?.id]);
 
   useEffect(() => {
+    if (
+      activeId &&
+      readyQuizId === activeId &&
+      !loadingAttempt &&
+      !result &&
+      warnedAttemptRef.current !== activeId
+    ) {
+      warnedAttemptRef.current = activeId;
+      toast.warning("Before you begin", {
+        description:
+          "Keep this worksheet tab focused. Leaving the tab, pasting, opening developer tools, or exiting fullscreen triggers one warning and submits your attempt automatically.",
+        duration: 9000,
+      });
+    }
+    if (result) warnedAttemptRef.current = null;
+  }, [activeId, loadingAttempt, readyQuizId, result]);
+
+  useEffect(() => {
     if (!activeId || readyQuizId !== activeId || result || secondsLeft == null || secondsLeft <= 0)
       return;
     // Persist remaining time so closing/reopening or reload preserves it
@@ -341,7 +376,6 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
     }
   }, [result, activeId]);
 
-  const finishRef = useRef<(() => Promise<void>) | null>(null);
   const submittedRef = useRef(false);
 
   useEffect(() => {

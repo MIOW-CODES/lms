@@ -13,7 +13,7 @@
  * - Uses both `blur` and `visibilitychange` for maximum coverage
  * - Stores timestamps in a ref (not state) to avoid re-renders; only aggregate
  *   counts + the last event live in state so the banner can react
- * - Never blocks the student or interrupts their flow — it only records + warns
+ * - Records every event and lets the caller decide how to respond to the first one
  * - `clear()` lets a caller reset between attempts
  *
  * The event union + display helpers live in `@/lib/integrity` so server modules
@@ -71,7 +71,10 @@ const MAX_EVENTS = 500;
  *
  * @param active - Whether an assessment is currently in progress
  */
-export function useAntiCheat(active: boolean): AntiCheatState {
+export function useAntiCheat(
+  active: boolean,
+  onFirstEvent?: (event: IntegrityEvent) => void,
+): AntiCheatState {
   const eventsRef = useRef<IntegrityEvent[]>([]);
   const [count, setCount] = useState(0);
   const [counts, setCounts] = useState<Record<IntegrityEventType, number>>({ ...EMPTY_COUNTS });
@@ -80,22 +83,30 @@ export function useAntiCheat(active: boolean): AntiCheatState {
   const [flashType, setFlashType] = useState<IntegrityEventType | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const devtoolsAtRef = useRef(0);
+  const firstEventNotifiedRef = useRef(false);
 
-  const record = useCallback((type: IntegrityEventType) => {
-    const entry: IntegrityEvent = { at: Date.now(), type };
-    // Bound memory: drop the oldest events once the cap is reached.
-    if (eventsRef.current.length >= MAX_EVENTS) eventsRef.current.shift();
-    eventsRef.current.push(entry);
-    setCount(eventsRef.current.length);
-    setCounts((prev) => ({ ...prev, [type]: prev[type] + 1 }));
-    setLastType(type);
+  const record = useCallback(
+    (type: IntegrityEventType) => {
+      const entry: IntegrityEvent = { at: Date.now(), type };
+      // Bound memory: drop the oldest events once the cap is reached.
+      if (eventsRef.current.length >= MAX_EVENTS) eventsRef.current.shift();
+      eventsRef.current.push(entry);
+      if (!firstEventNotifiedRef.current) {
+        firstEventNotifiedRef.current = true;
+        onFirstEvent?.(entry);
+      }
+      setCount(eventsRef.current.length);
+      setCounts((prev) => ({ ...prev, [type]: prev[type] + 1 }));
+      setLastType(type);
 
-    // Flash for 3 seconds
-    setFlashType(type);
-    setShowFlash(true);
-    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-    flashTimerRef.current = setTimeout(() => setShowFlash(false), FLASH_MS);
-  }, []);
+      // Flash for 3 seconds
+      setFlashType(type);
+      setShowFlash(true);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = setTimeout(() => setShowFlash(false), FLASH_MS);
+    },
+    [onFirstEvent],
+  );
 
   const clear = useCallback(() => {
     eventsRef.current = [];
@@ -104,6 +115,7 @@ export function useAntiCheat(active: boolean): AntiCheatState {
     setLastType(null);
     setShowFlash(false);
     setFlashType(null);
+    firstEventNotifiedRef.current = false;
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
   }, []);
 
