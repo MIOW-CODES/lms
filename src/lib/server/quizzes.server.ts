@@ -177,6 +177,63 @@ function isGibberishAnswer(answer: string, words: string[]): boolean {
   return false;
 }
 
+/** Reject keyword stuffing while allowing natural paraphrases around the key concepts. */
+function isCoherentEssayAnswer(answer: string, words: string[]): boolean {
+  const lower = answer.toLowerCase();
+  // A readable response needs a predicate or explanatory connector; a bare
+  // list of rubric terms should not receive credit just because it hits keys.
+  const hasPredicate =
+    /\b(is|are|was|were|be|being|been|means?|causes?|allows?|helps?|shows?|makes?|uses?|involves?|includes?|because|therefore|so|which|that|when|while|by|converts?|produces?|occurs?|undergoes?|replicates?|separates?|attaches?|moves?|forms?|provides?|creates?|prevents?|supports?|enables?|absorbs?|releases?|transfers?|depends?|results?|leads?)\b/i.test(
+      lower,
+    );
+  if (!hasPredicate) return false;
+  const uniqueWords = new Set(words);
+  return uniqueWords.size >= 5;
+}
+
+function hasContextualExplanation(
+  words: string[],
+  rubric: string,
+  categories: string[][],
+): boolean {
+  const terms = (categories.flat().length ? categories.flat() : rubricConcepts(rubric)).flatMap(
+    (term) => term.split(/\s+/),
+  );
+  const isKeywordToken = (word: string) =>
+    terms.some((term) => term.length > 2 && (word === term || word.startsWith(term)));
+  const genericPredicates = new Set([
+    "cause",
+    "causes",
+    "allow",
+    "allows",
+    "help",
+    "helps",
+    "show",
+    "shows",
+    "make",
+    "makes",
+    "use",
+    "uses",
+    "involve",
+    "involves",
+    "include",
+    "includes",
+  ]);
+  const contextual = words.filter(
+    (word) => !RUBRIC_STOPWORDS.has(word) && !genericPredicates.has(word) && !isKeywordToken(word),
+  );
+  const text = words.join(" ");
+  const hasStrongPredicate =
+    /\b(convert\w*|produce\w*|occur\w*|undergo\w*|replicate\w*|separate\w*|attach\w*|move\w*|form\w*|provide\w*|create\w*|prevent\w*|support\w*|enable\w*|absorb\w*|release\w*|transfer\w*|depend\w*|result\w*|lead\w*)\b/i.test(
+      text,
+    );
+  const hasConnector =
+    /\b(and|or|because|that|which|to|in|on|for|with|during|by|as|of|into)\b/i.test(text);
+  return (
+    new Set(contextual).size >= 2 || (contextual.length >= 1 && hasStrongPredicate && hasConnector)
+  );
+}
+
 export function parseKeywordCategories(rubric: string): string[][] {
   const m = rubric.match(/\|\s*keywords?\s*:\s*(.+)$/i) ?? rubric.match(/^keywords?\s*:\s*(.+)$/i);
   if (!m) return [];
@@ -218,8 +275,9 @@ function keywordHit(answer: string, keyword: string): boolean {
 
 export function gradeEssay(answer: string, rubric: string): boolean {
   const words = essayWords(answer);
-  if (isGibberishAnswer(answer, words)) return false;
+  if (isGibberishAnswer(answer, words) || !isCoherentEssayAnswer(answer, words)) return false;
   const categories = parseKeywordCategories(rubric);
+  if (!hasContextualExplanation(words, rubric, categories)) return false;
   if (categories.length >= 2) {
     const hitCategories = categories.filter((cat) =>
       cat.some((kw) => keywordHit(answer, kw)),

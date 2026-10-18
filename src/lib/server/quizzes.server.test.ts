@@ -341,6 +341,36 @@ describe("gradeEssay", () => {
         ),
       ).toBe(true);
     });
+
+    it("rejects keyword stuffing without a readable explanation", () => {
+      expect(
+        gradeEssay(
+          "mitosis spindle chromosomes division membrane",
+          "phase = mitosis, spindle; outcome = chromosomes, division",
+        ),
+      ).toBe(false);
+      expect(
+        gradeEssay(
+          "mitosis causes spindle chromosomes division membrane",
+          "phase = mitosis, spindle; outcome = chromosomes, division",
+        ),
+      ).toBe(false);
+    });
+
+    it("accepts a concise subject-predicate explanation", () => {
+      expect(
+        gradeEssay(
+          "Photosynthesis converts light energy into chemical energy",
+          "process = photosynthesis, energy",
+        ),
+      ).toBe(true);
+      expect(
+        gradeEssay(
+          "Cell division produces identical daughter cells",
+          "outcome = division, identical cells",
+        ),
+      ).toBe(true);
+    });
   });
 
   describe("rubric concept fallback (no keyword categories)", () => {
