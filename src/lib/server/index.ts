@@ -8,6 +8,7 @@ export {
   sessionJti,
   setSessionRoleView,
   revokeSessions,
+  revokeSessionJti,
   sessionSecret,
 } from "./sessions.server";
 

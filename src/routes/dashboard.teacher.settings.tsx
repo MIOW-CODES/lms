@@ -25,12 +25,7 @@ import {
   useProfile,
   useRfidScanner,
 } from "@/components/lms";
-import {
-  findProfileByCredential,
-  updateSessionProfile,
-  updateTeacherSettings,
-  uploadAvatar,
-} from "@/lib/lms";
+import { findProfileByCredential, updateTeacherSettings, uploadAvatar } from "@/lib/lms";
 import {
   getTeacherSettings,
   logAudit,
@@ -285,9 +280,6 @@ function TeacherSettingsPage() {
         return;
       }
       await updateTeacherSettings({ pin: newPin });
-      updateSessionProfile({
-        session_token: verified.session_token ?? profile.session_token ?? "",
-      });
       setOldPin("");
       setNewPin("");
       setConfirmPin("");

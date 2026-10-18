@@ -129,3 +129,15 @@ export async function revokeSessions(profileId: string): Promise<void> {
     console.error("[sessions] JTI revoke failed:", e);
   }
 }
+
+/** Revoke only the caller's current session (used for explicit sign-out). */
+export async function revokeSessionJti(jti: string, profileId: string): Promise<void> {
+  await unwrap(
+    db
+      .from("sessions")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("jti", jti)
+      .eq("profile_id", profileId)
+      .is("revoked_at", null),
+  );
+}

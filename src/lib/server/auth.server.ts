@@ -5,6 +5,17 @@ import { unwrap } from "@/lib/server/utils.server";
 import { verifySessionToken, sessionJti } from "@/lib/server/sessions.server";
 import { getProfileById } from "@/lib/server/profiles.server";
 import { applyRoleView, isTestAccount } from "@/lib/role-view";
+import { getCookie } from "@tanstack/react-start/server";
+import { COOKIE_SESSION_MARKER } from "@/lib/session";
+
+export const SESSION_COOKIE_NAME =
+  process.env["NODE_ENV"] === "production" ? "__Host-miow_session" : "miow_session";
+
+function resolveSessionToken(token: string): string {
+  const resolved = token === COOKIE_SESSION_MARKER ? getCookie(SESSION_COOKIE_NAME) : token;
+  if (!resolved) throw new Error("Unauthorized");
+  return resolved;
+}
 
 /**
  * Verify the caller's token and load their profile. Throws if invalid.
@@ -16,6 +27,7 @@ import { applyRoleView, isTestAccount } from "@/lib/role-view";
  * (see applyRoleView). The real profiles.role never changes.
  */
 export async function requireSession(token: string, options: { allowTemporaryPin?: boolean } = {}) {
+  token = resolveSessionToken(token);
   const id = verifySessionToken(token);
   // jti revocation check — legacy tokens without jti skip DB check (compat)
   let storedRoleView: string | null = null;

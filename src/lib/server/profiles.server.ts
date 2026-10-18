@@ -2,7 +2,12 @@
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db, supabaseAdmin } from "@/integrations/db/client.server";
-import { getBucket } from "@/lib/rate-limit";
+import {
+  authRateLimitAllows,
+  clearAuthFailures,
+  consumeAuthAttempt,
+  recordAuthFailure,
+} from "@/lib/server/auth-rate-limit.server";
 import { unwrap, withoutToken } from "@/lib/server/utils.server";
 import {
   createSessionToken,
@@ -81,13 +86,13 @@ export async function findByRfid(uid: string) {
 
 async function verifyPin(p: ProfileRow, pin: string): Promise<boolean> {
   const key = `pin:${p.id ?? p.student_id ?? p.email ?? "unknown"}`;
-  const bucket = getBucket(key);
-  if (bucket.remaining === 0) {
+  if (!(await authRateLimitAllows(key))) {
     const err = new Error("Too many attempts") as HttpError;
     err.status = 429;
     throw err;
   }
   let ok = false;
+  if (!/^\d{4,8}$/.test(pin)) return false;
   if (typeof p.pin_hash === "string" && p.pin_hash) {
     try {
       ok = await bcrypt.compare(pin, p.pin_hash);
@@ -104,7 +109,8 @@ async function verifyPin(p: ProfileRow, pin: string): Promise<boolean> {
       .eq("id", p.id);
     ok = true;
   }
-  if (!ok) bucket.consume();
+  if (!ok) await recordAuthFailure(key);
+  else await clearAuthFailures(key);
   return ok;
 }
 
@@ -115,19 +121,28 @@ const LOGIN_LOCK_MINUTES = 15;
 
 async function verifySecret(p: ProfileRow, secret: string): Promise<boolean> {
   if (await verifyPin(p, secret)) return true;
-  const bucket = getBucket(`secret:${p.id ?? p.email ?? "unknown"}`);
-  if (!bucket.consume()) {
+  const key = `secret:${p.id ?? p.email ?? "unknown"}`;
+  if (!(await authRateLimitAllows(key))) {
     const err = new Error("Too many attempts") as HttpError;
     err.status = 429;
     throw err;
   }
   if (typeof p.password_hash === "string" && p.password_hash) {
     try {
-      return await bcrypt.compare(secret, p.password_hash);
+      const ok = await bcrypt.compare(secret, p.password_hash);
+      if (ok) {
+        await Promise.all([
+          clearAuthFailures(key),
+          clearAuthFailures(`pin:${p.id ?? p.student_id ?? p.email ?? "unknown"}`),
+        ]);
+      } else await recordAuthFailure(key);
+      return ok;
     } catch {
+      await recordAuthFailure(key);
       return false;
     }
   }
+  await recordAuthFailure(key);
   return false;
 }
 
@@ -135,12 +150,11 @@ export async function verifyPinLogin(login: string, secret: string) {
   const dbgS = (msg: string, data?: unknown) => {
     if (process.env["DEBUG_LOGS"] === "true") console.debug(`[auth:server] ${msg}`, data ?? "");
   };
-  dbgS("verifyPinLogin called", { login: login.trim() });
   const identifier = login.trim().replace(/[*%_]/g, "");
   if (!identifier || !secret) return { ok: false as const, reason: "invalid" as const };
 
-  const identBucket = getBucket(`login:ident:${identifier.toLowerCase()}`);
-  if (!identBucket.consume()) {
+  const identifierKey = `login:ident:${identifier.toLowerCase()}`;
+  if (!(await authRateLimitAllows(identifierKey))) {
     const err = new Error("Too many attempts") as HttpError;
     err.status = 429;
     throw err;
@@ -160,11 +174,11 @@ export async function verifyPinLogin(login: string, secret: string) {
     if (p) break;
   }
   if (!p) {
-    dbgS("profile not found", { identifier });
+    dbgS("profile not found");
+    await recordAuthFailure(identifierKey);
     return { ok: false as const, reason: "invalid" as const };
   }
   dbgS("profile found", {
-    email: p.email,
     role: p.role,
     hasPinHash: !!p.pin_hash,
     locked: !!p.locked_until,
@@ -180,14 +194,15 @@ export async function verifyPinLogin(login: string, secret: string) {
     };
   }
 
-  const profileBucket = getBucket(`login:profile:${p.id}`);
-  if (!profileBucket.consume()) {
+  const profileKey = `login:profile:${p.id}`;
+  if (!(await authRateLimitAllows(profileKey))) {
     const err = new Error("Too many attempts") as HttpError;
     err.status = 429;
     throw err;
   }
 
   if (!(await verifySecret(p, secret))) {
+    await Promise.all([recordAuthFailure(identifierKey), recordAuthFailure(profileKey)]);
     const attempts =
       (typeof p.failed_login_attempts === "number" ? p.failed_login_attempts : 0) + 1;
     const lock = attempts >= LOGIN_MAX_ATTEMPTS;
@@ -213,7 +228,12 @@ export async function verifyPinLogin(login: string, secret: string) {
       .update({ failed_login_attempts: 0, locked_until: null })
       .eq("id", p.id);
   }
-  dbgS("login success", { email: p.email, role: p.role });
+  await Promise.all([
+    clearAuthFailures(identifierKey),
+    clearAuthFailures(profileKey),
+    clearAuthFailures(`secret:${p.id ?? p.email ?? "unknown"}`),
+  ]);
+  dbgS("login success", { role: p.role });
   return { ok: true as const, profile: safeProfile(p), token: await createSessionToken(p.id) };
 }
 
@@ -240,8 +260,7 @@ export function parseChangeOwnPinInput(data: unknown) {
 export async function changeOwnPin(token: string, newPin: string, currentPin?: string | null) {
   const { requireSession } = await import("@/lib/server/auth.server");
   const caller = await requireSession(token, { allowTemporaryPin: true });
-  const bucket = getBucket(`pinchange:${caller.id}`);
-  if (!bucket.consume()) {
+  if (!(await consumeAuthAttempt(`pinchange:${caller.id}`))) {
     const err = new Error("Too many attempts") as HttpError;
     err.status = 429;
     throw err;

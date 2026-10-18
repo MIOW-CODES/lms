@@ -87,6 +87,7 @@ import {
   listFeedbackReportsFn,
   createFeedbackReportFn,
   updateFeedbackReportFn,
+  logoutFn,
   updateUserRoleFn,
   uploadAvatarFn,
   upsertGradeFn,
@@ -683,8 +684,9 @@ export function transmutedOf(
 
 import { logAudit, SESSION_KEY, type AuditEntry } from "@/lib/settings";
 import { dbg, dbgError } from "@/lib/debug";
+import { COOKIE_SESSION_MARKER } from "@/lib/session";
 
-/* ---------- Session (hardware-auth demo with signed server tokens) ---------- */
+/* ---------- Session (signed server token in an HttpOnly cookie) ---------- */
 // Same-tab change signal — the browser "storage" event only fires across
 // tabs, so same-tab saves dispatch this custom event to wake subscribers.
 const PROFILE_EVENT = "ids-lms-profile-changed";
@@ -693,8 +695,8 @@ export function loadSession(): Profile | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
     const p = raw ? (JSON.parse(raw) as Profile) : null;
-    // Sessions saved before tokens existed are invalid — force re-login.
-    if (p && !p.session_token) return null;
+    // Session credentials live in an HttpOnly cookie; the local profile is UI
+    // state only. Older token-bearing records are stripped on the next save.
     return p;
   } catch {
     return null;
@@ -702,8 +704,10 @@ export function loadSession(): Profile | null {
 }
 
 export function saveSession(p: Profile | null) {
-  if (p) localStorage.setItem(SESSION_KEY, JSON.stringify(p));
-  else localStorage.removeItem(SESSION_KEY);
+  if (p) {
+    const { session_token: _discarded, ...safeProfile } = p;
+    localStorage.setItem(SESSION_KEY, JSON.stringify(safeProfile));
+  } else localStorage.removeItem(SESSION_KEY);
   notifyProfileChanged();
 }
 
@@ -741,9 +745,15 @@ function notifyProfileChanged() {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(PROFILE_EVENT));
 }
 
-/** Signed server token for the current kiosk session (empty string if none). */
+/** Auth marker for cookie-backed sessions; returns a legacy token during migration. */
 export function sessionToken(): string {
-  return loadSession()?.session_token ?? "";
+  const profile = loadSession();
+  return profile ? (profile.session_token ?? COOKIE_SESSION_MARKER) : "";
+}
+
+/** Clear the HttpOnly session cookie and revoke the current server session. */
+export async function logout(): Promise<void> {
+  await logoutFn({ data: { token: sessionToken() || COOKIE_SESSION_MARKER } });
 }
 
 /**
@@ -755,9 +765,11 @@ export function sessionToken(): string {
  */
 export async function refreshSessionProfile(): Promise<Profile | null> {
   const current = loadSession();
-  if (!current?.session_token) return null;
+  if (!current) return null;
   try {
-    const fresh = await refreshSessionFn({ data: { token: current.session_token } });
+    const fresh = await refreshSessionFn({
+      data: { token: current.session_token ?? COOKIE_SESSION_MARKER },
+    });
     if (!fresh) return null;
     return updateSessionProfile(fresh);
   } catch (e) {
@@ -801,7 +813,7 @@ export async function setTestRoleView(view: Role): Promise<Profile | null> {
 
 export async function findProfileByRfid(uid: string): Promise<Profile | null> {
   const res = await getProfileByRfidFn({ data: { uid } });
-  return res ? { ...res.profile, session_token: res.token } : null;
+  return res ? res.profile : null;
 }
 
 export type PinLoginResult =
@@ -820,7 +832,7 @@ export async function pinLogin(login: string, secret: string): Promise<PinLoginR
     throw new Error("pinLoginFn not loaded — server function module failed to initialize");
   }
   const res = (await pinLoginFn({ data: { login, secret } })) as
-    | { ok: true; profile: Profile; token: string }
+    | { ok: true; profile: Profile }
     | {
         ok: false;
         reason: "invalid" | "locked";
@@ -831,7 +843,7 @@ export async function pinLogin(login: string, secret: string): Promise<PinLoginR
     ok: res.ok,
     reason: "reason" in res ? res.reason : undefined,
   });
-  if (res.ok) return { ok: true, profile: { ...res.profile, session_token: res.token } };
+  if (res.ok) return { ok: true, profile: res.profile };
   return res;
 }
 

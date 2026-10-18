@@ -114,6 +114,10 @@ interface DbQueryBuilder extends PromiseLike<{ data: unknown; error: DbError | n
 
 type DbLike = {
   from(table: string): DbQueryBuilder;
+  rpc(
+    name: string,
+    args?: Record<string, unknown>,
+  ): Promise<{ data: unknown; error: DbError | null }>;
 };
 
 let _db: DbLike;
@@ -447,6 +451,26 @@ function createPgCompatLayer(): DbLike {
   return {
     from(table: string) {
       return new QueryBuilder(table);
+    },
+    async rpc(name: string, args: Record<string, unknown> = {}) {
+      if (!/^[a-z_][a-z0-9_]*$/i.test(name)) {
+        return { data: null, error: { code: "INVALID_FUNCTION", message: "Invalid RPC name" } };
+      }
+      const keys = Object.keys(args);
+      const placeholders = keys.map((_, i) => `$${i + 1}`).join(", ");
+      try {
+        const result = await getPool().query(
+          `SELECT * FROM public."${name}"(${placeholders});`,
+          keys.map((key) => args[key]),
+        );
+        return { data: result.rows, error: null };
+      } catch (error) {
+        const e = error as { code?: string; message?: string };
+        return {
+          data: null,
+          error: { code: e.code ?? "DATABASE_ERROR", message: e.message ?? "RPC failed" },
+        };
+      }
     },
   };
 }

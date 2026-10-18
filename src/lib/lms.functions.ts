@@ -3,30 +3,78 @@
 // declarations so code splitting never ships runtime helpers to the client.
 //
 // Access model:
-// - Login endpoints (RFID, PIN) are public and ISSUE a signed token. They
-//   are the sole entry points — there is no demo/quick-login bypass.
+// - Login endpoints (RFID, PIN) are public and issue a signed HttpOnly cookie.
+//   They are the sole entry points — there is no demo/quick-login bypass.
 // - listAnnouncements stays public for the kiosk sign-in screen ticker; it
 //   exposes only non-sensitive, publicly displayed data.
-// - Everything else verifies the caller's signed session token server-side:
+// - Everything else verifies the caller's signed cookie session server-side
+//   (legacy tokens are accepted during migration):
 //   admin-only for console settings/role management, teacher-only for
 //   gradebook editing, staff-only for other management writes, self-or-staff
 //   for student-scoped records, any valid session for catalog reads.
 import { createServerFn } from "@tanstack/react-start";
 import * as server from "./server";
 import { changeOwnPin, parseChangeOwnPinInput } from "./server/profiles.server";
+import { deleteCookie, getCookie, setCookie } from "@tanstack/react-start/server";
+import { SESSION_COOKIE_NAME, requireSession } from "./server/auth.server";
+import { COOKIE_SESSION_MARKER } from "@/lib/session";
+
+const sessionCookieOptions = {
+  httpOnly: true,
+  secure: process.env["NODE_ENV"] === "production",
+  sameSite: "lax" as const,
+  path: "/",
+  maxAge:
+    Number(process.env["SESSION_TTL_MS"]) > 0
+      ? Math.floor(Number(process.env["SESSION_TTL_MS"]) / 1000)
+      : 43_200,
+};
 
 /* ---------- Profiles & kiosk auth (public — they issue tokens) ---------- */
 
 export const getProfileByRfidFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.rfid.parse(data))
-  .handler(async ({ data }) => server.findByRfid(data.uid));
+  .handler(async ({ data }) => {
+    const result = await server.findByRfid(data.uid);
+    if (!result) return null;
+    setCookie(SESSION_COOKIE_NAME, result.token, sessionCookieOptions);
+    return { profile: result.profile };
+  });
 
 // Unified sign-in for ALL roles: one identifier (student ID, email, or
 // username) + secret (PIN or password). Public because it ISSUES the token;
 // server-side lockout (5 attempts / 15 min) protects every account type.
 export const pinLoginFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.pinLogin.parse(data))
-  .handler(async ({ data }) => server.verifyPinLogin(data.login, data.secret));
+  .handler(async ({ data }) => {
+    const result = await server.verifyPinLogin(data.login, data.secret);
+    if (result.ok) {
+      setCookie(SESSION_COOKIE_NAME, result.token, sessionCookieOptions);
+      return { ok: true as const, profile: result.profile };
+    }
+    return result;
+  });
+
+export const logoutFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.session.parse(data))
+  .handler(async ({ data }) => {
+    const token =
+      data.token === COOKIE_SESSION_MARKER ? getCookie(SESSION_COOKIE_NAME) : data.token;
+    if (token) {
+      try {
+        const caller = await requireSession(token, { allowTemporaryPin: true });
+        const jti = server.sessionJti(token);
+        if (jti) await server.revokeSessionJti(jti, caller.id);
+      } catch {
+        // Logout should clear a stale or expired browser session as well.
+      }
+    }
+    deleteCookie(SESSION_COOKIE_NAME, {
+      path: "/",
+      secure: process.env["NODE_ENV"] === "production",
+    });
+    return { ok: true as const };
+  });
 
 /* ---------- Profile management (staff only) ---------- */
 
@@ -155,7 +203,16 @@ export const updateUserRoleFn = createServerFn({ method: "POST" })
 // permissions re-evaluate without requiring a fresh sign-in.
 export const refreshSessionFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.session.parse(data))
-  .handler(async ({ data }) => server.requireSession(data.token, { allowTemporaryPin: true }));
+  .handler(async ({ data }) => {
+    const token =
+      data.token === COOKIE_SESSION_MARKER ? getCookie(SESSION_COOKIE_NAME) : data.token;
+    if (!token) throw new Error("Unauthorized");
+    const profile = await server.requireSession(token, { allowTemporaryPin: true });
+    // One-time migration for sessions issued before the HttpOnly cookie rollout.
+    if (data.token !== COOKIE_SESSION_MARKER)
+      setCookie(SESSION_COOKIE_NAME, token, sessionCookieOptions);
+    return profile;
+  });
 
 // Test-account role view switch (allowlist-guarded). The server checks the
 // SESSION's real profile email against a hard allowlist and throws "Forbidden"
