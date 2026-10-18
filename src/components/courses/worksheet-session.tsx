@@ -69,13 +69,14 @@ function attemptLabel(used: number, allowed: number | null, next = false): strin
 
 function evaluateWorksheetExpression(expression: string): string {
   const normalized = expression.trim();
-  if (!normalized || !/^[0-9+\-*/().%\s]+$/.test(normalized))
-    return "Enter numbers and arithmetic operators only.";
+  if (!normalized || normalized.length > 160) return "Enter a calculation under 160 characters.";
   try {
-    const tokens = normalized.match(/\d+(?:\.\d+)?|[()+\-*/%]/g) ?? [];
-    if (tokens.join("") !== normalized.replace(/\s+/g, "")) return "Invalid calculation.";
+    const tokens = normalized.match(/\d+(?:\.\d+)?|[A-Za-z]+|[()+\-*/%^]/g) ?? [];
+    if (tokens.length > 80 || tokens.join("") !== normalized.replace(/\s+/g, ""))
+      return "Invalid calculation.";
     let cursor = 0;
     const primary = (): number => {
+      if (cursor > 80) throw new Error("expression too deep");
       const token = tokens[cursor++];
       if (token === "(") {
         const value = expressionValue();
@@ -86,14 +87,42 @@ function evaluateWorksheetExpression(expression: string): string {
         const value = primary();
         return token === "-" ? -value : value;
       }
-      if (!token || !/^\d/.test(token)) throw new Error("invalid token");
+      if (!token) throw new Error("invalid token");
+      if (/^[A-Za-z]+$/.test(token)) {
+        if (token === "pi") return Math.PI;
+        if (token === "e") return Math.E;
+        if (tokens[cursor++] !== "(") throw new Error("missing function parenthesis");
+        const value = expressionValue();
+        if (tokens[cursor++] !== ")") throw new Error("missing parenthesis");
+        const functions: Record<string, (value: number) => number> = {
+          abs: Math.abs,
+          cos: Math.cos,
+          ln: Math.log,
+          log: Math.log10,
+          sin: Math.sin,
+          sqrt: Math.sqrt,
+          tan: Math.tan,
+        };
+        const fn = functions[token];
+        if (!fn) throw new Error("unknown function");
+        return fn(value);
+      }
+      if (!/^\d/.test(token)) throw new Error("invalid token");
       return Number(token);
     };
+    const power = (): number => {
+      const value = primary();
+      if (tokens[cursor] === "^") {
+        cursor++;
+        return value ** power();
+      }
+      return value;
+    };
     const term = (): number => {
-      let value = primary();
+      let value = power();
       while (["*", "/", "%"].includes(tokens[cursor] ?? "")) {
         const operator = tokens[cursor++];
-        const right = primary();
+        const right = power();
         if (operator === "*") value *= right;
         else if (operator === "/") value /= right;
         else value %= right;
@@ -117,6 +146,25 @@ function evaluateWorksheetExpression(expression: string): string {
   } catch {
     return "Invalid calculation.";
   }
+}
+
+function isCalculationQuestion(question: QuizQuestionPublic | undefined): boolean {
+  if (!question) return false;
+  const text = question.question;
+  return (
+    /\b(calculate|compute|solve|determine|find|what is the value|how many|how much)\b/i.test(
+      text,
+    ) ||
+    (/\b(resistance|voltage|current|power|ohm(?:s)?|watt(?:s)?|amp(?:s)?)\b/i.test(text) &&
+      /\d/.test(text))
+  );
+}
+
+function fourthChoiceFor(question: QuizQuestionPublic): string {
+  const text = question.question.toLowerCase();
+  if (text.includes("arduino")) return "microcontroller-based";
+  if (text.includes("resistor") || text.includes("resistance")) return "wire-wound";
+  return "embedded-system";
 }
 
 // Persist timer + answers per quiz so closing/reopening or accidental reload doesn't reset progress
@@ -219,6 +267,12 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [calculatorExpression, setCalculatorExpression] = useState("");
   const [calculatorResult, setCalculatorResult] = useState<string | null>(null);
+  const currentQuestionId = questions[idx]?.id;
+  useEffect(() => {
+    setCalculatorOpen(false);
+    setCalculatorExpression("");
+    setCalculatorResult(null);
+  }, [currentQuestionId]);
   const finishRef = useRef<(() => Promise<void>) | null>(null);
   const warnedAttemptRef = useRef<string | null>(null);
   const attemptLoadRef = useRef(0);
@@ -489,8 +543,9 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
   const current = questions[idx];
   const currentOptions =
     current?.question_type === "multiple_choice" && current.options.length === 3
-      ? [...current.options, "None of the above"]
+      ? [...current.options, fourthChoiceFor(current)]
       : (current?.options ?? []);
+  const calculationQuestion = isCalculationQuestion(current);
   const answeredCount = questions.filter((q) => answers[q.id]?.trim()).length;
 
   return (
@@ -948,48 +1003,88 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
                     </div>
                   </>
                 )}
-                <div className="mt-4">
-                  <button
-                    type="button"
-                    onClick={() => setCalculatorOpen((open) => !open)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted"
-                  >
-                    <Calculator className="h-4 w-4" />{" "}
-                    {calculatorOpen ? "Hide calculator" : "Open calculator"}
-                  </button>
-                  {calculatorOpen && (
-                    <div className="mt-2 max-w-sm rounded-xl border border-border bg-muted/40 p-3">
-                      <label className="block text-xs font-semibold" htmlFor="worksheet-calculator">
-                        Calculation helper
-                      </label>
-                      <div className="mt-2 flex gap-2">
-                        <input
-                          id="worksheet-calculator"
-                          value={calculatorExpression}
-                          onChange={(e) => {
-                            setCalculatorExpression(e.target.value);
-                            setCalculatorResult(null);
-                          }}
-                          inputMode="decimal"
-                          placeholder="Example: (220 * 5) / 1000"
-                          className="h-10 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-sm"
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setCalculatorResult(evaluateWorksheetExpression(calculatorExpression))
-                          }
-                          className="rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground"
+                {calculationQuestion && (
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      onClick={() => setCalculatorOpen((open) => !open)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted"
+                    >
+                      <Calculator className="h-4 w-4" />{" "}
+                      {calculatorOpen ? "Hide calculator" : "Open calculator"}
+                    </button>
+                    {calculatorOpen && (
+                      <div className="mt-2 max-w-md rounded-xl border border-border bg-muted/40 p-3">
+                        <label
+                          className="block text-xs font-semibold"
+                          htmlFor="worksheet-calculator"
                         >
-                          Calculate
-                        </button>
+                          Scientific calculator{" "}
+                          <span className="font-normal text-muted-foreground">(radians)</span>
+                        </label>
+                        <div className="mt-2 grid grid-cols-6 gap-1">
+                          {[
+                            "sin(",
+                            "cos(",
+                            "tan(",
+                            "sqrt(",
+                            "log(",
+                            "ln(",
+                            "π",
+                            "e",
+                            "^",
+                            "(",
+                            ")",
+                            "AC",
+                          ].map((token) => (
+                            <button
+                              key={token}
+                              type="button"
+                              onClick={() => {
+                                if (token === "AC") {
+                                  setCalculatorExpression("");
+                                  setCalculatorResult(null);
+                                  return;
+                                }
+                                const value = token === "π" ? "pi" : token;
+                                setCalculatorExpression((expression) => `${expression}${value}`);
+                                setCalculatorResult(null);
+                              }}
+                              className="rounded-md border border-border bg-background px-2 py-1.5 text-xs font-semibold hover:bg-muted"
+                            >
+                              {token}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="mt-2 flex gap-2">
+                          <input
+                            id="worksheet-calculator"
+                            value={calculatorExpression}
+                            onChange={(e) => {
+                              setCalculatorExpression(e.target.value);
+                              setCalculatorResult(null);
+                            }}
+                            inputMode="decimal"
+                            placeholder="Example: sqrt(220^2 + 100^2)"
+                            className="h-10 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCalculatorResult(evaluateWorksheetExpression(calculatorExpression))
+                            }
+                            className="rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground"
+                          >
+                            Calculate
+                          </button>
+                        </div>
+                        {calculatorResult && (
+                          <p className="mt-2 text-sm font-semibold">= {calculatorResult}</p>
+                        )}
                       </div>
-                      {calculatorResult && (
-                        <p className="mt-2 text-sm font-semibold">= {calculatorResult}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
