@@ -458,6 +458,20 @@ export const resetQuizAttemptsFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.retakeGrant.parse(data))
   .handler(async ({ data }) => server.resetQuizAttempts(data.quiz_id, data.student_id, data.token));
 
+export const requestQuizRetakeFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.retakeRequest.parse(data))
+  .handler(async ({ data }) => server.requestQuizRetake(data.quiz_id, data.token));
+
+export const listQuizRetakeRequestsFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.quizScoped.parse(data))
+  .handler(async ({ data }) => server.listQuizRetakeRequests(data.quiz_id, data.token));
+
+export const reviewQuizRetakeRequestFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.retakeRequestReview.parse(data))
+  .handler(async ({ data }) =>
+    server.reviewQuizRetakeRequest(data.request_id, data.decision, data.token),
+  );
+
 // Teacher override of a student's effective worksheet score (AI may mis-grade).
 export const overrideAttemptFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.attemptOverride.parse(data))

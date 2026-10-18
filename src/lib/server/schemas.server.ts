@@ -530,6 +530,12 @@ export const schemas = {
     ...token,
   }),
   retakeGrant: z.object({ quiz_id: uuid, student_id: uuid, ...token }),
+  retakeRequest: z.object({ quiz_id: uuid, ...token }),
+  retakeRequestReview: z.object({
+    request_id: uuid,
+    decision: z.enum(["approved", "denied"]),
+    ...token,
+  }),
   materialUpload: z.object({
     course_id: uuid,
     name: z.string().min(1).max(200),

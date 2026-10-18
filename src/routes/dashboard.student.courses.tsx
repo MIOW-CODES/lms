@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   BookOpen,
@@ -22,6 +22,7 @@ import {
   listSubmissionsForStudent,
   materialHref,
   myQuizSummaries,
+  requestWorksheetRetake,
   formatSchedule,
   type Assignment,
   type Course,
@@ -51,6 +52,7 @@ import { useCourseSelection } from "@/hooks/useCourseWorkspace";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { useLockdown } from "@/hooks/useLockdown";
 import { isTestAccount, isTestStudent } from "@/lib/role-view";
+import { toast } from "sonner";
 const WorksheetSession = lazy(() =>
   import("@/components/courses/worksheet-session").then((module) => ({
     default: module.WorksheetSession,
@@ -539,15 +541,19 @@ function StudentWorksheetRow({
   const examLock = useLockdown();
   const [confirming, setConfirming] = useState(false);
   const [taking, setTaking] = useState(false);
+  const [requestingRetake, setRequestingRetake] = useState(false);
+  const queryClient = useQueryClient();
   const isTester = isTestStudent(profile?.email);
   const isLiveUser = isTestAccount(profile?.email);
   const notYetOpen = !isTester && !!quiz.opens_at && new Date(quiz.opens_at).getTime() > Date.now();
   const isClosed =
     !isTester && !!quiz.closes_at && new Date(quiz.closes_at).getTime() <= Date.now();
-  const canTake = !notYetOpen && !isClosed && (isLiveUser || !summary || summary.can_retake);
-  const st = courseStyle(course?.color ?? "indigo");
   const used = summary?.attempts_used ?? 0;
   const started = used > 0;
+  const canTake = !notYetOpen && !isClosed && (isLiveUser || !summary || summary.can_retake);
+  const canRequestRetake =
+    started && !!summary && !summary.can_retake && !notYetOpen && !isClosed && !isLiveUser;
+  const st = courseStyle(course?.color ?? "indigo");
   // One primary action, derived from attempt state — never "Retake" on a first try.
   const actionLabel = worksheetActionLabel({
     attemptsUsed: used,
@@ -582,23 +588,49 @@ function StudentWorksheetRow({
       ) : (
         <Badge tone="slate">Not started</Badge>
       )}
-      <button
-        type="button"
-        onClick={() => setConfirming(true)}
-        disabled={!canTake}
-        title={
-          notYetOpen
-            ? "This worksheet is not open yet."
-            : isClosed
-              ? "The submission deadline has passed."
-              : !canTake
-                ? "No attempts remaining. Contact your teacher to request a retake."
-                : undefined
-        }
-        className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {notYetOpen ? "Opens soon" : isClosed ? "Submission closed" : actionLabel} →
-      </button>
+      {canRequestRetake ? (
+        <button
+          type="button"
+          disabled={requestingRetake || summary?.retake_request_status === "pending"}
+          onClick={async () => {
+            setRequestingRetake(true);
+            try {
+              await requestWorksheetRetake(quiz.id);
+              await queryClient.invalidateQueries({ queryKey: ["quiz-summaries"] });
+              toast.success("Retake request sent to your teacher.");
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "Could not request a retake.");
+            } finally {
+              setRequestingRetake(false);
+            }
+          }}
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {requestingRetake
+            ? "Sending…"
+            : summary?.retake_request_status === "pending"
+              ? "Request pending"
+              : "Request retake"}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          disabled={!canTake}
+          title={
+            notYetOpen
+              ? "This worksheet is not open yet."
+              : isClosed
+                ? "The submission deadline has passed."
+                : !canTake
+                  ? "No attempts remaining. Contact your teacher to request a retake."
+                  : undefined
+          }
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {notYetOpen ? "Opens soon" : isClosed ? "Submission closed" : actionLabel} →
+        </button>
+      )}
       <AlertDialog.Root open={confirming} onOpenChange={setConfirming}>
         <AlertDialog.Portal>
           <AlertDialog.Overlay className="fixed inset-0 z-[60] bg-slate-950/50" />

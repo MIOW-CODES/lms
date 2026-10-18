@@ -27,6 +27,9 @@ import {
   getProfileByRfidFn,
   getQuizFn,
   grantQuizRetakeFn,
+  requestQuizRetakeFn,
+  listQuizRetakeRequestsFn,
+  reviewQuizRetakeRequestFn,
   listAllAttendanceFn,
   listAllUsersFn,
   listAnnouncementsFn,
@@ -491,6 +494,21 @@ export interface QuizAttemptSummary {
   can_retake: boolean;
   effective_score: number | null;
   effective_total: number | null;
+  retake_request_status?: "pending" | "approved" | "denied" | null;
+}
+
+export interface QuizRetakeRequest {
+  id: string;
+  quiz_id: string;
+  student_id: string;
+  status: "pending";
+  requested_at: string;
+  student: {
+    id: string;
+    full_name: string;
+    student_no: string | null;
+    section: string | null;
+  } | null;
 }
 
 /** Discriminated result of submitting a worksheet attempt. */
@@ -1138,6 +1156,25 @@ export async function myQuizSummaries(): Promise<QuizAttemptSummary[]> {
 
 export async function getQuizAttemptInfo(quizId: string): Promise<QuizAttemptInfo> {
   return quizAttemptInfoFn({ data: { quiz_id: quizId, token: sessionToken() } });
+}
+
+export async function requestWorksheetRetake(quizId: string): Promise<{ status: "pending" }> {
+  const result = await requestQuizRetakeFn({ data: { quiz_id: quizId, token: sessionToken() } });
+  notifyTasksChanged();
+  return result;
+}
+
+export async function listWorksheetRetakeRequests(quizId: string): Promise<QuizRetakeRequest[]> {
+  return listQuizRetakeRequestsFn({ data: { quiz_id: quizId, token: sessionToken() } });
+}
+
+export async function reviewWorksheetRetakeRequest(
+  requestId: string,
+  decision: "approved" | "denied",
+): Promise<void> {
+  await reviewQuizRetakeRequestFn({
+    data: { request_id: requestId, decision, token: sessionToken() },
+  });
 }
 
 /* ---------- Retake policy management (staff) ---------- */

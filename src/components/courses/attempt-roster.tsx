@@ -2,7 +2,13 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Eraser, Eye, EyeOff, RotateCcw, Search } from "lucide-react";
-import { listQuizAttempts, grantQuizRetake, resetQuizAttempts } from "@/lib/lms";
+import {
+  listQuizAttempts,
+  grantQuizRetake,
+  resetQuizAttempts,
+  listWorksheetRetakeRequests,
+  reviewWorksheetRetakeRequest,
+} from "@/lib/lms";
 import { Badge, EmptyState } from "@/components/lms";
 import { switchSeverity } from "@/lib/anti-cheat";
 import { cn } from "@/lib/utils";
@@ -21,11 +27,28 @@ export function AttemptRoster({ quizId }: { quizId: string }) {
     queryKey: ["quiz-attempts", quizId],
     queryFn: () => listQuizAttempts(quizId),
   });
+  const { data: retakeRequests = [], refetch: refreshRequests } = useQuery({
+    queryKey: ["quiz-retake-requests", quizId],
+    queryFn: () => listWorksheetRetakeRequests(quizId),
+  });
   const [busy, setBusy] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [sectionFilter, setSectionFilter] = useState("all");
   const [inspectId, setInspectId] = useState<string | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ["quiz-attempts", quizId] });
+
+  const reviewRequest = async (requestId: string, decision: "approved" | "denied") => {
+    setBusy(requestId);
+    try {
+      await reviewWorksheetRetakeRequest(requestId, decision);
+      toast.success(decision === "approved" ? "Retake approved." : "Retake request denied.");
+      await Promise.all([refreshRequests(), refresh()]);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not review the request.");
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const sections = useMemo(() => {
     if (!data) return [];
@@ -93,6 +116,47 @@ export function AttemptRoster({ quizId }: { quizId: string }) {
           each grant is recorded in the staff audit log.
         </p>
       </div>
+      {retakeRequests.length > 0 && (
+        <section aria-labelledby="pending-retake-requests" className="space-y-2">
+          <h3 id="pending-retake-requests" className="text-sm font-semibold">
+            Retake requests ({retakeRequests.length})
+          </h3>
+          {retakeRequests.map((request) => (
+            <div
+              key={request.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">{request.student?.full_name ?? "Student"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {[request.student?.student_no, request.student?.section]
+                    .filter(Boolean)
+                    .join(" · ") || "Student"}
+                  {` · Requested ${new Date(request.requested_at).toLocaleDateString()}`}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={busy === request.id}
+                  onClick={() => void reviewRequest(request.id, "denied")}
+                  className="h-9 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+                >
+                  Deny
+                </button>
+                <button
+                  type="button"
+                  disabled={busy === request.id}
+                  onClick={() => void reviewRequest(request.id, "approved")}
+                  className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                >
+                  Approve retake
+                </button>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div className="relative min-w-56 flex-1">
