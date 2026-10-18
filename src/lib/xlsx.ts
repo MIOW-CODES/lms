@@ -223,3 +223,21 @@ export function downloadBlob(blob: Blob, filename: string): void {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/** Download a UTF-8 CSV from a matrix of cells. */
+export function downloadCsv(rows: XlsxCell[][], filename: string): void {
+  const csv = rows
+    .map((row) =>
+      row
+        .map((cell) => {
+          const raw = cell == null ? "" : String(cell);
+          // Prevent spreadsheet applications from evaluating exported text as
+          // a formula when it begins with a formula operator.
+          const value = /^[=+\-@]/.test(raw) ? `'${raw}` : raw;
+          return `"${value.replace(/"/g, '""')}"`;
+        })
+        .join(","),
+    )
+    .join("\n");
+  downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), filename);
+}

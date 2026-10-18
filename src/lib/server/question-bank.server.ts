@@ -21,6 +21,7 @@ export interface QuestionBankRow {
   image_url: string | null;
   lab_task: boolean;
   required: boolean;
+  question_type: string | null;
   created_at: string;
   /** Worksheet context (question_bank view) — title/ordering/soft-delete state. */
   quiz_title: string | null;
@@ -90,9 +91,16 @@ export async function updateQuestion(
   // answer key cannot change under in-progress attempts. Legacy always-open
   // worksheets (opens_at NULL) are never locked.
   const parent = await unwrap<any>(
-    db.from("quiz_questions").select("quiz_id").eq("id", id).maybeSingle(),
+    db.from("quiz_questions").select("quiz_id, question_type").eq("id", id).maybeSingle(),
   );
   if (!parent) throw new Error("Not found");
+  if (
+    patch.options !== undefined &&
+    parent.question_type === "multiple_choice" &&
+    patch.options.length !== 4
+  ) {
+    throw new Error("Multiple-choice questions must have exactly four options.");
+  }
   const quiz = await unwrap<any>(
     db.from("quizzes").select("opens_at, closes_at").eq("id", parent.quiz_id).maybeSingle(),
   );

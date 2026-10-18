@@ -1805,6 +1805,7 @@ export interface QuestionBankQuestion {
   image_url: string | null;
   lab_task: boolean;
   required: boolean;
+  question_type?: import("@/lib/question-types").QuestionType | null;
   created_at: string;
   /** Worksheet context (question_bank view) — title/ordering/soft-delete state. */
   quiz_title: string | null;

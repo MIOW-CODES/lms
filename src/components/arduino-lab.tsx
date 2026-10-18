@@ -189,8 +189,9 @@ export function ArduinoLab({
   onConnectionsChange,
   initialTask = ARDUINO_TASKS.find((task) => task.id === "button-led") ?? null,
 }: ArduinoLabProps = {}) {
-  const [selectedSketch, setSelectedSketch] = useState(0);
-  const [code, setCode] = useState(STARTER_SKETCHES[0]?.code ?? "");
+  const worksheetBlank = initialTask === null;
+  const [selectedSketch, setSelectedSketch] = useState(worksheetBlank ? -1 : 0);
+  const [code, setCode] = useState(worksheetBlank ? "" : (STARTER_SKETCHES[0]?.code ?? ""));
   const [logs, setLogs] = useState<string[]>([]);
   const [boardState, setBoardState] = useState<ArduinoBoardState | null>(null);
   const [isRunning, setIsRunning] = useState(false);

@@ -66,6 +66,10 @@ export function EditQuizModal({ quiz, onClose, onSaved }: EditQuizModalProps) {
       }
       if (parsed.dropped > 0)
         toast.warning(`${parsed.dropped} item(s) skipped — check the Answer Key numbering.`);
+      if (parsed.questions.some((q) => q.kind === "mc" && q.options.length !== 4)) {
+        toast.error("Each multiple-choice question must have exactly four options (A–D).");
+        return;
+      }
       questions = parsed.questions;
     }
     setSaving(true);

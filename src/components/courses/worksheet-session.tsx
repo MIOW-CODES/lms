@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
+  Calculator,
   Maximize2,
   Minimize2,
   FlaskConical,
@@ -64,6 +65,58 @@ function attemptLabel(used: number, allowed: number | null, next = false): strin
   const n = next ? used + 1 : used;
   if (allowed == null) return next ? `Attempt ${n} · unlimited` : `${used} used · unlimited`;
   return `Attempt ${n} of ${allowed}`;
+}
+
+function evaluateWorksheetExpression(expression: string): string {
+  const normalized = expression.trim();
+  if (!normalized || !/^[0-9+\-*/().%\s]+$/.test(normalized))
+    return "Enter numbers and arithmetic operators only.";
+  try {
+    const tokens = normalized.match(/\d+(?:\.\d+)?|[()+\-*/%]/g) ?? [];
+    if (tokens.join("") !== normalized.replace(/\s+/g, "")) return "Invalid calculation.";
+    let cursor = 0;
+    const primary = (): number => {
+      const token = tokens[cursor++];
+      if (token === "(") {
+        const value = expressionValue();
+        if (tokens[cursor++] !== ")") throw new Error("missing parenthesis");
+        return value;
+      }
+      if (token === "+" || token === "-") {
+        const value = primary();
+        return token === "-" ? -value : value;
+      }
+      if (!token || !/^\d/.test(token)) throw new Error("invalid token");
+      return Number(token);
+    };
+    const term = (): number => {
+      let value = primary();
+      while (["*", "/", "%"].includes(tokens[cursor] ?? "")) {
+        const operator = tokens[cursor++];
+        const right = primary();
+        if (operator === "*") value *= right;
+        else if (operator === "/") value /= right;
+        else value %= right;
+      }
+      return value;
+    };
+    function expressionValue(): number {
+      let value = term();
+      while (["+", "-"].includes(tokens[cursor] ?? "")) {
+        const operator = tokens[cursor++];
+        const right = term();
+        value = operator === "+" ? value + right : value - right;
+      }
+      return value;
+    }
+    const value = expressionValue();
+    if (cursor !== tokens.length) return "Invalid calculation.";
+    return typeof value === "number" && Number.isFinite(value)
+      ? String(value)
+      : "Invalid calculation.";
+  } catch {
+    return "Invalid calculation.";
+  }
 }
 
 // Persist timer + answers per quiz so closing/reopening or accidental reload doesn't reset progress
@@ -163,6 +216,9 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
   const [loadingAttempt, setLoadingAttempt] = useState(true);
   const [result, setResult] = useState<QuizSuccess | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [calculatorExpression, setCalculatorExpression] = useState("");
+  const [calculatorResult, setCalculatorResult] = useState<string | null>(null);
   const finishRef = useRef<(() => Promise<void>) | null>(null);
   const warnedAttemptRef = useRef<string | null>(null);
   const attemptLoadRef = useRef(0);
@@ -431,6 +487,10 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
   const mm = String(Math.floor((secondsLeft ?? 0) / 60)).padStart(2, "0");
   const ss = String((secondsLeft ?? 0) % 60).padStart(2, "0");
   const current = questions[idx];
+  const currentOptions =
+    current?.question_type === "multiple_choice" && current.options.length === 3
+      ? [...current.options, "None of the above"]
+      : (current?.options ?? []);
   const answeredCount = questions.filter((q) => answers[q.id]?.trim()).length;
 
   return (
@@ -439,10 +499,12 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
         open={!!activeId}
         onClose={() => {
           if (confirmation) return;
-          if (labFullscreen) setLabFullscreen(false);
-          else setActiveId(null);
+          // Worksheets stay locked in the fullscreen assessment view. The
+          // student can leave through the explicit Done/submit actions only.
+          if (result) setActiveId(null);
         }}
-        fullscreen={labFullscreen}
+        fullscreen
+        hideClose
         title={activeQuiz?.title ?? "Worksheet"}
         wide
       >
@@ -640,6 +702,13 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
                 <Timer className="h-4 w-4" /> {mm}:{ss}
               </p>
             </div>
+            <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-200">
+              <p className="font-semibold">One integrity warning</p>
+              <p className="mt-0.5">
+                Keep this worksheet focused. Leaving the tab, pasting, opening developer tools, or
+                exiting fullscreen submits this attempt automatically.
+              </p>
+            </div>
             <p className="mb-4 flex items-center gap-1.5 rounded-xl border border-border/60 bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
               <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
               Assessment integrity: the ClassMate Assistant is disabled until you submit.
@@ -763,7 +832,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
                   />
                 ) : (
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {current.options.map((opt) => (
+                    {currentOptions.map((opt) => (
                       <button
                         key={opt}
                         onClick={() => setAnswers((a) => ({ ...a, [current.id]: opt }))}
@@ -861,6 +930,11 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
                           {labFullscreen ? "Return to worksheet" : "Fullscreen"}
                         </button>
                       </div>
+                      {labFullscreen && (
+                        <div className="border-t border-primary/20 bg-primary/5 px-4 py-3 text-sm font-semibold">
+                          Question {idx + 1}: {current.question}
+                        </div>
+                      )}
                       {labOpen && (
                         <div
                           className={cn(
@@ -874,6 +948,48 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
                     </div>
                   </>
                 )}
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setCalculatorOpen((open) => !open)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted"
+                  >
+                    <Calculator className="h-4 w-4" />{" "}
+                    {calculatorOpen ? "Hide calculator" : "Open calculator"}
+                  </button>
+                  {calculatorOpen && (
+                    <div className="mt-2 max-w-sm rounded-xl border border-border bg-muted/40 p-3">
+                      <label className="block text-xs font-semibold" htmlFor="worksheet-calculator">
+                        Calculation helper
+                      </label>
+                      <div className="mt-2 flex gap-2">
+                        <input
+                          id="worksheet-calculator"
+                          value={calculatorExpression}
+                          onChange={(e) => {
+                            setCalculatorExpression(e.target.value);
+                            setCalculatorResult(null);
+                          }}
+                          inputMode="decimal"
+                          placeholder="Example: (220 * 5) / 1000"
+                          className="h-10 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCalculatorResult(evaluateWorksheetExpression(calculatorExpression))
+                          }
+                          className="rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground"
+                        >
+                          Calculate
+                        </button>
+                      </div>
+                      {calculatorResult && (
+                        <p className="mt-2 text-sm font-semibold">= {calculatorResult}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
