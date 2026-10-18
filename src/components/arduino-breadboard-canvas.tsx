@@ -3,6 +3,7 @@ import { Trash2, Zap, Info, MousePointer2, Spline } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   resolvePartStates,
+  BREADBOARD_GROUPS,
   type ArduinoBoardState,
   type CircuitPart,
   type CircuitPartType,
@@ -64,6 +65,24 @@ interface PartLayout {
 }
 
 const PART_LAYOUTS: Record<WokwiComponentType, PartLayout> = {
+  breadboard: {
+    w: 548,
+    h: 310,
+    el: { x: 0, y: 28, w: 548, h: 270 },
+    terminals: BREADBOARD_GROUPS.flat().map((id) => {
+      const rail = /^(top|bottom)([+-])(\d+)$/.exec(id);
+      const column = Number(rail ? rail[3] : id.slice(1));
+      const row = "abcdefghij".indexOf(id[0]!);
+      return {
+        id,
+        label: id,
+        x: 24 + (column - 1) * 17,
+        y: rail
+          ? (rail[1] === "top" ? 48 : 266) + (rail[2] === "-" ? 16 : 0)
+          : 90 + row * 14 + (row >= 5 ? 20 : 0),
+      };
+    }),
+  },
   "wokwi-led": {
     w: 96,
     h: 118,
@@ -263,7 +282,9 @@ function nextLabel(list: CanvasPart[], type: WokwiComponentType): string {
               ? "servo"
               : type === "wokwi-hc-sr04"
                 ? "sonar"
-                : "resistor";
+                : type === "breadboard"
+                  ? "breadboard"
+                  : "resistor";
   let n = 1;
   while (list.some((p) => p.label === `${prefix}${n}`)) n += 1;
   return `${prefix}${n}`;
@@ -698,7 +719,8 @@ export function InteractiveBreadboardCanvas({
     const isHover = hoverKey === key;
     const isPending = pendingKey === key;
     const isSnap = Boolean(pendingKey) && hoverKey === key && pendingKey !== key;
-    const r = isPending || isSnap ? 8.5 : isHover ? 7.5 : 6;
+    const isBreadboard = key.startsWith("part-breadboard-");
+    const r = isBreadboard ? 3.5 : isPending || isSnap ? 8.5 : isHover ? 7.5 : 6;
     return (
       <g key={key}>
         {stub && (
@@ -731,7 +753,7 @@ export function InteractiveBreadboardCanvas({
           strokeWidth="2"
           style={{ pointerEvents: "none" }}
         />
-        {showLabel && (
+        {(showLabel || isHover || isPending) && (
           <text
             x={coord.x}
             y={coord.y - 10}
@@ -750,13 +772,22 @@ export function InteractiveBreadboardCanvas({
           cy={coord.y}
           // Uno pins are about 15px apart: keep their targets separate while
           // retaining a generous vertical target for touch wiring.
-          rx={key.startsWith("uno-") ? 7 : 16}
-          ry={16}
+          rx={isBreadboard ? 7 : key.startsWith("uno-") ? 7 : 16}
+          ry={isBreadboard ? 6 : 16}
           fill="transparent"
           data-term-key={key}
           data-testid={testid}
           onPointerDown={(e) => onDown?.(e)}
           onClick={(e) => handleTerminalClick(e, key)}
+          role="button"
+          aria-label={`Connect ${label}`}
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.currentTarget.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            }
+          }}
           onPointerEnter={() => setHoverKey(key)}
           onPointerLeave={() => setHoverKey((h) => (h === key ? null : h))}
           style={{
@@ -1064,6 +1095,7 @@ export function InteractiveBreadboardCanvas({
               ["wokwi-servo", "SG90 Servo", "bg-rose-400"],
               ["wokwi-hc-sr04", "Sonar", "bg-teal-400"],
               ["wokwi-resistor", "220Ω Resistor", "bg-amber-600"],
+              ["breadboard", "Breadboard", "bg-slate-600"],
             ] as const
           ).map(([type, label, dot]) => (
             <button
@@ -1242,6 +1274,61 @@ export function InteractiveBreadboardCanvas({
                     height: layout.el.h,
                   }}
                 >
+                  {p.type === "breadboard" && (
+                    <svg
+                      viewBox="0 0 548 270"
+                      className="h-full w-full"
+                      aria-label="Breadboard with 30 columns, rows a to j, and separate power rails"
+                    >
+                      <rect
+                        x="1"
+                        y="1"
+                        width="546"
+                        height="268"
+                        rx="10"
+                        fill="#f1f5f9"
+                        stroke="#94a3b8"
+                      />
+                      {[20, 36, 238, 254].map((y, i) => (
+                        <g key={y}>
+                          <line
+                            x1="12"
+                            x2="536"
+                            y1={y}
+                            y2={y}
+                            stroke={i % 2 ? "#2563eb" : "#dc2626"}
+                          />
+                          <text x="4" y={y + 3} fontSize="10" fill={i % 2 ? "#1d4ed8" : "#b91c1c"}>
+                            {i % 2 ? "−" : "+"}
+                          </text>
+                        </g>
+                      ))}
+                      <rect x="8" y="128" width="532" height="12" rx="4" fill="#cbd5e1" />
+                      {Array.from({ length: 30 }, (_, i) => (
+                        <text
+                          key={i}
+                          x={24 + i * 17}
+                          y="53"
+                          textAnchor="middle"
+                          fontSize="8"
+                          fill="#334155"
+                        >
+                          {i + 1}
+                        </text>
+                      ))}
+                      {"abcdefghij".split("").map((row, i) => (
+                        <text
+                          key={row}
+                          x="7"
+                          y={65 + i * 14 + (i >= 5 ? 20 : 0)}
+                          fontSize="9"
+                          fill="#334155"
+                        >
+                          {row}
+                        </text>
+                      ))}
+                    </svg>
+                  )}
                   {p.type === "wokwi-led" &&
                     React.createElement("wokwi-led", {
                       color: p.color || "red",
@@ -1381,7 +1468,8 @@ export function InteractiveBreadboardCanvas({
                   "#a5b4fc",
                   (e) => handleTerminalDown(e, `part-${p.id}-${t.id}`),
                   `term-part-${p.label}-${t.id}`,
-                  stub,
+                  p.type === "breadboard" ? undefined : stub,
+                  p.type !== "breadboard",
                 );
               }),
             )}
@@ -1418,7 +1506,8 @@ export function InteractiveBreadboardCanvas({
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
         <span>
           <strong>Simple wiring:</strong> Click any pin or terminal to start a jumper wire, then
-          click another pin to connect. You can also use <strong>Auto-Wire Task</strong> to connect
+          click another pin to connect. Breadboard holes a–e and f–j share a column; each power rail
+          is connected along its length. You can also use <strong>Auto-Wire Task</strong> to connect
           guide wires instantly, or click a wire and press Delete (or the ✕) to remove it. Drag
           components anywhere on the board.
         </span>

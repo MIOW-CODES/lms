@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
+  Maximize2,
+  Minimize2,
+  FlaskConical,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -15,6 +18,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { setAssessmentMode } from "@/lib/assessment-mode";
 import { EXAM_LOCKDOWN_COPY, LockdownOverlay } from "@/components/lockdown";
 import { useLockdown, useLockdownDemand } from "@/hooks/useLockdown";
@@ -95,6 +99,70 @@ function attemptLabel(used: number, allowed: number | null, next = false): strin
   return `Attempt ${n} of ${allowed}`;
 }
 
+// Persist timer + answers per quiz so closing/reopening or accidental reload doesn't reset progress
+const getStoredTimer = (id: string): number | null => {
+  try {
+    const v = localStorage.getItem(`miow_quiz_timer_${id}`);
+    return v ? Number(v) : null;
+  } catch {
+    return null;
+  }
+};
+const setStoredTimer = (id: string, sec: number) => {
+  try {
+    localStorage.setItem(`miow_quiz_timer_${id}`, String(sec));
+  } catch {
+    /* ignore storage quota or access error */
+  }
+};
+const clearStoredProgress = (id: string) => {
+  try {
+    localStorage.removeItem(`miow_quiz_timer_${id}`);
+    localStorage.removeItem(`miow_quiz_answers_${id}`);
+    localStorage.removeItem(`miow_quiz_questions_${id}`);
+  } catch {
+    /* ignore storage access error */
+  }
+};
+const getStoredAnswers = (id: string): Record<string, string> => {
+  try {
+    const v = localStorage.getItem(`miow_quiz_answers_${id}`);
+    return v ? JSON.parse(v) : {};
+  } catch {
+    return {};
+  }
+};
+const setStoredAnswers = (id: string, a: Record<string, string>) => {
+  try {
+    localStorage.setItem(`miow_quiz_answers_${id}`, JSON.stringify(a));
+  } catch {
+    /* ignore storage quota or access error */
+  }
+};
+// Persist the drawn question set per quiz so a mid-exam reload resumes the
+// SAME questions (the server draws a fresh random subset per getQuiz call,
+// which would orphan answers to the previously drawn items).
+const getStoredQuestions = (id: string): QuizQuestionPublic[] | null => {
+  try {
+    const v = localStorage.getItem(`miow_quiz_questions_${id}`);
+    const parsed: unknown = v ? JSON.parse(v) : null;
+    return Array.isArray(parsed) &&
+      parsed.length > 0 &&
+      parsed.every((q) => typeof q?.id === "string")
+      ? (parsed as QuizQuestionPublic[])
+      : null;
+  } catch {
+    return null;
+  }
+};
+const setStoredQuestions = (id: string, qs: QuizQuestionPublic[]) => {
+  try {
+    localStorage.setItem(`miow_quiz_questions_${id}`, JSON.stringify(qs));
+  } catch {
+    /* ignore storage quota or access error */
+  }
+};
+
 function QuizzesPage() {
   const profile = useProfile(["student"]);
   const queryClient = useQueryClient();
@@ -125,6 +193,14 @@ function QuizzesPage() {
   const [idx, setIdx] = useState(0);
   // Collapsible Virtual Arduino Lab panel for problem-solving (lab_task) items.
   const [labOpen, setLabOpen] = useState(true);
+  const [labFullscreen, setLabFullscreen] = useState(false);
+  const [confirmation, setConfirmation] = useState<{
+    title: string;
+    description: string;
+    action: string;
+    cancel: string;
+    confirm: () => void;
+  } | null>(null);
   // Auto-generated wiring description from the Virtual Arduino Lab (manual wires)
   const [connSummary, setConnSummary] = useState("");
   const [secondsLeft, setSecondsLeft] = useState(0);
@@ -137,70 +213,6 @@ function QuizzesPage() {
   const [loadingAttempt, setLoadingAttempt] = useState(false);
   const [result, setResult] = useState<QuizSuccess | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  // Persist timer + answers per quiz so closing/reopening or accidental reload doesn't reset progress
-  const getStoredTimer = (id: string): number | null => {
-    try {
-      const v = localStorage.getItem(`miow_quiz_timer_${id}`);
-      return v ? Number(v) : null;
-    } catch {
-      return null;
-    }
-  };
-  const setStoredTimer = (id: string, sec: number) => {
-    try {
-      localStorage.setItem(`miow_quiz_timer_${id}`, String(sec));
-    } catch {
-      /* ignore storage quota or access error */
-    }
-  };
-  const clearStoredProgress = (id: string) => {
-    try {
-      localStorage.removeItem(`miow_quiz_timer_${id}`);
-      localStorage.removeItem(`miow_quiz_answers_${id}`);
-      localStorage.removeItem(`miow_quiz_questions_${id}`);
-    } catch {
-      /* ignore storage access error */
-    }
-  };
-  const getStoredAnswers = (id: string): Record<string, string> => {
-    try {
-      const v = localStorage.getItem(`miow_quiz_answers_${id}`);
-      return v ? JSON.parse(v) : {};
-    } catch {
-      return {};
-    }
-  };
-  const setStoredAnswers = (id: string, a: Record<string, string>) => {
-    try {
-      localStorage.setItem(`miow_quiz_answers_${id}`, JSON.stringify(a));
-    } catch {
-      /* ignore storage quota or access error */
-    }
-  };
-  // Persist the drawn question set per quiz so a mid-exam reload resumes the
-  // SAME questions (the server draws a fresh random subset per getQuiz call,
-  // which would orphan answers to the previously drawn items).
-  const getStoredQuestions = (id: string): QuizQuestionPublic[] | null => {
-    try {
-      const v = localStorage.getItem(`miow_quiz_questions_${id}`);
-      const parsed: unknown = v ? JSON.parse(v) : null;
-      return Array.isArray(parsed) &&
-        parsed.length > 0 &&
-        parsed.every((q) => typeof q?.id === "string")
-        ? (parsed as QuizQuestionPublic[])
-        : null;
-    } catch {
-      return null;
-    }
-  };
-  const setStoredQuestions = (id: string, qs: QuizQuestionPublic[]) => {
-    try {
-      localStorage.setItem(`miow_quiz_questions_${id}`, JSON.stringify(qs));
-    } catch {
-      /* ignore storage quota or access error */
-    }
-  };
-
   const savedTimerRef = useRef<Map<string, number>>(new Map());
   const savedAnswersRef = useRef<Map<string, Record<string, string>>>(new Map());
   // Persist the sampled question set for the in-progress attempt so reopening a
@@ -248,59 +260,62 @@ function QuizzesPage() {
 
   // Resume or start attempt: restore saved timer/answers if the student
   // closed and reopened the same worksheet within this session.
-  const beginAttempt = async (id: string) => {
-    // Reuse the in-progress attempt's sampled questions when present so a
-    // reopen doesn't swap the question set (and lose already-answered items).
-    let attempt = savedAttemptRef.current.get(id);
-    if (!attempt) {
-      const { quiz, questions } = await getQuiz(id);
-      // A reload mid-exam must resume the SAME drawn subset — prefer the
-      // persisted set over the server's fresh draw. Cleared on submit/retake,
-      // so a NEW attempt still fetches a fresh set.
-      const persisted = getStoredQuestions(id);
-      attempt = {
-        questions: persisted ?? questions,
-        duration: quiz.duration_minutes * 60,
-        closesAt:
-          !isTestStudent(profile?.email) && quiz.closes_at
-            ? new Date(quiz.closes_at).getTime()
-            : null,
-        submissionId: newSubmissionId(),
-      };
-      if (!persisted) setStoredQuestions(id, attempt.questions);
-      savedAttemptRef.current.set(id, attempt);
-    }
-    setQuestions(attempt.questions);
-    setResult(null);
-    // Restore saved answers if they exist for this quiz
-    const localAnswers = getStoredAnswers(id);
-    const inMemAnswers = savedAnswersRef.current.get(id);
-    const restoredAnswers =
-      Object.keys(localAnswers).length > 0 ? localAnswers : (inMemAnswers ?? {});
-    setAnswers(restoredAnswers);
-    setIdx(0);
-    // The server hard-blocks any submit after closes_at, so the countdown must
-    // never run past the window: clamp the starting seconds to the time
-    // remaining until closes_at (effective = min(duration, window remaining)).
-    const windowSec =
-      attempt.closesAt != null
-        ? Math.max(0, Math.floor((attempt.closesAt - Date.now()) / 1000))
-        : Number.POSITIVE_INFINITY;
-    const startSec = Math.min(attempt.duration, windowSec);
-    // Restore saved timer or start fresh. Restored time is clamped to the
-    // window too, so a resumed attempt can't exceed closes_at either.
-    const localTimer = getStoredTimer(id);
-    const saved = savedTimerRef.current.get(id);
-    const activeSec = localTimer ?? saved;
-    if (activeSec != null && activeSec > 0) {
-      setSecondsLeft(Math.min(activeSec, windowSec));
-    } else {
-      setSecondsLeft(startSec);
-    }
-    // Arm the guard only once this worksheet's own questions/answers/timer are
-    // all applied, so the persistence effects never write them under another id.
-    setReadyQuizId(id);
-  };
+  const beginAttempt = useCallback(
+    async (id: string) => {
+      // Reuse the in-progress attempt's sampled questions when present so a
+      // reopen doesn't swap the question set (and lose already-answered items).
+      let attempt = savedAttemptRef.current.get(id);
+      if (!attempt) {
+        const { quiz, questions } = await getQuiz(id);
+        // A reload mid-exam must resume the SAME drawn subset — prefer the
+        // persisted set over the server's fresh draw. Cleared on submit/retake,
+        // so a NEW attempt still fetches a fresh set.
+        const persisted = getStoredQuestions(id);
+        attempt = {
+          questions: persisted ?? questions,
+          duration: quiz.duration_minutes * 60,
+          closesAt:
+            !isTestStudent(profile?.email) && quiz.closes_at
+              ? new Date(quiz.closes_at).getTime()
+              : null,
+          submissionId: newSubmissionId(),
+        };
+        if (!persisted) setStoredQuestions(id, attempt.questions);
+        savedAttemptRef.current.set(id, attempt);
+      }
+      setQuestions(attempt.questions);
+      setResult(null);
+      // Restore saved answers if they exist for this quiz
+      const localAnswers = getStoredAnswers(id);
+      const inMemAnswers = savedAnswersRef.current.get(id);
+      const restoredAnswers =
+        Object.keys(localAnswers).length > 0 ? localAnswers : (inMemAnswers ?? {});
+      setAnswers(restoredAnswers);
+      setIdx(0);
+      // The server hard-blocks any submit after closes_at, so the countdown must
+      // never run past the window: clamp the starting seconds to the time
+      // remaining until closes_at (effective = min(duration, window remaining)).
+      const windowSec =
+        attempt.closesAt != null
+          ? Math.max(0, Math.floor((attempt.closesAt - Date.now()) / 1000))
+          : Number.POSITIVE_INFINITY;
+      const startSec = Math.min(attempt.duration, windowSec);
+      // Restore saved timer or start fresh. Restored time is clamped to the
+      // window too, so a resumed attempt can't exceed closes_at either.
+      const localTimer = getStoredTimer(id);
+      const saved = savedTimerRef.current.get(id);
+      const activeSec = localTimer ?? saved;
+      if (activeSec != null && activeSec > 0) {
+        setSecondsLeft(Math.min(activeSec, windowSec));
+      } else {
+        setSecondsLeft(startSec);
+      }
+      // Arm the guard only once this worksheet's own questions/answers/timer are
+      // all applied, so the persistence effects never write them under another id.
+      setReadyQuizId(id);
+    },
+    [profile?.email],
+  );
 
   useEffect(() => {
     if (activeId) {
@@ -312,7 +327,7 @@ function QuizzesPage() {
       setLoadingAttempt(true);
       void beginAttempt(activeId).finally(() => setLoadingAttempt(false));
     }
-  }, [activeId]);
+  }, [activeId, beginAttempt]);
 
   useEffect(() => {
     if (!activeId || readyQuizId !== activeId || result || secondsLeft <= 0) return;
@@ -479,23 +494,17 @@ function QuizzesPage() {
                 )}
                 <button
                   onClick={() => {
-                    toast(
-                      `Are you sure you want to start "${q.title}"? Your timer will begin immediately.`,
-                      {
-                        action: {
-                          label: "Start",
-                          onClick: () => {
-                            examLock.lock();
-                            setActiveId(q.id);
-                          },
-                        },
-                        cancel: {
-                          label: "Cancel",
-                          onClick: () => {},
-                        },
-                        duration: 8000,
+                    setConfirmation({
+                      title: `Start ${q.title}?`,
+                      description:
+                        "Your timer will begin immediately. Make sure you are ready before starting.",
+                      action: "Start worksheet",
+                      cancel: "Cancel",
+                      confirm: () => {
+                        examLock.lock();
+                        setActiveId(q.id);
                       },
-                    );
+                    });
                   }}
                   disabled={!canTake}
                   title={
@@ -533,7 +542,12 @@ function QuizzesPage() {
 
       <Modal
         open={!!activeId}
-        onClose={() => setActiveId(null)}
+        onClose={() => {
+          if (confirmation) return;
+          if (labFullscreen) setLabFullscreen(false);
+          else setActiveId(null);
+        }}
+        fullscreen={labFullscreen}
         title={activeQuiz?.title ?? "Worksheet"}
         wide
       >
@@ -882,23 +896,57 @@ function QuizzesPage() {
                       </p>
                     </div>
 
-                    <div className="mt-4 overflow-hidden rounded-xl border border-primary/30">
-                      <button
-                        type="button"
-                        data-testid="lab-panel-toggle"
-                        onClick={() => setLabOpen((o) => !o)}
-                        className="flex w-full items-center justify-between gap-2 bg-primary/5 px-4 py-3 text-left text-sm font-semibold hover:bg-primary/10"
-                      >
-                        <span>🧪 Virtual Arduino Lab — build &amp; test your solution here</span>
-                        <ChevronDown
-                          className={cn(
-                            "h-4 w-4 shrink-0 transition-transform",
-                            labOpen && "rotate-180",
+                    <div
+                      className={cn(
+                        "mt-4 overflow-hidden rounded-xl border border-primary/30",
+                        labFullscreen &&
+                          "absolute inset-0 z-10 m-0 flex flex-col rounded-none border-0 bg-background",
+                      )}
+                      data-fullscreen-content={labFullscreen || undefined}
+                    >
+                      <div className="flex items-center bg-primary/5">
+                        <button
+                          type="button"
+                          aria-expanded={labOpen}
+                          data-testid="lab-panel-toggle"
+                          onClick={() => setLabOpen((o) => !o)}
+                          className="flex w-full items-center justify-between gap-2 bg-primary/5 px-4 py-3 text-left text-sm font-semibold hover:bg-primary/10"
+                        >
+                          <span className="flex items-center gap-2">
+                            <FlaskConical className="h-4 w-4 shrink-0" />
+                            Virtual Arduino Lab
+                          </span>
+                          <ChevronDown
+                            className={cn(
+                              "h-4 w-4 shrink-0 transition-transform",
+                              labOpen && "rotate-180",
+                            )}
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLabOpen(true);
+                            setLabFullscreen((v) => !v);
+                          }}
+                          className="m-2 inline-flex shrink-0 items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold hover:bg-muted"
+                          aria-label={labFullscreen ? "Return to worksheet" : "Open lab fullscreen"}
+                        >
+                          {labFullscreen ? (
+                            <Minimize2 className="h-4 w-4" />
+                          ) : (
+                            <Maximize2 className="h-4 w-4" />
                           )}
-                        />
-                      </button>
+                          {labFullscreen ? "Return to worksheet" : "Fullscreen"}
+                        </button>
+                      </div>
                       {labOpen && (
-                        <div className="max-h-[70vh] overflow-y-auto border-t border-border p-3">
+                        <div
+                          className={cn(
+                            "overflow-auto border-t border-border p-3",
+                            labFullscreen ? "min-h-0 flex-1" : "max-h-[70vh]",
+                          )}
+                        >
                           <ArduinoLab initialTask={null} onConnectionsChange={setConnSummary} />
                         </div>
                       )}
@@ -933,18 +981,14 @@ function QuizzesPage() {
                       unans > 0
                         ? `You have ${unans} unanswered question${unans === 1 ? "" : "s"}. Are you sure you want to submit?`
                         : "Are you sure you want to submit your answers? This attempt will be finalized.";
-                    toast(warn, {
-                      action: {
-                        label: "Submit",
-                        onClick: () => {
-                          void finish();
-                        },
+                    setConfirmation({
+                      title: "Submit worksheet?",
+                      description: warn,
+                      action: "Submit answers",
+                      cancel: "Review answers",
+                      confirm: () => {
+                        void finish();
                       },
-                      cancel: {
-                        label: "Review",
-                        onClick: () => {},
-                      },
-                      duration: 9000,
                     });
                   }}
                   disabled={submitting}
@@ -959,6 +1003,35 @@ function QuizzesPage() {
           </>
         )}
       </Modal>
+      <AlertDialog.Root
+        open={!!confirmation}
+        onOpenChange={(open) => {
+          if (!open) setConfirmation(null);
+        }}
+      >
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="fixed inset-0 z-[60] bg-slate-950/50" />
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[61] w-[calc(100%_-_2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 shadow-xl">
+            <AlertDialog.Title className="text-lg font-bold">
+              {confirmation?.title}
+            </AlertDialog.Title>
+            <AlertDialog.Description className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              {confirmation?.description}
+            </AlertDialog.Description>
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <AlertDialog.Cancel className="min-h-11 rounded-xl border border-border px-4 text-sm font-semibold hover:bg-muted">
+                {confirmation?.cancel}
+              </AlertDialog.Cancel>
+              <AlertDialog.Action
+                onClick={() => confirmation?.confirm()}
+                className="min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              >
+                {confirmation?.action}
+              </AlertDialog.Action>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
     </AppShell>
   );
 }

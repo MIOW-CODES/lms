@@ -4,48 +4,8 @@ import { cn } from "@/lib/utils";
 import { MiowWatermark } from "@/components/brand";
 import { BRAND_LOGO_SRC } from "@/lib/brand";
 import { useTheme } from "@/hooks";
-import type { AttendanceStatus } from "@/lib/lms";
 
 /* ---------- Course accent palette ---------- */
-
-export const COURSE_STYLE: Record<string, { chip: string; soft: string; bar: string }> = {
-  indigo: {
-    chip: "bg-indigo-600",
-    soft: "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300",
-    bar: "bg-indigo-500",
-  },
-  emerald: {
-    chip: "bg-emerald-600",
-    soft: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-    bar: "bg-emerald-500",
-  },
-  sky: {
-    chip: "bg-sky-600",
-    soft: "bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300",
-    bar: "bg-sky-500",
-  },
-  amber: {
-    chip: "bg-pink-500",
-    soft: "bg-pink-50 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300",
-    bar: "bg-pink-500",
-  },
-  rose: {
-    chip: "bg-rose-600",
-    soft: "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
-    bar: "bg-rose-500",
-  },
-  violet: {
-    chip: "bg-violet-600",
-    soft: "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
-    bar: "bg-violet-500",
-  },
-};
-
-const FALLBACK_STYLE = COURSE_STYLE["indigo"]!;
-
-export function courseStyle(color: string) {
-  return COURSE_STYLE[color] ?? FALLBACK_STYLE;
-}
 
 /* ---------- Theme toggle ---------- */
 
@@ -134,12 +94,6 @@ export function Badge({ tone = "slate", children }: { tone?: string; children: R
       {children}
     </span>
   );
-}
-
-export function attendanceTone(status: AttendanceStatus): { tone: string; label: string } {
-  if (status === "late") return { tone: "amber", label: "Late" };
-  if (status === "excused") return { tone: "violet", label: "Excused" };
-  return { tone: "green", label: "On time" };
 }
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
@@ -516,12 +470,14 @@ export function Modal({
   title,
   children,
   wide,
+  fullscreen,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
   wide?: boolean;
+  fullscreen?: boolean;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -545,7 +501,10 @@ export function Modal({
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
     // Move focus into the dialog: first focusable element, else the container
-    const focusable = getFocusableElements(dialog);
+    const focusScope = fullscreen
+      ? (dialog.querySelector<HTMLElement>("[data-fullscreen-content]") ?? dialog)
+      : dialog;
+    const focusable = getFocusableElements(focusScope);
     (focusable[0] ?? dialog).focus();
 
     // Make the background inert + hidden while the dialog is open
@@ -560,7 +519,7 @@ export function Modal({
       if (e.key === "Tab") {
         const dialogNode = dialogRef.current;
         if (!dialogNode) return;
-        const items = getFocusableElements(dialogNode);
+        const items = getFocusableElements(focusScope);
         if (items.length === 0) {
           e.preventDefault();
           dialogNode.focus();
@@ -593,7 +552,7 @@ export function Modal({
         restore.focus();
       }
     };
-  }, [open]);
+  }, [open, fullscreen]);
 
   return (
     <AnimatePresence>
@@ -604,7 +563,10 @@ export function Modal({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+          className={cn(
+            "fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 backdrop-blur-sm",
+            !fullscreen && "p-4",
+          )}
           onClick={onClose}
         >
           <motion.div
@@ -620,7 +582,11 @@ export function Modal({
             aria-labelledby={titleId}
             className={cn(
               "flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/95 shadow-lift backdrop-blur-xl outline-none",
-              wide ? "max-w-3xl" : "max-w-lg",
+              fullscreen
+                ? "relative h-[100dvh] max-h-[100dvh] max-w-none rounded-none"
+                : wide
+                  ? "max-w-3xl"
+                  : "max-w-lg",
             )}
             onClick={(e) => e.stopPropagation()}
           >
