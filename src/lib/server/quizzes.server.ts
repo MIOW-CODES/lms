@@ -22,6 +22,7 @@ import { schemas } from "@/lib/server/schemas.server";
 import type { IntegrityEventType } from "@/lib/integrity";
 import type { ProfileRole } from "@/lib/server/db-types";
 import { dispatchNotification } from "@/lib/server/notifications.server";
+import { writeAuditLog } from "@/lib/server/audit.server";
 
 export async function listQuizzes(caller: { id: string; role: ProfileRole }) {
   const rows = await unwrap<any[]>(db.from("quizzes").select("*").is("deleted_at", null));
@@ -1069,15 +1070,39 @@ export async function grantQuizRetake(quiz_id: string, student_id: string, token
         .insert({ quiz_id, student_id, extra_attempts: extraAttempts, granted_by: caller.id }),
     );
   }
+  const student = await getProfileById(student_id);
+  await writeAuditLog(
+    caller,
+    "quiz.retake.granted",
+    `Granted one additional attempt for worksheet "${quiz.title}" to ${student?.full_name ?? student_id}. Total approved extra attempts: ${extraAttempts}.`,
+  );
 }
 
 export async function resetQuizAttempts(quiz_id: string, student_id: string, token: string) {
-  await requireQuizOwnerOrAdmin(token, quiz_id);
+  const caller = await requireQuizOwnerOrAdmin(token, quiz_id);
+  const [quiz, student, attempts, grant] = await Promise.all([
+    getQuizConfig(quiz_id),
+    getProfileById(student_id),
+    attemptsFor(quiz_id, student_id),
+    unwrap<any>(
+      db
+        .from("quiz_retake_grants")
+        .select("extra_attempts")
+        .eq("quiz_id", quiz_id)
+        .eq("student_id", student_id)
+        .maybeSingle(),
+    ),
+  ]);
   await unwrap(
     db.from("quiz_attempts").delete().eq("quiz_id", quiz_id).eq("student_id", student_id),
   );
   await unwrap(
     db.from("quiz_retake_grants").delete().eq("quiz_id", quiz_id).eq("student_id", student_id),
+  );
+  await writeAuditLog(
+    caller,
+    "quiz.attempts.reset",
+    `Reset ${attempts.length} attempt(s) and removed ${grant?.extra_attempts ?? 0} retake grant(s) for ${student?.full_name ?? student_id} on worksheet "${quiz.title}".`,
   );
 }
 
