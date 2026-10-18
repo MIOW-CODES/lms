@@ -263,6 +263,21 @@ describeLocalDB("Arduino manual wiring (Tinkercad-style)", () => {
     await expect(page.getByTestId("question-nav-1")).toBeVisible();
     expect(page.url()).toBe(courseUrl);
     await dismissExamLock(page);
+    let onLabTask = false;
+    const navCount = await page.locator('[data-testid^="question-nav-"]').count();
+    for (let i = 1; i <= navCount; i++) {
+      await page.getByTestId(`question-nav-${i}`).click();
+      if (
+        await page
+          .locator('[data-testid="connections-summary"]')
+          .isVisible()
+          .catch(() => false)
+      ) {
+        onLabTask = true;
+        break;
+      }
+    }
+    expect(onLabTask).toBe(true);
     await expect(page.getByText(/Simulation Task [AB]/)).toBeVisible({ timeout: 15000 });
     await expect(page.locator('[data-testid="connections-summary"]')).toBeVisible();
     expect(errors).toEqual([]);
@@ -272,7 +287,7 @@ describeLocalDB("Arduino manual wiring (Tinkercad-style)", () => {
     test.setTimeout(TEST_TIMEOUT);
     const errors = collectConsoleErrors(page);
     await page.goto("/dashboard/student/arduino");
-    await expect(page.getByText("Arduino Lab", { exact: true }).first()).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Arduino Lab" })).toBeVisible({
       timeout: 20000,
     });
 
@@ -326,7 +341,7 @@ describeLocalDB("Arduino manual wiring (Tinkercad-style)", () => {
     test.setTimeout(TEST_TIMEOUT);
     const errors = collectConsoleErrors(page);
     await page.goto("/dashboard/student/arduino");
-    await expect(page.getByText("Arduino Lab", { exact: true }).first()).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Arduino Lab" })).toBeVisible({
       timeout: 20000,
     });
 
