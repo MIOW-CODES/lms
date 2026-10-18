@@ -19,6 +19,7 @@ import {
   LogOut,
   Megaphone,
   Menu as MenuIcon,
+  MessageSquareWarning,
   Settings,
   Table,
   Users,
@@ -95,6 +96,11 @@ export const STUDENT_NAV: NavItem[] = [
   },
   { to: "/dashboard/student/grades", label: "Grades", icon: <BarChart3 className="h-4 w-4" /> },
   { to: "/dashboard/student/settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
+  {
+    to: "/dashboard/student/report",
+    label: "Report an issue",
+    icon: <MessageSquareWarning className="h-4 w-4" />,
+  },
 ];
 
 export const ADMIN_NAV: NavItem[] = [
@@ -128,6 +134,11 @@ export const ADMIN_NAV: NavItem[] = [
     icon: <Cpu className="h-4 w-4" />,
   },
   { to: "/dashboard/admin/settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
+  {
+    to: "/dashboard/admin/report",
+    label: "Report inbox",
+    icon: <MessageSquareWarning className="h-4 w-4" />,
+  },
 ];
 
 export const TEACHER_NAV: NavItem[] = [
@@ -157,6 +168,11 @@ export const TEACHER_NAV: NavItem[] = [
     icon: <CalendarCheck className="h-4 w-4" />,
   },
   { to: "/dashboard/teacher/settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
+  {
+    to: "/dashboard/teacher/report",
+    label: "Report an issue",
+    icon: <MessageSquareWarning className="h-4 w-4" />,
+  },
 ];
 
 export function staffNav(role: Role): NavItem[] {

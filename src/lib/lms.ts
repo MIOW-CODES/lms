@@ -81,6 +81,9 @@ import {
   uploadAnnouncementMaterialFn,
   removeAnnouncementMaterialFn,
   listAnnouncementAttachmentsFn,
+  listFeedbackReportsFn,
+  createFeedbackReportFn,
+  updateFeedbackReportFn,
   updateUserRoleFn,
   uploadAvatarFn,
   upsertGradeFn,
@@ -952,6 +955,44 @@ export async function listAnnouncementAttachments(
   return listAnnouncementAttachmentsFn({
     data: { id: announcementId, token: sessionToken() },
   }) as Promise<AnnouncementAttachment[]>;
+}
+
+export type FeedbackReport = {
+  id: string;
+  reporter_id: string;
+  reporter_name: string | null;
+  reporter_role: Role | null;
+  reporter_email: string | null;
+  category: "bug" | "issue" | "feedback" | "course_content" | "other";
+  subject: string;
+  description: string;
+  page_url: string | null;
+  status: "open" | "in_review" | "resolved" | "closed";
+  admin_note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listFeedbackReports(): Promise<FeedbackReport[]> {
+  return listFeedbackReportsFn({ data: { token: sessionToken() } }) as Promise<FeedbackReport[]>;
+}
+
+export async function createFeedbackReport(input: {
+  category: FeedbackReport["category"];
+  subject: string;
+  description: string;
+  page_url?: string | null;
+}): Promise<FeedbackReport> {
+  return createFeedbackReportFn({
+    data: { ...input, token: sessionToken() },
+  }) as Promise<FeedbackReport>;
+}
+
+export async function updateFeedbackReport(
+  id: string,
+  patch: Partial<Pick<FeedbackReport, "status" | "admin_note">>,
+): Promise<void> {
+  await updateFeedbackReportFn({ data: { id, patch, token: sessionToken() } });
 }
 
 export async function uploadAnnouncementMaterial(

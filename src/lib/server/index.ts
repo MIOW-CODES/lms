@@ -75,6 +75,8 @@ export {
 } from "./announcements.server";
 export type { AnnouncementAttachment } from "./announcements.server";
 
+export { listFeedbackReports, createFeedbackReport, updateFeedbackReport } from "./feedback.server";
+
 export {
   listCourses,
   createCourse,

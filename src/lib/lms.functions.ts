@@ -173,6 +173,18 @@ export const listAnnouncementsFn = createServerFn({ method: "GET" }).handler(asy
   server.listAnnouncements(),
 );
 
+export const listFeedbackReportsFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.session.parse(data))
+  .handler(async ({ data }) => server.listFeedbackReports(data.token));
+
+export const createFeedbackReportFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.feedbackReportInput.parse(data))
+  .handler(async ({ data }) => server.createFeedbackReport(data.token, data));
+
+export const updateFeedbackReportFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.feedbackReportPatch.parse(data))
+  .handler(async ({ data }) => server.updateFeedbackReport(data.token, data.id, data.patch));
+
 export const createAnnouncementFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.announcementInput.parse(data))
   .handler(async ({ data }) => {
