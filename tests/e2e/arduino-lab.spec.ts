@@ -215,8 +215,9 @@ describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
   }, testInfo) => {
     test.setTimeout(TEST_TIMEOUT);
     const errors = collectConsoleErrors(page);
-    await page.goto("/dashboard/student/quizzes");
-    await expect(page.getByRole("heading", { name: "Worksheets" })).toBeVisible({
+    await page.goto("/dashboard/student/courses");
+    await page.getByRole("button", { name: /^Worksheets/ }).click();
+    await expect(page.getByRole("heading", { name: "Courses" })).toBeVisible({
       timeout: 20000,
     });
 
@@ -224,16 +225,17 @@ describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
     // 20-of-26 question subset in shuffled order, so retry a few times
     // until a lab_task question (Simulation Task A/B) is in the paper.
     const startBtn = page
-      .locator("div")
+      .getByTestId("student-worksheet-title")
       .filter({ hasText: "Quiz — Arduino Part 2" })
-      .last()
-      .getByRole("button", { name: /Start worksheet|Retake/ });
+      .locator("../..")
+      .getByRole("button", { name: /Start|Retake/ });
 
     let onLabTask = false;
     for (let attempt = 0; attempt < 5 && !onLabTask; attempt++) {
       if (attempt > 0) {
-        await page.goto("/dashboard/student/quizzes");
-        await expect(page.getByRole("heading", { name: "Worksheets" })).toBeVisible({
+        await page.goto("/dashboard/student/courses");
+        await page.getByRole("button", { name: /^Worksheets/ }).click();
+        await expect(page.getByRole("heading", { name: "Courses" })).toBeVisible({
           timeout: 20000,
         });
       }
@@ -245,9 +247,13 @@ describeRealDB("Arduino manual wiring (Tinkercad-style)", () => {
           if (k.startsWith("miow_quiz_")) localStorage.removeItem(k);
         }
       });
+      const courseUrl = page.url();
       await startBtn.click();
-      await page.getByRole("button", { name: "Start", exact: true }).click();
+      await expect(page.getByRole("alertdialog")).toContainText("Quiz — Arduino Part 2");
+      expect(page.url()).toBe(courseUrl);
+      await page.getByRole("button", { name: "Start worksheet", exact: true }).click();
       await expect(page.getByTestId("question-nav-1")).toBeVisible();
+      expect(page.url()).toBe(courseUrl);
       await dismissExamLock(page);
 
       // Scan the shuffled paper for the lab_task question

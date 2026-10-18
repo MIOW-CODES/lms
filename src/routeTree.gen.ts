@@ -36,7 +36,6 @@ import { Route as DashboardStudentAssignmentsRouteImport } from './routes/dashbo
 import { Route as DashboardStudentAttendanceRouteImport } from './routes/dashboard.student.attendance'
 import { Route as DashboardStudentCoursesRouteImport } from './routes/dashboard.student.courses'
 import { Route as DashboardStudentGradesRouteImport } from './routes/dashboard.student.grades'
-import { Route as DashboardStudentQuizzesRouteImport } from './routes/dashboard.student.quizzes'
 import { Route as DashboardStudentSettingsRouteImport } from './routes/dashboard.student.settings'
 import { Route as DashboardTeacherIndexRouteImport } from './routes/dashboard.teacher.index'
 import { Route as DashboardTeacherAnnouncementsRouteImport } from './routes/dashboard.teacher.announcements'
@@ -191,11 +190,6 @@ const DashboardStudentGradesRoute = DashboardStudentGradesRouteImport.update({
   path: '/grades',
   getParentRoute: () => DashboardStudentRoute,
 } as any)
-const DashboardStudentQuizzesRoute = DashboardStudentQuizzesRouteImport.update({
-  id: '/quizzes',
-  path: '/quizzes',
-  getParentRoute: () => DashboardStudentRoute,
-} as any)
 const DashboardStudentSettingsRoute =
   DashboardStudentSettingsRouteImport.update({
     id: '/settings',
@@ -296,7 +290,6 @@ export interface FileRoutesByFullPath {
   '/dashboard/student/attendance': typeof DashboardStudentAttendanceRoute
   '/dashboard/student/courses': typeof DashboardStudentCoursesRoute
   '/dashboard/student/grades': typeof DashboardStudentGradesRoute
-  '/dashboard/student/quizzes': typeof DashboardStudentQuizzesRoute
   '/dashboard/student/settings': typeof DashboardStudentSettingsRoute
   '/dashboard/teacher/announcements': typeof DashboardTeacherAnnouncementsRoute
   '/dashboard/teacher/arduino': typeof DashboardTeacherArduinoRoute
@@ -336,7 +329,6 @@ export interface FileRoutesByTo {
   '/dashboard/student/attendance': typeof DashboardStudentAttendanceRoute
   '/dashboard/student/courses': typeof DashboardStudentCoursesRoute
   '/dashboard/student/grades': typeof DashboardStudentGradesRoute
-  '/dashboard/student/quizzes': typeof DashboardStudentQuizzesRoute
   '/dashboard/student/settings': typeof DashboardStudentSettingsRoute
   '/dashboard/teacher/announcements': typeof DashboardTeacherAnnouncementsRoute
   '/dashboard/teacher/arduino': typeof DashboardTeacherArduinoRoute
@@ -380,7 +372,6 @@ export interface FileRoutesById {
   '/dashboard/student/attendance': typeof DashboardStudentAttendanceRoute
   '/dashboard/student/courses': typeof DashboardStudentCoursesRoute
   '/dashboard/student/grades': typeof DashboardStudentGradesRoute
-  '/dashboard/student/quizzes': typeof DashboardStudentQuizzesRoute
   '/dashboard/student/settings': typeof DashboardStudentSettingsRoute
   '/dashboard/teacher/announcements': typeof DashboardTeacherAnnouncementsRoute
   '/dashboard/teacher/arduino': typeof DashboardTeacherArduinoRoute
@@ -425,7 +416,6 @@ export interface FileRouteTypes {
     | '/dashboard/student/attendance'
     | '/dashboard/student/courses'
     | '/dashboard/student/grades'
-    | '/dashboard/student/quizzes'
     | '/dashboard/student/settings'
     | '/dashboard/teacher/announcements'
     | '/dashboard/teacher/arduino'
@@ -465,7 +455,6 @@ export interface FileRouteTypes {
     | '/dashboard/student/attendance'
     | '/dashboard/student/courses'
     | '/dashboard/student/grades'
-    | '/dashboard/student/quizzes'
     | '/dashboard/student/settings'
     | '/dashboard/teacher/announcements'
     | '/dashboard/teacher/arduino'
@@ -508,7 +497,6 @@ export interface FileRouteTypes {
     | '/dashboard/student/attendance'
     | '/dashboard/student/courses'
     | '/dashboard/student/grades'
-    | '/dashboard/student/quizzes'
     | '/dashboard/student/settings'
     | '/dashboard/teacher/announcements'
     | '/dashboard/teacher/arduino'
@@ -732,13 +720,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardStudentGradesRouteImport
       parentRoute: typeof DashboardStudentRoute
     }
-    '/dashboard/student/quizzes': {
-      id: '/dashboard/student/quizzes'
-      path: '/quizzes'
-      fullPath: '/dashboard/student/quizzes'
-      preLoaderRoute: typeof DashboardStudentQuizzesRouteImport
-      parentRoute: typeof DashboardStudentRoute
-    }
     '/dashboard/student/settings': {
       id: '/dashboard/student/settings'
       path: '/settings'
@@ -871,7 +852,6 @@ interface DashboardStudentRouteChildren {
   DashboardStudentAttendanceRoute: typeof DashboardStudentAttendanceRoute
   DashboardStudentCoursesRoute: typeof DashboardStudentCoursesRoute
   DashboardStudentGradesRoute: typeof DashboardStudentGradesRoute
-  DashboardStudentQuizzesRoute: typeof DashboardStudentQuizzesRoute
   DashboardStudentSettingsRoute: typeof DashboardStudentSettingsRoute
   DashboardStudentIndexRoute: typeof DashboardStudentIndexRoute
 }
@@ -882,7 +862,6 @@ const DashboardStudentRouteChildren: DashboardStudentRouteChildren = {
   DashboardStudentAttendanceRoute: DashboardStudentAttendanceRoute,
   DashboardStudentCoursesRoute: DashboardStudentCoursesRoute,
   DashboardStudentGradesRoute: DashboardStudentGradesRoute,
-  DashboardStudentQuizzesRoute: DashboardStudentQuizzesRoute,
   DashboardStudentSettingsRoute: DashboardStudentSettingsRoute,
   DashboardStudentIndexRoute: DashboardStudentIndexRoute,
 }

@@ -155,7 +155,7 @@ export const updateUserRoleFn = createServerFn({ method: "POST" })
 // permissions re-evaluate without requiring a fresh sign-in.
 export const refreshSessionFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.session.parse(data))
-  .handler(async ({ data }) => server.requireSession(data.token));
+  .handler(async ({ data }) => server.requireSession(data.token, { allowTemporaryPin: true }));
 
 // Test-account role view switch (allowlist-guarded). The server checks the
 // SESSION's real profile email against a hard allowlist and throws "Forbidden"
@@ -821,3 +821,11 @@ export const listQuestionBankFn = createServerFn({ method: "POST" })
 export const updateQuestionFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.questionUpdate.parse(data))
   .handler(async ({ data }) => server.updateQuestion(data.token, data.id, data.patch));
+
+export const pendingTasksFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.session.parse(data))
+  .handler(async ({ data }) => {
+    const caller = await server.requireSession(data.token);
+    const { pendingTasks } = await import("./server/pending-tasks.server");
+    return pendingTasks(caller);
+  });

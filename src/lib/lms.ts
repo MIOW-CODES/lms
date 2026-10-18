@@ -1,4 +1,6 @@
+import { notifyTasksChanged, type PendingTaskCounts } from "@/lib/pending-tasks";
 import {
+  pendingTasksFn,
   bulkAddStudentsFn,
   countRowsFn,
   createAnnouncementFn,
@@ -382,6 +384,7 @@ export interface QuizQuestion {
   options: string[];
   correct_answer: string;
   position: number;
+  question_type?: import("@/lib/question-types").QuestionType | null;
   /** Question media — URL or data URL rendered above the answer area. */
   image_url?: string | null;
   /** Embeds the Virtual Arduino Lab (code + breadboard) for this task; the question text must require breadboard wiring. */
@@ -1001,6 +1004,7 @@ export async function createAssignment(input: Partial<Assignment>): Promise<void
   await createAssignmentFn({
     data: { ...(input as object), token: sessionToken() } as Record<string, unknown>,
   });
+  notifyTasksChanged();
 }
 
 // Activity aliases — pedagogical rename, DB stays `assignments`
@@ -1012,9 +1016,11 @@ export async function listSubmissionsForStudent(studentId: string): Promise<Subm
 }
 
 export async function submitAssignment(input: Partial<Submission>): Promise<{ id: string }> {
-  return submitAssignmentFn({
+  const result = (await submitAssignmentFn({
     data: { ...(input as object), token: sessionToken() } as Record<string, unknown>,
-  }) as Promise<{ id: string }>;
+  })) as { id: string };
+  notifyTasksChanged();
+  return result;
 }
 
 /** Upload one file to a submission and get back its metadata record. */
@@ -1050,6 +1056,7 @@ export async function gradeSubmission(
   },
 ): Promise<void> {
   await gradeSubmissionFn({ data: { id, patch, token: sessionToken() } });
+  notifyTasksChanged();
 }
 
 export async function listQuizzes(): Promise<Quiz[]> {
@@ -1069,7 +1076,7 @@ export async function submitQuizAnswers(
   tabSwitches?: Array<{ at: number; type: IntegrityEventType }>,
   submissionId?: string,
 ): Promise<SubmitQuizResult> {
-  return submitQuizAttemptFn({
+  const result = await submitQuizAttemptFn({
     data: {
       quiz_id: quizId,
       answers,
@@ -1079,6 +1086,8 @@ export async function submitQuizAnswers(
       submission_id: submissionId,
     },
   });
+  if (result.ok) notifyTasksChanged();
+  return result;
 }
 
 /** Attempt summaries for every worksheet, for the signed-in student. */
@@ -1527,11 +1536,13 @@ export async function updateQuiz(
   await updateQuizFn({
     data: { id, patch, questions, token: sessionToken() } as Record<string, unknown>,
   });
+  notifyTasksChanged();
 }
 
 /** Soft delete keeps attempts/grades; hard delete also purges attached files. */
 export async function deleteQuiz(id: string, mode: "soft" | "hard" = "soft"): Promise<void> {
   await deleteQuizFn({ data: { id, mode, token: sessionToken() } });
+  notifyTasksChanged();
 }
 
 export async function updateAssignment(
@@ -1553,10 +1564,12 @@ export async function updateAssignment(
   await updateAssignmentFn({
     data: { id, patch: patch as Record<string, unknown>, token: sessionToken() },
   });
+  notifyTasksChanged();
 }
 
 export async function deleteAssignment(id: string, mode: "soft" | "hard" = "soft"): Promise<void> {
   await deleteAssignmentFn({ data: { id, mode, token: sessionToken() } });
+  notifyTasksChanged();
 }
 
 /* ---------- Course Meetings & Timetable ---------- */
@@ -1783,4 +1796,8 @@ export async function updateQuestion(
   return (await updateQuestionFn({
     data: { id, patch, token: sessionToken() } as Record<string, unknown>,
   })) as QuestionBankQuestion;
+}
+
+export async function getPendingTasks(): Promise<PendingTaskCounts> {
+  return pendingTasksFn({ data: { token: sessionToken() } });
 }

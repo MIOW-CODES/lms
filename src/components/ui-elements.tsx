@@ -471,6 +471,7 @@ export function Modal({
   children,
   wide,
   fullscreen,
+  hideClose,
 }: {
   open: boolean;
   onClose: () => void;
@@ -478,6 +479,7 @@ export function Modal({
   children: ReactNode;
   wide?: boolean;
   fullscreen?: boolean;
+  hideClose?: boolean;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -594,13 +596,15 @@ export function Modal({
               <h3 id={titleId} className="text-lg font-bold">
                 {title}
               </h3>
-              <button
-                onClick={onClose}
-                aria-label="Close dialog"
-                className="rounded-lg px-2 py-1 text-sm text-muted-foreground transition hover:bg-muted"
-              >
-                ✕
-              </button>
+              {!hideClose && (
+                <button
+                  onClick={onClose}
+                  aria-label="Close dialog"
+                  className="rounded-lg px-2 py-1 text-sm text-muted-foreground transition hover:bg-muted"
+                >
+                  ✕
+                </button>
+              )}
             </div>
             <div
               role="region"

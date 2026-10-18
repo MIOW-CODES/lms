@@ -121,7 +121,9 @@ export async function getQuizPublic(id: string, studentId?: string) {
   let questions = await unwrap<any[]>(
     db
       .from("quiz_questions")
-      .select("id, quiz_id, question, options, position, image_url, lab_task, required")
+      .select(
+        "id, quiz_id, question, options, position, image_url, lab_task, required, question_type",
+      )
       .eq("quiz_id", id)
       .order("position"),
   );

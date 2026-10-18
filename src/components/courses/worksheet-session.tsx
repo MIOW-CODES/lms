@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
   Maximize2,
@@ -11,7 +10,6 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
-  Paperclip,
   RotateCcw,
   ShieldCheck,
   Timer,
@@ -31,47 +29,16 @@ import {
 } from "@/lib/anti-cheat";
 import {
   getQuiz,
-  enrollmentsForStudent,
-  fmtDateTime,
-  listCourses,
-  listQuizzes,
-  materialHref,
-  myQuizSummaries,
   submitQuizAnswers,
+  type Quiz,
   type QuizQuestionPublic,
   type SubmitQuizResult,
 } from "@/lib/lms";
 import { isTestStudent } from "@/lib/role-view";
-import {
-  AppShell,
-  Badge,
-  EmptyState,
-  Modal,
-  MotionCard,
-  STUDENT_NAV,
-  courseStyle,
-  useProfile,
-} from "@/components/lms";
+import { Badge, Modal, useProfile } from "@/components/lms";
 import { cn } from "@/lib/utils";
+import { QUESTION_TYPE_LABELS } from "@/lib/question-types";
 import { LoadingSkeleton } from "@/components/ui-elements";
-
-export const Route = createFileRoute("/dashboard/student/quizzes")({
-  head: () => ({
-    meta: [
-      { title: "Worksheets | MIOW - Integrated Developmental School" },
-      {
-        name: "description",
-        content: "Take timed worksheets and exams — scores appear after teacher release.",
-      },
-      { property: "og:title", content: "Worksheets | MIOW - Integrated Developmental School" },
-      {
-        property: "og:description",
-        content: "Take timed worksheets and exams — scores appear after teacher release.",
-      },
-    ],
-  }),
-  component: QuizzesPage,
-});
 
 type QuizSuccess = Extract<SubmitQuizResult, { ok: true }>;
 
@@ -163,35 +130,18 @@ const setStoredQuestions = (id: string, qs: QuizQuestionPublic[]) => {
   }
 };
 
-function QuizzesPage() {
+export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () => void }) {
   const profile = useProfile(["student"]);
   const queryClient = useQueryClient();
-  const { data: courses } = useQuery({
-    queryKey: ["courses"],
-    queryFn: listCourses,
-    enabled: !!profile,
-  });
-  const { data: quizzes } = useQuery({
-    queryKey: ["quizzes"],
-    queryFn: listQuizzes,
-    enabled: !!profile,
-  });
-  const { data: summaries } = useQuery({
-    queryKey: ["quiz-summaries"],
-    queryFn: myQuizSummaries,
-    enabled: !!profile,
-  });
-  const { data: enrolledCourseIds } = useQuery({
-    queryKey: ["enrollments", "student", profile?.id],
-    queryFn: () => enrollmentsForStudent(profile!.id),
-    enabled: !!profile?.id,
-  });
-
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(quiz.id);
+  const activeQuiz = quiz;
+  useEffect(() => {
+    if (!activeId) onClose();
+  }, [activeId, onClose]);
   const [questions, setQuestions] = useState<QuizQuestionPublic[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [idx, setIdx] = useState(0);
-  // Collapsible Virtual Arduino Lab panel for problem-solving (lab_task) items.
+  // Collapsible Arduino Lab panel for problem-solving (lab_task) items.
   const [labOpen, setLabOpen] = useState(true);
   const [labFullscreen, setLabFullscreen] = useState(false);
   const [confirmation, setConfirmation] = useState<{
@@ -201,18 +151,19 @@ function QuizzesPage() {
     cancel: string;
     confirm: () => void;
   } | null>(null);
-  // Auto-generated wiring description from the Virtual Arduino Lab (manual wires)
+  // Auto-generated wiring description from the Arduino Lab (manual wires)
   const [connSummary, setConnSummary] = useState("");
-  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   // Which worksheet the timer/answers below belong to, and whether the current
   // attempt has finished loading. Both are guards against a newly selected
   // worksheet inheriting the previous one's countdown/answers while its async
   // fetch is still resolving — timer and answers are persisted per quiz id, so
   // a stale write under the new id would leak the old attempt's state forward.
   const [readyQuizId, setReadyQuizId] = useState<string | null>(null);
-  const [loadingAttempt, setLoadingAttempt] = useState(false);
+  const [loadingAttempt, setLoadingAttempt] = useState(true);
   const [result, setResult] = useState<QuizSuccess | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const attemptLoadRef = useRef(0);
   const savedTimerRef = useRef<Map<string, number>>(new Map());
   const savedAnswersRef = useRef<Map<string, Record<string, string>>>(new Map());
   // Persist the sampled question set for the in-progress attempt so reopening a
@@ -231,15 +182,6 @@ function QuizzesPage() {
       }
     >
   >(new Map());
-
-  const activeQuiz = useMemo(
-    () => (quizzes ?? []).find((q) => q.id === activeId),
-    [quizzes, activeId],
-  );
-  const summaryByQuiz = useMemo(
-    () => new Map((summaries ?? []).map((s) => [s.quiz_id, s])),
-    [summaries],
-  );
 
   // Assessment integrity: hide the ClassMate Assistant while a worksheet is
   // actively being taken (restored on the review screen and on unmount).
@@ -262,15 +204,33 @@ function QuizzesPage() {
   // closed and reopened the same worksheet within this session.
   const beginAttempt = useCallback(
     async (id: string) => {
+      const loadId = ++attemptLoadRef.current;
       // Reuse the in-progress attempt's sampled questions when present so a
       // reopen doesn't swap the question set (and lose already-answered items).
       let attempt = savedAttemptRef.current.get(id);
       if (!attempt) {
         const { quiz, questions } = await getQuiz(id);
+        if (loadId !== attemptLoadRef.current) return;
         // A reload mid-exam must resume the SAME drawn subset — prefer the
         // persisted set over the server's fresh draw. Cleared on submit/retake,
         // so a NEW attempt still fetches a fresh set.
-        const persisted = getStoredQuestions(id);
+        let persisted = getStoredQuestions(id);
+        // An older cached paper must not hide formats added to the IT10 bank.
+        // This applies only to banks explicitly carrying all four formats.
+        const formats = Object.keys(QUESTION_TYPE_LABELS);
+        if (
+          persisted &&
+          formats.every((type) => questions.some((q) => q.question_type === type)) &&
+          !formats.every((type) => persisted!.some((q) => q.question_type === type))
+        ) {
+          persisted = null;
+          clearStoredProgress(id);
+          savedAnswersRef.current.delete(id);
+          savedTimerRef.current.delete(id);
+          toast.info(
+            "This worksheet was updated. Your new paper includes all four question types.",
+          );
+        }
         attempt = {
           questions: persisted ?? questions,
           duration: quiz.duration_minutes * 60,
@@ -283,6 +243,7 @@ function QuizzesPage() {
         if (!persisted) setStoredQuestions(id, attempt.questions);
         savedAttemptRef.current.set(id, attempt);
       }
+      if (loadId !== attemptLoadRef.current) return;
       setQuestions(attempt.questions);
       setResult(null);
       // Restore saved answers if they exist for this quiz
@@ -300,6 +261,8 @@ function QuizzesPage() {
           ? Math.max(0, Math.floor((attempt.closesAt - Date.now()) / 1000))
           : Number.POSITIVE_INFINITY;
       const startSec = Math.min(attempt.duration, windowSec);
+      if (!Number.isFinite(startSec) || startSec <= 0)
+        throw new Error("This worksheet is no longer available.");
       // Restore saved timer or start fresh. Restored time is clamped to the
       // window too, so a resumed attempt can't exceed closes_at either.
       const localTimer = getStoredTimer(id);
@@ -318,23 +281,45 @@ function QuizzesPage() {
   );
 
   useEffect(() => {
-    if (activeId) {
+    let cancelled = false;
+    if (activeId && profile?.id) {
       submittedRef.current = false;
       // Disarm the guard for the async window: the render right after the id
       // change still holds the previous worksheet's state, and beginAttempt
       // re-arms it when the fresh attempt is applied.
       setReadyQuizId(null);
+      setSecondsLeft(null);
       setLoadingAttempt(true);
-      void beginAttempt(activeId).finally(() => setLoadingAttempt(false));
+      void beginAttempt(activeId)
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          toast.error(
+            error instanceof Error && error.message === "This worksheet is no longer available."
+              ? error.message
+              : "Could not open this worksheet. Please try again.",
+          );
+          setActiveId(null);
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingAttempt(false);
+        });
     }
-  }, [activeId, beginAttempt]);
+    return () => {
+      cancelled = true;
+      attemptLoadRef.current += 1;
+    };
+  }, [activeId, beginAttempt, profile?.id]);
 
   useEffect(() => {
-    if (!activeId || readyQuizId !== activeId || result || secondsLeft <= 0) return;
+    if (!activeId || readyQuizId !== activeId || result || secondsLeft == null || secondsLeft <= 0)
+      return;
     // Persist remaining time so closing/reopening or reload preserves it
     savedTimerRef.current.set(activeId, secondsLeft);
     setStoredTimer(activeId, secondsLeft);
-    const t = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
+    const t = setTimeout(
+      () => setSecondsLeft((s) => (s == null ? null : Math.max(0, s - 1))),
+      1000,
+    );
     return () => clearTimeout(t);
   }, [activeId, readyQuizId, secondsLeft, result]);
 
@@ -360,27 +345,17 @@ function QuizzesPage() {
   const submittedRef = useRef(false);
 
   useEffect(() => {
-    if (activeId && readyQuizId === activeId && secondsLeft === 0 && finishRef.current)
+    if (
+      activeId &&
+      readyQuizId === activeId &&
+      !loadingAttempt &&
+      secondsLeft === 0 &&
+      finishRef.current
+    )
       finishRef.current();
-  }, [activeId, readyQuizId, secondsLeft]);
-
-  const isLoading = !courses || !quizzes || !summaries || !enrolledCourseIds;
+  }, [activeId, readyQuizId, secondsLeft, loadingAttempt]);
 
   if (!profile) return null;
-
-  if (isLoading)
-    return (
-      <AppShell nav={STUDENT_NAV} profile={profile} subtitle="Student Portal">
-        <LoadingSkeleton />
-      </AppShell>
-    );
-
-  // Server returns enrolled courses only; enrollment check is display-only.
-  // Grade level is never a fallback — it must not widen visibility.
-  const enrolled = new Set(enrolledCourseIds ?? []);
-  const myCourses = (courses ?? []).filter((c) => enrolled.has(c.id));
-  const courseIds = new Set(myCourses.map((c) => c.id));
-  const myQuizzes = (quizzes ?? []).filter((q) => courseIds.has(q.course_id));
 
   const finish = async () => {
     if (!activeId || result || !questions.length || submittedRef.current) return;
@@ -419,127 +394,13 @@ function QuizzesPage() {
 
   finishRef.current = finish;
 
-  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
-  const ss = String(secondsLeft % 60).padStart(2, "0");
+  const mm = String(Math.floor((secondsLeft ?? 0) / 60)).padStart(2, "0");
+  const ss = String((secondsLeft ?? 0) % 60).padStart(2, "0");
   const current = questions[idx];
-  const answeredCount = Object.keys(answers).length;
+  const answeredCount = questions.filter((q) => answers[q.id]?.trim()).length;
 
   return (
-    <AppShell nav={STUDENT_NAV} profile={profile} subtitle="Student Portal">
-      <h1 className="font-display text-2xl font-bold sm:text-3xl">Worksheets</h1>
-      <p className="mb-6 mt-1 text-sm text-muted-foreground">
-        Timed worksheets, drills, and exams — scores appear after your teacher releases them.
-      </p>
-
-      {myQuizzes.length === 0 ? (
-        <EmptyState title="No worksheets available yet" />
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {myQuizzes.map((q, i) => {
-            const course = myCourses.find((c) => c.id === q.course_id);
-            const st = courseStyle(course?.color ?? "indigo");
-            const s = summaryByQuiz.get(q.id);
-            const used = s?.attempts_used ?? 0;
-            const isTester = isTestStudent(profile?.email);
-            const isClosed =
-              !isTester && q.closes_at ? new Date(q.closes_at).getTime() < Date.now() : false;
-            const notYetOpen =
-              !isTester && q.opens_at ? new Date(q.opens_at).getTime() > Date.now() : false;
-            const canTake = !isClosed && !notYetOpen && (isTester || !s || s.can_retake);
-            return (
-              <MotionCard key={q.id} delay={Math.min(i * 0.05, 0.3)} className="p-5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className={cn("rounded-md px-2 py-0.5 text-[11px] font-bold", st.soft)}>
-                    {course?.code}
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {notYetOpen && q.opens_at ? (
-                      <Badge tone="amber">Opens {fmtDateTime(q.opens_at)}</Badge>
-                    ) : isClosed ? (
-                      <Badge tone="red">Closed</Badge>
-                    ) : q.closes_at ? (
-                      <Badge tone="sky">Closes {fmtDateTime(q.closes_at)}</Badge>
-                    ) : null}
-                    {used > 0 && (
-                      <Badge tone={canTake ? "indigo" : "slate"}>
-                        {attemptLabel(used, s?.attempts_allowed ?? null)}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                <p className="mt-2 font-semibold">{q.title}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {q.duration_minutes} minutes
-                  {used > 0 && s?.effective_score != null && (
-                    <>
-                      {" · "}Standing score: {s.effective_score}/{s.effective_total}
-                    </>
-                  )}
-                </p>
-                {(q.attachments ?? []).length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {q.attachments!.map((a) => (
-                      <a
-                        key={a.path}
-                        href={materialHref(a)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-1 rounded-lg border border-border/60 bg-muted/40 px-2 py-1 text-[11px] font-medium text-primary hover:underline"
-                      >
-                        <Paperclip className="h-3 w-3" />
-                        {a.name}
-                      </a>
-                    ))}
-                  </div>
-                )}
-                <button
-                  onClick={() => {
-                    setConfirmation({
-                      title: `Start ${q.title}?`,
-                      description:
-                        "Your timer will begin immediately. Make sure you are ready before starting.",
-                      action: "Start worksheet",
-                      cancel: "Cancel",
-                      confirm: () => {
-                        examLock.lock();
-                        setActiveId(q.id);
-                      },
-                    });
-                  }}
-                  disabled={!canTake}
-                  title={
-                    notYetOpen && q.opens_at
-                      ? `This worksheet opens on ${fmtDateTime(q.opens_at)}.`
-                      : isClosed
-                        ? "The deadline for this worksheet has passed."
-                        : !canTake
-                          ? "Maximum attempts reached. Contact your teacher to request a retake."
-                          : undefined
-                  }
-                  className={cn(
-                    "mt-4 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl text-sm font-semibold",
-                    canTake
-                      ? "bg-primary text-primary-foreground hover:opacity-90"
-                      : "cursor-not-allowed bg-muted text-muted-foreground",
-                  )}
-                >
-                  {used > 0 && canTake && <RotateCcw className="h-3.5 w-3.5" />}
-                  {notYetOpen
-                    ? "Opens soon"
-                    : isClosed
-                      ? "Submission closed"
-                      : used === 0
-                        ? "Start worksheet"
-                        : canTake
-                          ? `Retake — ${attemptLabel(used, s?.attempts_allowed ?? null, true)}`
-                          : "Max attempts reached"}
-                </button>
-              </MotionCard>
-            );
-          })}
-        </div>
-      )}
-
+    <>
       <Modal
         open={!!activeId}
         onClose={() => {
@@ -739,7 +600,7 @@ function QuizzesPage() {
               <p
                 className={cn(
                   "flex items-center gap-1.5 font-display text-lg font-bold tabular-nums",
-                  secondsLeft < 60 && "text-rose-600",
+                  secondsLeft != null && secondsLeft < 60 && "text-rose-600",
                 )}
               >
                 <Timer className="h-4 w-4" /> {mm}:{ss}
@@ -813,7 +674,12 @@ function QuizzesPage() {
 
             {current && (
               <div>
-                <p className="mb-3 text-sm font-semibold">
+                {current.question_type && (
+                  <div className="mb-2">
+                    <Badge tone="indigo">{QUESTION_TYPE_LABELS[current.question_type]}</Badge>
+                  </div>
+                )}
+                <p data-testid="worksheet-question" className="mb-3 text-sm font-semibold">
                   {idx + 1}. {current.question}
                 </p>
                 {current.image_url && (
@@ -823,7 +689,28 @@ function QuizzesPage() {
                     className="mx-auto mb-3 max-h-56 rounded-lg border border-border bg-background object-contain"
                   />
                 )}
-                {current.options.length === 0 ? (
+                {current.question_type === "matching" ? (
+                  <div className="space-y-2">
+                    <label htmlFor={`match-${current.id}`} className="block text-sm font-medium">
+                      Column B — choose the matching description
+                    </label>
+                    <select
+                      id={`match-${current.id}`}
+                      value={answers[current.id] ?? ""}
+                      onChange={(e) =>
+                        setAnswers((prev) => ({ ...prev, [current.id]: e.target.value }))
+                      }
+                      className="min-h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-ring"
+                    >
+                      <option value="">Select a match…</option>
+                      {current.options.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : current.options.length === 0 ? (
                   // Fill-in-the-blank and essay items have no options — free text.
                   <textarea
                     value={answers[current.id] ?? ""}
@@ -914,7 +801,7 @@ function QuizzesPage() {
                         >
                           <span className="flex items-center gap-2">
                             <FlaskConical className="h-4 w-4 shrink-0" />
-                            Virtual Arduino Lab
+                            Arduino Lab
                           </span>
                           <ChevronDown
                             className={cn(
@@ -1032,6 +919,6 @@ function QuizzesPage() {
           </AlertDialog.Content>
         </AlertDialog.Portal>
       </AlertDialog.Root>
-    </AppShell>
+    </>
   );
 }

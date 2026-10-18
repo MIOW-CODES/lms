@@ -904,7 +904,7 @@ export function InteractiveBreadboardCanvas({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 w-full max-w-full space-y-4">
       {/* Component Palette Toolbar */}
       <div className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-card/90 p-3.5 shadow-sm backdrop-blur-md">
         {/* Row 1: Primary Controls & Tools */}
@@ -927,7 +927,7 @@ export function InteractiveBreadboardCanvas({
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition",
                   !drawMode
-                    ? "bg-emerald-500/20 text-emerald-300 shadow-inner"
+                    ? "bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 shadow-inner"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -946,7 +946,7 @@ export function InteractiveBreadboardCanvas({
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition",
                   drawMode
-                    ? "bg-emerald-500/20 text-emerald-300 shadow-inner"
+                    ? "bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 shadow-inner"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -968,7 +968,7 @@ export function InteractiveBreadboardCanvas({
                     createWire(fKey, tKey);
                   });
                 }}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25 transition shadow-sm"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-500/25 transition shadow-sm"
                 title="Automatically connect all guide wires for this task"
               >
                 <Zap className="h-3.5 w-3.5 text-amber-400" /> Auto-Wire Task
@@ -995,7 +995,7 @@ export function InteractiveBreadboardCanvas({
           {/* Wire Colors & Selection Status */}
           <div className="flex flex-wrap items-center gap-2">
             {pendingKey ? (
-              <div className="flex items-center gap-2 rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-200 animate-pulse">
+              <div className="flex items-center gap-2 rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-900 dark:text-emerald-200 animate-pulse">
                 <span>
                   From:{" "}
                   <strong className="text-white underline">
@@ -1060,7 +1060,7 @@ export function InteractiveBreadboardCanvas({
                     <span className="text-xs text-muted-foreground">
                       Selected: <strong className="text-foreground">{selectedPart.label}</strong>
                       {selVisual && (
-                        <span className="ml-1 font-mono text-[10px] text-emerald-300">
+                        <span className="ml-1 font-mono text-[10px] text-emerald-800 dark:text-emerald-300">
                           {selVisual.connectedPins.length > 0
                             ? `→ ${selVisual.connectedPins.join(", ")}`
                             : "→ unwired"}
@@ -1117,7 +1117,13 @@ export function InteractiveBreadboardCanvas({
       </div>
 
       {/* Preserve the circuit's 1080px coordinate space; smaller screens scroll. */}
-      <div className="w-full overflow-x-auto rounded-2xl">
+      <div
+        data-testid="workbench-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label="Circuit workbench. Scroll horizontally to reach all components."
+        className="min-w-0 w-full max-w-full overflow-x-auto overscroll-x-contain rounded-2xl focus-visible:outline-2 focus-visible:outline-ring"
+      >
         <div
           ref={containerRef}
           onClick={handleCanvasClick}
