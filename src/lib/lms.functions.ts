@@ -61,12 +61,27 @@ export const logoutFn = createServerFn({ method: "POST" })
     const token =
       data.token === COOKIE_SESSION_MARKER ? getCookie(SESSION_COOKIE_NAME) : data.token;
     if (token) {
+      let caller: Awaited<ReturnType<typeof requireSession>> | null = null;
       try {
-        const caller = await requireSession(token, { allowTemporaryPin: true });
+        caller = await requireSession(token, { allowTemporaryPin: true });
+      } catch (error) {
+        console.warn(
+          "[auth] sign-out session validation failed",
+          error instanceof Error ? error.message : "unknown error",
+        );
+      }
+      if (caller) {
         const jti = server.sessionJti(token);
-        if (jti) await server.revokeSessionJti(jti, caller.id);
-      } catch {
-        // Logout should clear a stale or expired browser session as well.
+        if (jti) {
+          try {
+            await server.revokeSessionJti(jti, caller.id);
+          } catch (error) {
+            console.error(
+              "[auth] sign-out could not revoke server session",
+              error instanceof Error ? error.message : "unknown error",
+            );
+          }
+        }
       }
     }
     deleteCookie(SESSION_COOKIE_NAME, {

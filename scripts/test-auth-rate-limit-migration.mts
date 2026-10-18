@@ -18,6 +18,10 @@ try {
   assert.deepEqual((await consume()).rows[0], { allowed: true, remaining: 0 });
   assert.deepEqual((await consume()).rows[0], { allowed: false, remaining: 0 });
 
+  await pg.query("SELECT public.clear_auth_rate_limit($1)", ["test-account"]);
+  const concurrent = await Promise.all(Array.from({ length: 20 }, () => consume()));
+  assert.equal(concurrent.filter((result) => result.rows[0]?.allowed).length, 2);
+
   for (let i = 0; i < 5; i++) {
     await pg.query("SELECT public.record_auth_rate_failure($1, $2)", ["hashed-identity", 900]);
   }

@@ -45,7 +45,12 @@ export function useSignOut() {
       void document.exitFullscreen().catch(() => {});
     }
     void logoutSession()
-      .catch(() => {})
+      .catch((error) => {
+        console.warn(
+          "[auth] sign-out request failed",
+          error instanceof Error ? error.message : "unknown error",
+        );
+      })
       .finally(() => {
         saveSession(null);
         queryClient.clear();
