@@ -42,6 +42,7 @@ const WIRE_COLORS = [
   { name: "Rose", stroke: "#f43f5e" },
   { name: "Purple", stroke: "#a855f7" },
   { name: "Blue", stroke: "#3b82f6" },
+  { name: "Black", stroke: "#111111" },
 ];
 
 /* ────────────────────────────────────────────────────────────
@@ -704,6 +705,18 @@ export function InteractiveBreadboardCanvas({
   };
 
   const selectedPart = parts.find((p) => p.id === selectedId);
+  // Grow the scrollable surface with its contents so large boards and moved
+  // components remain reachable instead of being clipped by the canvas edge.
+  const workbenchWidth = Math.max(
+    1080,
+    unoPos.x + UNO_W + 36,
+    ...parts.map((part) => part.x + PART_LAYOUTS[part.type].w + 36),
+  );
+  const workbenchHeight = Math.max(
+    620,
+    unoPos.y + UNO_H + 36,
+    ...parts.map((part) => part.y + PART_LAYOUTS[part.type].h + 36),
+  );
 
   /* ---------- Rendering helpers ---------- */
   const renderTerminal = (
@@ -830,7 +843,7 @@ export function InteractiveBreadboardCanvas({
             <path
               d={d}
               fill="none"
-              stroke="#000000"
+              stroke={color === "#111111" ? "#94a3b8" : "#000000"}
               strokeOpacity="0.45"
               strokeWidth={isSelected ? 8 : 6}
               strokeLinecap="round"
@@ -842,7 +855,7 @@ export function InteractiveBreadboardCanvas({
               stroke={color}
               strokeWidth={isSelected ? 5 : 3.4}
               strokeLinecap="round"
-              filter="url(#wire-glow)"
+              filter={color === "#111111" ? undefined : "url(#wire-glow)"}
               style={{ pointerEvents: "none" }}
             />
             <path
@@ -1023,10 +1036,13 @@ export function InteractiveBreadboardCanvas({
                 {WIRE_COLORS.map((w) => (
                   <button
                     key={w.name}
+                    type="button"
                     onClick={() => setDrawColor(w.stroke)}
+                    aria-label={`${w.name} jumper wire`}
+                    aria-pressed={drawColor === w.stroke}
                     data-testid={`wire-color-${w.name}`}
                     className={cn(
-                      "h-3.5 w-3.5 rounded-full transition-transform",
+                      "h-3.5 w-3.5 rounded-full border border-slate-400 transition-transform focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring",
                       drawColor === w.stroke
                         ? "scale-125 ring-2 ring-white"
                         : "opacity-75 hover:opacity-100 hover:scale-110",
@@ -1145,11 +1161,13 @@ export function InteractiveBreadboardCanvas({
           }}
           data-testid="arduino-workbench"
           className={cn(
-            "relative h-[620px] w-full min-w-[1080px] select-none overflow-hidden rounded-2xl border-2 shadow-2xl",
+            "relative w-full select-none overflow-hidden rounded-2xl border-2 shadow-2xl",
             dragOver ? "border-emerald-400 ring-2 ring-emerald-400/40" : "border-emerald-900/60",
             drawMode && "cursor-crosshair",
           )}
           style={{
+            minWidth: workbenchWidth,
+            height: workbenchHeight,
             backgroundImage: `
               radial-gradient(circle, rgba(148, 163, 184, 0.22) 1.5px, transparent 1.5px),
               radial-gradient(circle, rgba(148, 163, 184, 0.08) 1.5px, transparent 1.5px)
@@ -1159,8 +1177,11 @@ export function InteractiveBreadboardCanvas({
             backgroundColor: "#090d16",
           }}
         >
-          {/* Wire layer (under parts) */}
-          <svg className="pointer-events-none absolute inset-0 h-full w-full z-10">
+          {/* Jumpers sit above hardware, with terminal targets above both. */}
+          <svg
+            data-testid="workbench-wires"
+            className="pointer-events-none absolute inset-0 h-full w-full z-30"
+          >
             <defs>
               <filter id="wire-glow" x="-20%" y="-20%" width="140%" height="140%">
                 <feGaussianBlur stdDeviation="2" result="blur" />

@@ -12,7 +12,22 @@ import {
   validateAttemptQuestionIds,
   gateAttemptResults,
   randomizeQuestions,
+  attemptCeiling,
 } from "./quizzes.server";
+
+describe("teacher-approved retakes", () => {
+  it("limits a worksheet to one attempt until an individual grant is issued", () => {
+    const policy = { allow_retake: false, max_attempts: 0 };
+    expect(attemptCeiling(policy, 0)).toBe(1);
+    expect(attemptCeiling(policy, 1)).toBe(2);
+    expect(attemptCeiling(policy, 2)).toBe(3);
+  });
+
+  it("honors an explicit teacher policy for a finite or unlimited allowance", () => {
+    expect(attemptCeiling({ allow_retake: true, max_attempts: 2 }, 0)).toBe(2);
+    expect(attemptCeiling({ allow_retake: true, max_attempts: 0 }, 0)).toBeNull();
+  });
+});
 
 /* ---------- randomizeQuestions (exam jumbling) ---------- */
 

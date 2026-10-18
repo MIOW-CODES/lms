@@ -675,8 +675,8 @@ export async function seedIae106CourseAndQuizzes(): Promise<SeedIae106Result> {
           course_id: courseId,
           title: qDef.title,
           duration_minutes: qDef.duration_minutes,
-          allow_retake: true,
-          max_attempts: 0,
+          allow_retake: false,
+          max_attempts: 1,
           retake_score_policy: "highest_score",
           question_count: qDef.questions.length,
           opens_at: null,
@@ -696,8 +696,8 @@ export async function seedIae106CourseAndQuizzes(): Promise<SeedIae106Result> {
         .from("quizzes")
         .update({
           duration_minutes: qDef.duration_minutes,
-          allow_retake: true,
-          max_attempts: 0,
+          allow_retake: false,
+          max_attempts: 1,
           retake_score_policy: "highest_score",
           question_count: qDef.questions.length,
           closes_at: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),

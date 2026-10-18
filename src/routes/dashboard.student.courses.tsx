@@ -543,14 +543,14 @@ function StudentWorksheetRow({
   const notYetOpen = !isTester && !!quiz.opens_at && new Date(quiz.opens_at).getTime() > Date.now();
   const isClosed =
     !isTester && !!quiz.closes_at && new Date(quiz.closes_at).getTime() <= Date.now();
-  const canTake = !notYetOpen && !isClosed && (isTester || !summary || summary.can_retake);
+  const canTake = !notYetOpen && !isClosed && (!summary || summary.can_retake);
   const st = courseStyle(course?.color ?? "indigo");
   const used = summary?.attempts_used ?? 0;
   const started = used > 0;
   // One primary action, derived from attempt state — never "Retake" on a first try.
   const actionLabel = worksheetActionLabel({
     attemptsUsed: used,
-    canRetake: isTester || (summary?.can_retake ?? true),
+    canRetake: summary?.can_retake ?? true,
   });
   return (
     <MotionCard className="flex flex-wrap items-center gap-3 p-4">

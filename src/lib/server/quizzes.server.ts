@@ -113,6 +113,16 @@ export async function getQuizPublic(id: string, studentId?: string) {
     if (!profile) throw new Error("Unauthorized");
     if (profile.role === "student") {
       await requireEnrollment(quiz.course_id, profile);
+      const [attempts, extra] = await Promise.all([
+        attemptsFor(id, profile.id),
+        extraAttemptsFor(id, profile.id),
+      ]);
+      const ceiling = attemptCeiling(quiz, extra);
+      if (ceiling != null && attempts.length >= ceiling) {
+        throw new Error(
+          "This worksheet has already been submitted. Ask your teacher to grant a retake.",
+        );
+      }
       if (!isTestStudent(profile.email)) {
         requireOpen(quiz, new Date());
       }
@@ -444,7 +454,10 @@ async function extraAttemptsFor(quizId: string, studentId: string): Promise<numb
   return typeof grant?.extra_attempts === "number" ? grant.extra_attempts : 0;
 }
 
-function attemptCeiling(quiz: QuizConfig, extra: number): number | null {
+export function attemptCeiling(
+  quiz: Pick<QuizConfig, "allow_retake" | "max_attempts">,
+  extra: number,
+): number | null {
   if (quiz.allow_retake && quiz.max_attempts === 0) return null;
   const base = quiz.allow_retake ? quiz.max_attempts : 1;
   return base + extra;
@@ -604,7 +617,7 @@ export async function submitQuizAttempt(
     extraAttemptsFor(quiz_id, caller.id),
   ]);
   const ceiling = attemptCeiling(quiz, extra);
-  if (!isTestStudent(caller.email) && ceiling != null && attempts.length >= ceiling) {
+  if (ceiling != null && attempts.length >= ceiling) {
     return {
       ok: false as const,
       reason: (!quiz.allow_retake && extra === 0 ? "retakes_disabled" : "max_attempts") as
@@ -731,11 +744,7 @@ export async function quizAttemptInfo(quiz_id: string, token: string) {
     retake_score_policy: quiz.retake_score_policy,
     attempts_used: attempts.length,
     attempts_allowed: ceiling,
-    can_retake:
-      isTestStudent(caller.email) ||
-      attempts.length === 0 ||
-      ceiling == null ||
-      attempts.length < ceiling,
+    can_retake: attempts.length === 0 || ceiling == null || attempts.length < ceiling,
     effective_score: isScoreReleased ? (eff?.score ?? null) : null,
     effective_total: isScoreReleased ? (eff?.total ?? null) : null,
     extra_attempts: extra,
@@ -786,11 +795,7 @@ export async function listMyQuizSummaries(token: string) {
       quiz_id: quiz.id,
       attempts_used: list.length,
       attempts_allowed: ceiling,
-      can_retake:
-        isTestStudent(caller.email) ||
-        list.length === 0 ||
-        ceiling == null ||
-        list.length < ceiling,
+      can_retake: list.length === 0 || ceiling == null || list.length < ceiling,
       effective_score: isScoreReleased ? (eff?.score ?? null) : null,
       effective_total: isScoreReleased ? (eff?.total ?? null) : null,
       score_released: isScoreReleased,
@@ -1026,6 +1031,10 @@ export async function listStudentAttemptDetail(quiz_id: string, student_id: stri
 
 export async function grantQuizRetake(quiz_id: string, student_id: string, token: string) {
   const caller = await requireQuizOwnerOrAdmin(token, quiz_id);
+  const [quiz, attempts] = await Promise.all([
+    getQuizConfig(quiz_id),
+    attemptsFor(quiz_id, student_id),
+  ]);
   const existing = await unwrap<any>(
     db
       .from("quiz_retake_grants")
@@ -1034,18 +1043,22 @@ export async function grantQuizRetake(quiz_id: string, student_id: string, token
       .eq("student_id", student_id)
       .maybeSingle(),
   );
+  // A student may already have several historical attempts from the old
+  // unlimited policy. Permission must unlock one new attempt from that count.
+  const base = quiz.allow_retake ? quiz.max_attempts : 1;
+  const extraAttempts = Math.max((existing?.extra_attempts ?? 0) + 1, attempts.length + 1 - base);
   if (existing) {
     await unwrap(
       db
         .from("quiz_retake_grants")
-        .update({ extra_attempts: (existing.extra_attempts as number) + 1, granted_by: caller.id })
+        .update({ extra_attempts: extraAttempts, granted_by: caller.id })
         .eq("id", existing.id),
     );
   } else {
     await unwrap(
       db
         .from("quiz_retake_grants")
-        .insert({ quiz_id, student_id, extra_attempts: 1, granted_by: caller.id }),
+        .insert({ quiz_id, student_id, extra_attempts: extraAttempts, granted_by: caller.id }),
     );
   }
 }

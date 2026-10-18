@@ -63,9 +63,9 @@ export function CreateQuizModal({
       average_score: "average_score",
     };
     return {
-      allow_retake: s.allowRetakesByDefault,
-      unlimited: s.defaultMaxAttempts === 0,
-      max_attempts: String(s.defaultMaxAttempts || 1),
+      allow_retake: false,
+      unlimited: false,
+      max_attempts: "1",
       retake_score_policy: policyMap[s.defaultScorePolicy] ?? "highest_score",
     };
   };
