@@ -63,9 +63,9 @@ export function CreateQuizModal({
       average_score: "average_score",
     };
     return {
-      allow_retake: s.allowRetakesByDefault,
-      unlimited: s.defaultMaxAttempts === 0,
-      max_attempts: String(s.defaultMaxAttempts || 1),
+      allow_retake: false,
+      unlimited: false,
+      max_attempts: "1",
       retake_score_policy: policyMap[s.defaultScorePolicy] ?? "highest_score",
     };
   };
@@ -241,6 +241,13 @@ export function CreateQuizModal({
         toast.error("Add at least one question with a question text and correct answer.");
         return;
       }
+      const invalidMc = valid.find(
+        (q) => q.kind === "mc" && q.options.filter(Boolean).length !== 4,
+      );
+      if (invalidMc) {
+        toast.error("Each multiple-choice question must have exactly four options (A–D).");
+        return;
+      }
       questions = valid.map((q) => ({
         question: q.question.trim(),
         options: q.kind === "mc" ? q.options.filter(Boolean) : [],
@@ -258,6 +265,10 @@ export function CreateQuizModal({
         toast.warning(
           `${parsed.dropped} item${parsed.dropped > 1 ? "s were" : " was"} skipped — check their numbering against the Answer Key.`,
         );
+      }
+      if (parsed.questions.some((q) => q.kind === "mc" && q.options.length !== 4)) {
+        toast.error("Each multiple-choice question must have exactly four options (A–D).");
+        return;
       }
       if (requested > 0 && parsed.questions.length > requested) {
         toast.warning(

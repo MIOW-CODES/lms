@@ -338,6 +338,23 @@ export const schemas = {
       .partial(),
     ...token,
   }),
+  feedbackReportInput: z.object({
+    category: z.enum(["bug", "issue", "feedback", "course_content", "other"]),
+    subject: z.string().trim().min(1).max(200),
+    description: z.string().trim().min(1).max(10000),
+    page_url: z.string().max(2048).nullable().optional(),
+    ...token,
+  }),
+  feedbackReportPatch: z.object({
+    id: uuid,
+    patch: z
+      .object({
+        status: z.enum(["open", "in_review", "resolved", "closed"]),
+        admin_note: z.string().max(5000).nullable(),
+      })
+      .partial(),
+    ...token,
+  }),
   assignmentInput: z.object({
     course_id: uuid,
     title: z.string().min(1).max(300),
@@ -513,6 +530,12 @@ export const schemas = {
     ...token,
   }),
   retakeGrant: z.object({ quiz_id: uuid, student_id: uuid, ...token }),
+  retakeRequest: z.object({ quiz_id: uuid, ...token }),
+  retakeRequestReview: z.object({
+    request_id: uuid,
+    decision: z.enum(["approved", "denied"]),
+    ...token,
+  }),
   materialUpload: z.object({
     course_id: uuid,
     name: z.string().min(1).max(200),

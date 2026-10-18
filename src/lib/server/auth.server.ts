@@ -5,6 +5,17 @@ import { unwrap } from "@/lib/server/utils.server";
 import { verifySessionToken, sessionJti } from "@/lib/server/sessions.server";
 import { getProfileById } from "@/lib/server/profiles.server";
 import { applyRoleView, isTestAccount } from "@/lib/role-view";
+import { getCookie } from "@tanstack/react-start/server";
+import { COOKIE_SESSION_MARKER } from "@/lib/session";
+
+export const SESSION_COOKIE_NAME =
+  process.env["NODE_ENV"] === "production" ? "__Host-miow_session" : "miow_session";
+
+function resolveSessionToken(token: string): string {
+  const resolved = token === COOKIE_SESSION_MARKER ? getCookie(SESSION_COOKIE_NAME) : token;
+  if (!resolved) throw new Error("Unauthorized");
+  return resolved;
+}
 
 /**
  * Verify the caller's token and load their profile. Throws if invalid.
@@ -15,7 +26,8 @@ import { applyRoleView, isTestAccount } from "@/lib/role-view";
  * through — so all guards consistently honor it, and ONLY for that email
  * (see applyRoleView). The real profiles.role never changes.
  */
-export async function requireSession(token: string) {
+export async function requireSession(token: string, options: { allowTemporaryPin?: boolean } = {}) {
+  token = resolveSessionToken(token);
   const id = verifySessionToken(token);
   // jti revocation check — legacy tokens without jti skip DB check (compat)
   let storedRoleView: string | null = null;
@@ -36,6 +48,8 @@ export async function requireSession(token: string) {
   }
   const profile = await getProfileById(id);
   if (!profile) throw new Error("Unauthorized");
+  if (profile.pin_must_change && !options.allowTemporaryPin)
+    throw new Error("Choose a new PIN before continuing.");
   return applyRoleView(profile, storedRoleView);
 }
 

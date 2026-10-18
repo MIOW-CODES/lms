@@ -18,6 +18,7 @@ export interface ProfileRow {
   created_at: string;
   deleted_at: string | null;
   pin_hash: string | null;
+  pin_must_change?: boolean | null;
   username: string | null;
   password_hash: string | null;
   failed_login_attempts: number;

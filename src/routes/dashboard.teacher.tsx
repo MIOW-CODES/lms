@@ -1,4 +1,5 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { RequirePrivatePin } from "@/components/require-private-pin";
 
 // Layout for /dashboard/teacher/* — teacher portal. Child routes (index, students, settings) mount via <Outlet />.
 //
@@ -22,5 +23,9 @@ export const Route = createFileRoute("/dashboard/teacher")({
 });
 
 function TeacherLayout() {
-  return <Outlet />;
+  return (
+    <RequirePrivatePin>
+      <Outlet />
+    </RequirePrivatePin>
+  );
 }

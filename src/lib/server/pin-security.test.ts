@@ -5,8 +5,9 @@
 import { describe, expect, it } from "bun:test";
 import {
   isValidPinFormat,
+  canVerifyPinCandidate,
   pinGateRequiredForRole,
-  pinWriteClearsGate,
+  hasPinWrite,
   safeProfile,
 } from "./profiles.server";
 import type { ProfileRow } from "./db-types";
@@ -43,12 +44,12 @@ describe("pinGateRequiredForRole — who gets flagged", () => {
     expect(pinGateRequiredForRole("student")).toBe(true);
   });
 
-  it("never flags teachers", () => {
-    expect(pinGateRequiredForRole("teacher")).toBe(false);
+  it("includes flagged teachers", () => {
+    expect(pinGateRequiredForRole("teacher")).toBe(true);
   });
 
-  it("never flags admins", () => {
-    expect(pinGateRequiredForRole("admin")).toBe(false);
+  it("includes flagged admins", () => {
+    expect(pinGateRequiredForRole("admin")).toBe(true);
   });
 });
 
@@ -63,11 +64,11 @@ describe("safeProfile — login responses surface the gate flag", () => {
     expect(p.pin_must_change).toBe(false);
   });
 
-  it("suppresses the gate for staff even if the row was flagged", () => {
+  it("surfaces the gate for flagged staff", () => {
     const teacher = safeProfile(row({ role: "teacher", pin_must_change: true }));
     const admin = safeProfile(row({ role: "admin", pin_must_change: true }));
-    expect(teacher.pin_must_change).toBe(false);
-    expect(admin.pin_must_change).toBe(false);
+    expect(teacher.pin_must_change).toBe(true);
+    expect(admin.pin_must_change).toBe(true);
   });
 
   it("treats a missing flag as not set (pre-migration sessions)", () => {
@@ -76,20 +77,20 @@ describe("safeProfile — login responses surface the gate flag", () => {
   });
 });
 
-describe("pinWriteClearsGate — flag-clearing on change/reset", () => {
-  it("clears the gate when a PIN is written (self-service change or admin reset)", () => {
-    expect(pinWriteClearsGate({ pin: "5570" })).toBe(true);
-    expect(pinWriteClearsGate({ pin: "12345678", full_name: "Renamed" })).toBe(true);
+describe("hasPinWrite — detecting temporary or private PIN writes", () => {
+  it("recognizes a PIN write (self-service change or admin reset)", () => {
+    expect(hasPinWrite({ pin: "5570" })).toBe(true);
+    expect(hasPinWrite({ pin: "12345678", full_name: "Renamed" })).toBe(true);
   });
 
   it("keeps the gate for patches without a PIN", () => {
-    expect(pinWriteClearsGate({})).toBe(false);
-    expect(pinWriteClearsGate({ full_name: "Renamed", email: "new@example.com" })).toBe(false);
+    expect(hasPinWrite({})).toBe(false);
+    expect(hasPinWrite({ full_name: "Renamed", email: "new@example.com" })).toBe(false);
   });
 
   it("keeps the gate when the PIN is null or empty", () => {
-    expect(pinWriteClearsGate({ pin: null })).toBe(false);
-    expect(pinWriteClearsGate({ pin: "" })).toBe(false);
+    expect(hasPinWrite({ pin: null })).toBe(false);
+    expect(hasPinWrite({ pin: "" })).toBe(false);
   });
 });
 
@@ -114,5 +115,18 @@ describe("isValidPinFormat — PIN validation rules", () => {
     expect(isValidPinFormat("１２３４")).toBe(false);
     expect(isValidPinFormat("12.4")).toBe(false);
     expect(isValidPinFormat("-1234")).toBe(false);
+  });
+});
+
+describe("canVerifyPinCandidate — temporary credential compatibility", () => {
+  it("permits a non-numeric temporary credential only while change is required", () => {
+    expect(canVerifyPinCandidate("2026-0099", true)).toBe(true);
+    expect(canVerifyPinCandidate("it10", true)).toBe(true);
+    expect(canVerifyPinCandidate("it10", false)).toBe(false);
+    expect(canVerifyPinCandidate("it10", null)).toBe(false);
+  });
+
+  it("continues to accept valid numeric PINs", () => {
+    expect(canVerifyPinCandidate("1234", false)).toBe(true);
   });
 });

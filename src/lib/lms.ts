@@ -1,4 +1,6 @@
+import { notifyTasksChanged, type PendingTaskCounts } from "@/lib/pending-tasks";
 import {
+  pendingTasksFn,
   bulkAddStudentsFn,
   countRowsFn,
   createAnnouncementFn,
@@ -25,6 +27,9 @@ import {
   getProfileByRfidFn,
   getQuizFn,
   grantQuizRetakeFn,
+  requestQuizRetakeFn,
+  listQuizRetakeRequestsFn,
+  reviewQuizRetakeRequestFn,
   listAllAttendanceFn,
   listAllUsersFn,
   listAnnouncementsFn,
@@ -79,6 +84,10 @@ import {
   uploadAnnouncementMaterialFn,
   removeAnnouncementMaterialFn,
   listAnnouncementAttachmentsFn,
+  listFeedbackReportsFn,
+  createFeedbackReportFn,
+  updateFeedbackReportFn,
+  logoutFn,
   updateUserRoleFn,
   uploadAvatarFn,
   upsertGradeFn,
@@ -382,6 +391,7 @@ export interface QuizQuestion {
   options: string[];
   correct_answer: string;
   position: number;
+  question_type?: import("@/lib/question-types").QuestionType | null;
   /** Question media — URL or data URL rendered above the answer area. */
   image_url?: string | null;
   /** Embeds the Virtual Arduino Lab (code + breadboard) for this task; the question text must require breadboard wiring. */
@@ -485,6 +495,21 @@ export interface QuizAttemptSummary {
   can_retake: boolean;
   effective_score: number | null;
   effective_total: number | null;
+  retake_request_status?: "pending" | "approved" | "denied" | null;
+}
+
+export interface QuizRetakeRequest {
+  id: string;
+  quiz_id: string;
+  student_id: string;
+  status: "pending";
+  requested_at: string;
+  student: {
+    id: string;
+    full_name: string;
+    student_no: string | null;
+    section: string | null;
+  } | null;
 }
 
 /** Discriminated result of submitting a worksheet attempt. */
@@ -659,8 +684,9 @@ export function transmutedOf(
 
 import { logAudit, SESSION_KEY, type AuditEntry } from "@/lib/settings";
 import { dbg, dbgError } from "@/lib/debug";
+import { COOKIE_SESSION_MARKER } from "@/lib/session";
 
-/* ---------- Session (hardware-auth demo with signed server tokens) ---------- */
+/* ---------- Session (signed server token in an HttpOnly cookie) ---------- */
 // Same-tab change signal — the browser "storage" event only fires across
 // tabs, so same-tab saves dispatch this custom event to wake subscribers.
 const PROFILE_EVENT = "ids-lms-profile-changed";
@@ -669,8 +695,8 @@ export function loadSession(): Profile | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
     const p = raw ? (JSON.parse(raw) as Profile) : null;
-    // Sessions saved before tokens existed are invalid — force re-login.
-    if (p && !p.session_token) return null;
+    // Session credentials live in an HttpOnly cookie; the local profile is UI
+    // state only. Older token-bearing records are stripped on the next save.
     return p;
   } catch {
     return null;
@@ -678,8 +704,10 @@ export function loadSession(): Profile | null {
 }
 
 export function saveSession(p: Profile | null) {
-  if (p) localStorage.setItem(SESSION_KEY, JSON.stringify(p));
-  else localStorage.removeItem(SESSION_KEY);
+  if (p) {
+    const { session_token: _discarded, ...safeProfile } = p;
+    localStorage.setItem(SESSION_KEY, JSON.stringify(safeProfile));
+  } else localStorage.removeItem(SESSION_KEY);
   notifyProfileChanged();
 }
 
@@ -717,9 +745,15 @@ function notifyProfileChanged() {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(PROFILE_EVENT));
 }
 
-/** Signed server token for the current kiosk session (empty string if none). */
+/** Auth marker for cookie-backed sessions; returns a legacy token during migration. */
 export function sessionToken(): string {
-  return loadSession()?.session_token ?? "";
+  const profile = loadSession();
+  return profile ? (profile.session_token ?? COOKIE_SESSION_MARKER) : "";
+}
+
+/** Clear the HttpOnly session cookie and revoke the current server session. */
+export async function logout(): Promise<void> {
+  await logoutFn({ data: { token: sessionToken() || COOKIE_SESSION_MARKER } });
 }
 
 /**
@@ -731,9 +765,11 @@ export function sessionToken(): string {
  */
 export async function refreshSessionProfile(): Promise<Profile | null> {
   const current = loadSession();
-  if (!current?.session_token) return null;
+  if (!current) return null;
   try {
-    const fresh = await refreshSessionFn({ data: { token: current.session_token } });
+    const fresh = await refreshSessionFn({
+      data: { token: current.session_token ?? COOKIE_SESSION_MARKER },
+    });
     if (!fresh) return null;
     return updateSessionProfile(fresh);
   } catch (e) {
@@ -777,7 +813,7 @@ export async function setTestRoleView(view: Role): Promise<Profile | null> {
 
 export async function findProfileByRfid(uid: string): Promise<Profile | null> {
   const res = await getProfileByRfidFn({ data: { uid } });
-  return res ? { ...res.profile, session_token: res.token } : null;
+  return res ? res.profile : null;
 }
 
 export type PinLoginResult =
@@ -796,7 +832,7 @@ export async function pinLogin(login: string, secret: string): Promise<PinLoginR
     throw new Error("pinLoginFn not loaded — server function module failed to initialize");
   }
   const res = (await pinLoginFn({ data: { login, secret } })) as
-    | { ok: true; profile: Profile; token: string }
+    | { ok: true; profile: Profile }
     | {
         ok: false;
         reason: "invalid" | "locked";
@@ -807,7 +843,7 @@ export async function pinLogin(login: string, secret: string): Promise<PinLoginR
     ok: res.ok,
     reason: "reason" in res ? res.reason : undefined,
   });
-  if (res.ok) return { ok: true, profile: { ...res.profile, session_token: res.token } };
+  if (res.ok) return { ok: true, profile: res.profile };
   return res;
 }
 
@@ -951,6 +987,44 @@ export async function listAnnouncementAttachments(
   }) as Promise<AnnouncementAttachment[]>;
 }
 
+export type FeedbackReport = {
+  id: string;
+  reporter_id: string;
+  reporter_name: string | null;
+  reporter_role: Role | null;
+  reporter_email: string | null;
+  category: "bug" | "issue" | "feedback" | "course_content" | "other";
+  subject: string;
+  description: string;
+  page_url: string | null;
+  status: "open" | "in_review" | "resolved" | "closed";
+  admin_note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listFeedbackReports(): Promise<FeedbackReport[]> {
+  return listFeedbackReportsFn({ data: { token: sessionToken() } }) as Promise<FeedbackReport[]>;
+}
+
+export async function createFeedbackReport(input: {
+  category: FeedbackReport["category"];
+  subject: string;
+  description: string;
+  page_url?: string | null;
+}): Promise<FeedbackReport> {
+  return createFeedbackReportFn({
+    data: { ...input, token: sessionToken() },
+  }) as Promise<FeedbackReport>;
+}
+
+export async function updateFeedbackReport(
+  id: string,
+  patch: Partial<Pick<FeedbackReport, "status" | "admin_note">>,
+): Promise<void> {
+  await updateFeedbackReportFn({ data: { id, patch, token: sessionToken() } });
+}
+
 export async function uploadAnnouncementMaterial(
   announcementId: string,
   file: File,
@@ -1001,6 +1075,7 @@ export async function createAssignment(input: Partial<Assignment>): Promise<void
   await createAssignmentFn({
     data: { ...(input as object), token: sessionToken() } as Record<string, unknown>,
   });
+  notifyTasksChanged();
 }
 
 // Activity aliases — pedagogical rename, DB stays `assignments`
@@ -1012,9 +1087,11 @@ export async function listSubmissionsForStudent(studentId: string): Promise<Subm
 }
 
 export async function submitAssignment(input: Partial<Submission>): Promise<{ id: string }> {
-  return submitAssignmentFn({
+  const result = (await submitAssignmentFn({
     data: { ...(input as object), token: sessionToken() } as Record<string, unknown>,
-  }) as Promise<{ id: string }>;
+  })) as { id: string };
+  notifyTasksChanged();
+  return result;
 }
 
 /** Upload one file to a submission and get back its metadata record. */
@@ -1050,6 +1127,7 @@ export async function gradeSubmission(
   },
 ): Promise<void> {
   await gradeSubmissionFn({ data: { id, patch, token: sessionToken() } });
+  notifyTasksChanged();
 }
 
 export async function listQuizzes(): Promise<Quiz[]> {
@@ -1069,7 +1147,7 @@ export async function submitQuizAnswers(
   tabSwitches?: Array<{ at: number; type: IntegrityEventType }>,
   submissionId?: string,
 ): Promise<SubmitQuizResult> {
-  return submitQuizAttemptFn({
+  const result = await submitQuizAttemptFn({
     data: {
       quiz_id: quizId,
       answers,
@@ -1079,6 +1157,8 @@ export async function submitQuizAnswers(
       submission_id: submissionId,
     },
   });
+  if (result.ok) notifyTasksChanged();
+  return result;
 }
 
 /** Attempt summaries for every worksheet, for the signed-in student. */
@@ -1088,6 +1168,25 @@ export async function myQuizSummaries(): Promise<QuizAttemptSummary[]> {
 
 export async function getQuizAttemptInfo(quizId: string): Promise<QuizAttemptInfo> {
   return quizAttemptInfoFn({ data: { quiz_id: quizId, token: sessionToken() } });
+}
+
+export async function requestWorksheetRetake(quizId: string): Promise<{ status: "pending" }> {
+  const result = await requestQuizRetakeFn({ data: { quiz_id: quizId, token: sessionToken() } });
+  notifyTasksChanged();
+  return result;
+}
+
+export async function listWorksheetRetakeRequests(quizId: string): Promise<QuizRetakeRequest[]> {
+  return listQuizRetakeRequestsFn({ data: { quiz_id: quizId, token: sessionToken() } });
+}
+
+export async function reviewWorksheetRetakeRequest(
+  requestId: string,
+  decision: "approved" | "denied",
+): Promise<void> {
+  await reviewQuizRetakeRequestFn({
+    data: { request_id: requestId, decision, token: sessionToken() },
+  });
 }
 
 /* ---------- Retake policy management (staff) ---------- */
@@ -1527,11 +1626,13 @@ export async function updateQuiz(
   await updateQuizFn({
     data: { id, patch, questions, token: sessionToken() } as Record<string, unknown>,
   });
+  notifyTasksChanged();
 }
 
 /** Soft delete keeps attempts/grades; hard delete also purges attached files. */
 export async function deleteQuiz(id: string, mode: "soft" | "hard" = "soft"): Promise<void> {
   await deleteQuizFn({ data: { id, mode, token: sessionToken() } });
+  notifyTasksChanged();
 }
 
 export async function updateAssignment(
@@ -1553,10 +1654,12 @@ export async function updateAssignment(
   await updateAssignmentFn({
     data: { id, patch: patch as Record<string, unknown>, token: sessionToken() },
   });
+  notifyTasksChanged();
 }
 
 export async function deleteAssignment(id: string, mode: "soft" | "hard" = "soft"): Promise<void> {
   await deleteAssignmentFn({ data: { id, mode, token: sessionToken() } });
+  notifyTasksChanged();
 }
 
 /* ---------- Course Meetings & Timetable ---------- */
@@ -1751,6 +1854,7 @@ export interface QuestionBankQuestion {
   image_url: string | null;
   lab_task: boolean;
   required: boolean;
+  question_type?: import("@/lib/question-types").QuestionType | null;
   created_at: string;
   /** Worksheet context (question_bank view) — title/ordering/soft-delete state. */
   quiz_title: string | null;
@@ -1783,4 +1887,8 @@ export async function updateQuestion(
   return (await updateQuestionFn({
     data: { id, patch, token: sessionToken() } as Record<string, unknown>,
   })) as QuestionBankQuestion;
+}
+
+export async function getPendingTasks(): Promise<PendingTaskCounts> {
+  return pendingTasksFn({ data: { token: sessionToken() } });
 }

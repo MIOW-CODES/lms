@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   BookOpen,
@@ -21,6 +22,7 @@ import {
   listSubmissionsForStudent,
   materialHref,
   myQuizSummaries,
+  requestWorksheetRetake,
   formatSchedule,
   type Assignment,
   type Course,
@@ -34,6 +36,7 @@ import {
   Badge,
   EmptyState,
   MotionCard,
+  Modal,
   STUDENT_NAV,
   courseStyle,
   useProfile,
@@ -45,6 +48,16 @@ import { LoadingSkeleton } from "@/components/ui-elements";
 import { CourseWorkspaceShell, type WorkspaceTab } from "@/components/courses/course-workspace";
 import { DAYS } from "@/components/courses/constants";
 import { useCourseSelection } from "@/hooks/useCourseWorkspace";
+
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
+import { useLockdown } from "@/hooks/useLockdown";
+import { isTestAccount, isTestStudent } from "@/lib/role-view";
+import { toast } from "sonner";
+const WorksheetSession = lazy(() =>
+  import("@/components/courses/worksheet-session").then((module) => ({
+    default: module.WorksheetSession,
+  })),
+);
 
 export const Route = createFileRoute("/dashboard/student/courses")({
   head: () => ({
@@ -176,7 +189,7 @@ function StudentCoursesPage() {
       </div>
 
       {/* Tab bar */}
-      <div className="mb-6 flex gap-2">
+      <div className="mb-6 flex flex-wrap gap-2">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -524,13 +537,27 @@ function StudentWorksheetRow({
   course?: Course | undefined;
   summary?: QuizAttemptSummary | undefined;
 }) {
-  const st = courseStyle(course?.color ?? "indigo");
+  const profile = useProfile(["student"]);
+  const examLock = useLockdown();
+  const [confirming, setConfirming] = useState(false);
+  const [taking, setTaking] = useState(false);
+  const [requestingRetake, setRequestingRetake] = useState(false);
+  const queryClient = useQueryClient();
+  const isTester = isTestStudent(profile?.email);
+  const isLiveUser = isTestAccount(profile?.email);
+  const notYetOpen = !isTester && !!quiz.opens_at && new Date(quiz.opens_at).getTime() > Date.now();
+  const isClosed =
+    !isTester && !!quiz.closes_at && new Date(quiz.closes_at).getTime() <= Date.now();
   const used = summary?.attempts_used ?? 0;
   const started = used > 0;
+  const canTake = !notYetOpen && !isClosed && (isLiveUser || !summary || summary.can_retake);
+  const canRequestRetake =
+    started && !!summary && !summary.can_retake && !notYetOpen && !isClosed && !isLiveUser;
+  const st = courseStyle(course?.color ?? "indigo");
   // One primary action, derived from attempt state — never "Retake" on a first try.
   const actionLabel = worksheetActionLabel({
     attemptsUsed: used,
-    canRetake: summary?.can_retake ?? true,
+    canRetake: isLiveUser || (summary?.can_retake ?? true),
   });
   return (
     <MotionCard className="flex flex-wrap items-center gap-3 p-4">
@@ -538,7 +565,9 @@ function StudentWorksheetRow({
         {course?.code ?? "—"}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold">{quiz.title}</p>
+        <p data-testid="student-worksheet-title" className="truncate text-sm font-semibold">
+          {quiz.title}
+        </p>
         <p className="text-xs text-muted-foreground">
           {quiz.duration_minutes} min
           {quiz.allow_retake
@@ -559,12 +588,87 @@ function StudentWorksheetRow({
       ) : (
         <Badge tone="slate">Not started</Badge>
       )}
-      <Link
-        to="/dashboard/student/quizzes"
-        className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/15"
-      >
-        {actionLabel} →
-      </Link>
+      {canRequestRetake ? (
+        <button
+          type="button"
+          disabled={requestingRetake || summary?.retake_request_status === "pending"}
+          onClick={async () => {
+            setRequestingRetake(true);
+            try {
+              await requestWorksheetRetake(quiz.id);
+              await queryClient.invalidateQueries({ queryKey: ["quiz-summaries"] });
+              toast.success("Retake request sent to your teacher.");
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "Could not request a retake.");
+            } finally {
+              setRequestingRetake(false);
+            }
+          }}
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {requestingRetake
+            ? "Sending…"
+            : summary?.retake_request_status === "pending"
+              ? "Request pending"
+              : "Request retake"}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          disabled={!canTake}
+          title={
+            notYetOpen
+              ? "This worksheet is not open yet."
+              : isClosed
+                ? "The submission deadline has passed."
+                : !canTake
+                  ? "No attempts remaining. Contact your teacher to request a retake."
+                  : undefined
+          }
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {notYetOpen ? "Opens soon" : isClosed ? "Submission closed" : actionLabel} →
+        </button>
+      )}
+      <AlertDialog.Root open={confirming} onOpenChange={setConfirming}>
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="fixed inset-0 z-[60] bg-slate-950/50" />
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[61] w-[calc(100%_-_2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 shadow-xl">
+            <AlertDialog.Title className="text-lg font-bold">Start {quiz.title}?</AlertDialog.Title>
+            <AlertDialog.Description className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Your timer will begin immediately. Make sure you are ready before starting.
+            </AlertDialog.Description>
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <AlertDialog.Cancel className="min-h-11 rounded-xl border border-border px-4 text-sm font-semibold hover:bg-muted">
+                Cancel
+              </AlertDialog.Cancel>
+              <AlertDialog.Action
+                onClick={() => {
+                  examLock.lock();
+                  setTaking(true);
+                }}
+                className="min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              >
+                Start worksheet
+              </AlertDialog.Action>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+      {taking &&
+        createPortal(
+          <Suspense
+            fallback={
+              <Modal open title={quiz.title} onClose={() => setTaking(false)}>
+                <LoadingSkeleton />
+              </Modal>
+            }
+          >
+            <WorksheetSession quiz={quiz} onClose={() => setTaking(false)} />
+          </Suspense>,
+          document.body,
+        )}
     </MotionCard>
   );
 }

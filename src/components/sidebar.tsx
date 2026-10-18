@@ -19,6 +19,7 @@ import {
   LogOut,
   Megaphone,
   Menu as MenuIcon,
+  MessageSquareWarning,
   Settings,
   Table,
   Users,
@@ -40,6 +41,34 @@ import {
 import { ThemeToggle } from "@/components/ui-elements";
 import { useSignOut } from "@/hooks";
 import { ChatWidget } from "@/components/chat-widget";
+import { usePendingTasks } from "@/hooks/usePendingTasks";
+import { taskCountForPath } from "@/lib/pending-tasks";
+
+function TaskBadge({
+  count,
+  compact = false,
+  sidebar = true,
+}: {
+  count: number;
+  compact?: boolean;
+  sidebar?: boolean;
+}) {
+  if (count <= 0) return null;
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="pending-task-count"
+      data-count={count}
+      className={cn(
+        "inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-bold tabular-nums",
+        sidebar ? "bg-sidebar-foreground text-sidebar" : "bg-primary text-primary-foreground",
+        compact ? "absolute right-0 top-0 h-4 min-w-4 px-1 text-[9px]" : "ml-auto",
+      )}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
 
 export interface NavItem {
   to: string;
@@ -50,7 +79,6 @@ export interface NavItem {
 export const STUDENT_NAV: NavItem[] = [
   { to: "/dashboard/student", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
   { to: "/dashboard/student/courses", label: "Courses", icon: <BookOpen className="h-4 w-4" /> },
-  { to: "/dashboard/student/grades", label: "Grades", icon: <BarChart3 className="h-4 w-4" /> },
   {
     to: "/dashboard/student/assignments",
     label: "Activities",
@@ -58,7 +86,7 @@ export const STUDENT_NAV: NavItem[] = [
   },
   {
     to: "/dashboard/student/arduino",
-    label: "Arduino Lab (ongoing)",
+    label: "Arduino Lab",
     icon: <Cpu className="h-4 w-4" />,
   },
   {
@@ -66,7 +94,13 @@ export const STUDENT_NAV: NavItem[] = [
     label: "Attendance",
     icon: <CalendarCheck className="h-4 w-4" />,
   },
+  { to: "/dashboard/student/grades", label: "Grades", icon: <BarChart3 className="h-4 w-4" /> },
   { to: "/dashboard/student/settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
+  {
+    to: "/dashboard/student/report",
+    label: "Report an issue",
+    icon: <MessageSquareWarning className="h-4 w-4" />,
+  },
 ];
 
 export const ADMIN_NAV: NavItem[] = [
@@ -96,10 +130,15 @@ export const ADMIN_NAV: NavItem[] = [
   },
   {
     to: "/dashboard/admin/arduino",
-    label: "Arduino Lab (ongoing)",
+    label: "Arduino Lab",
     icon: <Cpu className="h-4 w-4" />,
   },
   { to: "/dashboard/admin/settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
+  {
+    to: "/dashboard/admin/report",
+    label: "Report inbox",
+    icon: <MessageSquareWarning className="h-4 w-4" />,
+  },
 ];
 
 export const TEACHER_NAV: NavItem[] = [
@@ -120,7 +159,7 @@ export const TEACHER_NAV: NavItem[] = [
   { to: "/dashboard/teacher/tos", label: "TOS", icon: <Table className="h-4 w-4" /> },
   {
     to: "/dashboard/teacher/arduino",
-    label: "Arduino Lab (ongoing)",
+    label: "Arduino Lab",
     icon: <Cpu className="h-4 w-4" />,
   },
   {
@@ -129,6 +168,11 @@ export const TEACHER_NAV: NavItem[] = [
     icon: <CalendarCheck className="h-4 w-4" />,
   },
   { to: "/dashboard/teacher/settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
+  {
+    to: "/dashboard/teacher/report",
+    label: "Report an issue",
+    icon: <MessageSquareWarning className="h-4 w-4" />,
+  },
 ];
 
 export function staffNav(role: Role): NavItem[] {
@@ -267,6 +311,15 @@ export function AppShell({
   const [collapsed, setCollapsed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const quickLinks = mobileQuickNav(nav);
+  const pending = usePendingTasks(profile);
+  const countFor = (path: string) => taskCountForPath(path, profile.role, pending);
+  const linkLabel = (n: NavItem) =>
+    countFor(n.to)
+      ? `${n.label}, ${countFor(n.to)} pending task${countFor(n.to) === 1 ? "" : "s"}`
+      : n.label;
+  const totalPending = pending
+    ? pending.activities + pending.worksheets + pending.grading + pending.scoreReleases
+    : 0;
 
   useEffect(() => {
     try {
@@ -293,8 +346,8 @@ export function AppShell({
       <Link
         key={n.to}
         to={n.to}
-        title={collapsed ? n.label : undefined}
-        aria-label={n.label}
+        title={collapsed ? linkLabel(n) : undefined}
+        aria-label={linkLabel(n)}
         className={cn(
           "relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
           collapsed && "justify-center px-0",
@@ -305,6 +358,7 @@ export function AppShell({
       >
         {n.icon}
         {!collapsed && <span className="truncate">{n.label}</span>}
+        <TaskBadge count={countFor(n.to)} compact={collapsed} />
         {active && !collapsed && (
           <motion.span
             layoutId="nav-active"
@@ -429,6 +483,10 @@ export function AppShell({
                 >
                   <MenuIcon className="h-4 w-4" aria-hidden />
                   Menu
+                  <TaskBadge count={totalPending} sidebar={false} />
+                  {totalPending > 0 && (
+                    <span className="sr-only">{totalPending} pending tasks</span>
+                  )}
                 </button>
               </SheetTrigger>
               <SheetContent
@@ -469,6 +527,7 @@ export function AppShell({
                         key={n.to}
                         to={n.to}
                         onClick={() => setMenuOpen(false)}
+                        aria-label={linkLabel(n)}
                         aria-current={active ? "page" : undefined}
                         className={cn(
                           "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
@@ -479,6 +538,7 @@ export function AppShell({
                       >
                         {n.icon}
                         <span className="truncate">{n.label}</span>
+                        <TaskBadge count={countFor(n.to)} />
                       </Link>
                     );
                   })}
@@ -524,7 +584,7 @@ export function AppShell({
               <Link
                 key={n.to}
                 to={n.to}
-                aria-label={n.label}
+                aria-label={linkLabel(n)}
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors",
@@ -535,6 +595,7 @@ export function AppShell({
               >
                 {n.icon}
                 {n.label}
+                <TaskBadge count={countFor(n.to)} sidebar={false} />
               </Link>
             );
           })}

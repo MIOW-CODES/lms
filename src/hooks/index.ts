@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   dashboardPathFor,
   loadSession,
+  logout as logoutSession,
   refreshSessionProfile,
   saveSession,
   subscribeProfile,
@@ -43,9 +44,18 @@ export function useSignOut() {
     if (document.fullscreenElement && document.exitFullscreen) {
       void document.exitFullscreen().catch(() => {});
     }
-    saveSession(null);
-    queryClient.clear();
-    navigate({ to: "/auth", replace: true });
+    void logoutSession()
+      .catch((error) => {
+        console.warn(
+          "[auth] sign-out request failed",
+          error instanceof Error ? error.message : "unknown error",
+        );
+      })
+      .finally(() => {
+        saveSession(null);
+        queryClient.clear();
+        navigate({ to: "/auth", replace: true });
+      });
   };
 }
 

@@ -33,6 +33,7 @@ import {
 } from "@/components/ai-elements/tool";
 import { useAssessmentMode } from "@/lib/assessment-mode";
 import type { Profile } from "@/lib/lms";
+import { sessionToken } from "@/lib/lms";
 import { WORKSHEET_CHAT_EVENT, type WorksheetAssistContext } from "@/lib/worksheet-context";
 import { pasteToWorksheet } from "@/lib/worksheet-context";
 import { SOURCE_MATERIAL_MAX_CHARS } from "@/lib/classmate-source";
@@ -192,16 +193,17 @@ function ChatPanel({
   const initialMessages = useMemo(() => loadHistory(storageKey), [storageKey]);
   // Form-to-Chat sync: the active Create Worksheet form's course/title ride
   // along with every request so generation stays scoped to the form.
+  const authToken = sessionToken();
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
         api: "/api/chat",
         body: {
-          token: profile.session_token ?? "",
+          token: authToken,
           worksheetContext: assistCtx ?? undefined,
         },
       }),
-    [profile.session_token, assistCtx],
+    [authToken, assistCtx],
   );
   const { messages, sendMessage, setMessages, status, error, stop, regenerate } = useChat({
     id: storageKey,

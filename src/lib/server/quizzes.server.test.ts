@@ -12,7 +12,22 @@ import {
   validateAttemptQuestionIds,
   gateAttemptResults,
   randomizeQuestions,
+  attemptCeiling,
 } from "./quizzes.server";
+
+describe("teacher-approved retakes", () => {
+  it("limits a worksheet to one attempt until an individual grant is issued", () => {
+    const policy = { allow_retake: false, max_attempts: 0 };
+    expect(attemptCeiling(policy, 0)).toBe(1);
+    expect(attemptCeiling(policy, 1)).toBe(2);
+    expect(attemptCeiling(policy, 2)).toBe(3);
+  });
+
+  it("honors an explicit teacher policy for a finite or unlimited allowance", () => {
+    expect(attemptCeiling({ allow_retake: true, max_attempts: 2 }, 0)).toBe(2);
+    expect(attemptCeiling({ allow_retake: true, max_attempts: 0 }, 0)).toBeNull();
+  });
+});
 
 /* ---------- randomizeQuestions (exam jumbling) ---------- */
 
@@ -338,6 +353,36 @@ describe("gradeEssay", () => {
         gradeEssay(
           "The process of photosynthesis converts light energy to chemical energy in plants",
           "photosynthesis = process, energy, plants",
+        ),
+      ).toBe(true);
+    });
+
+    it("rejects keyword stuffing without a readable explanation", () => {
+      expect(
+        gradeEssay(
+          "mitosis spindle chromosomes division membrane",
+          "phase = mitosis, spindle; outcome = chromosomes, division",
+        ),
+      ).toBe(false);
+      expect(
+        gradeEssay(
+          "mitosis causes spindle chromosomes division membrane",
+          "phase = mitosis, spindle; outcome = chromosomes, division",
+        ),
+      ).toBe(false);
+    });
+
+    it("accepts a concise subject-predicate explanation", () => {
+      expect(
+        gradeEssay(
+          "Photosynthesis converts light energy into chemical energy",
+          "process = photosynthesis, energy",
+        ),
+      ).toBe(true);
+      expect(
+        gradeEssay(
+          "Cell division produces identical daughter cells",
+          "outcome = division, identical cells",
         ),
       ).toBe(true);
     });

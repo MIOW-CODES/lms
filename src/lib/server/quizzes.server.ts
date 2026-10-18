@@ -17,11 +17,12 @@ import {
   isAssessmentEditable,
   AvailabilityError,
 } from "@/lib/server/availability";
-import { isTestStudent } from "@/lib/role-view";
+import { isTestAccount, isTestStudent } from "@/lib/role-view";
 import { schemas } from "@/lib/server/schemas.server";
 import type { IntegrityEventType } from "@/lib/integrity";
 import type { ProfileRole } from "@/lib/server/db-types";
 import { dispatchNotification } from "@/lib/server/notifications.server";
+import { writeAuditLog } from "@/lib/server/audit.server";
 
 export async function listQuizzes(caller: { id: string; role: ProfileRole }) {
   const rows = await unwrap<any[]>(db.from("quizzes").select("*").is("deleted_at", null));
@@ -113,6 +114,16 @@ export async function getQuizPublic(id: string, studentId?: string) {
     if (!profile) throw new Error("Unauthorized");
     if (profile.role === "student") {
       await requireEnrollment(quiz.course_id, profile);
+      const [attempts, extra] = await Promise.all([
+        attemptsFor(id, profile.id),
+        extraAttemptsFor(id, profile.id),
+      ]);
+      const ceiling = attemptCeiling(quiz, extra);
+      if (!isTestAccount(profile.email) && ceiling != null && attempts.length >= ceiling) {
+        throw new Error(
+          "This worksheet has already been submitted. Ask your teacher to grant a retake.",
+        );
+      }
       if (!isTestStudent(profile.email)) {
         requireOpen(quiz, new Date());
       }
@@ -121,7 +132,9 @@ export async function getQuizPublic(id: string, studentId?: string) {
   let questions = await unwrap<any[]>(
     db
       .from("quiz_questions")
-      .select("id, quiz_id, question, options, position, image_url, lab_task, required")
+      .select(
+        "id, quiz_id, question, options, position, image_url, lab_task, required, question_type",
+      )
       .eq("quiz_id", id)
       .order("position"),
   );
@@ -175,6 +188,63 @@ function isGibberishAnswer(answer: string, words: string[]): boolean {
   return false;
 }
 
+/** Reject keyword stuffing while allowing natural paraphrases around the key concepts. */
+function isCoherentEssayAnswer(answer: string, words: string[]): boolean {
+  const lower = answer.toLowerCase();
+  // A readable response needs a predicate or explanatory connector; a bare
+  // list of rubric terms should not receive credit just because it hits keys.
+  const hasPredicate =
+    /\b(is|are|was|were|be|being|been|means?|causes?|allows?|helps?|shows?|makes?|uses?|involves?|includes?|because|therefore|so|which|that|when|while|by|converts?|produces?|occurs?|undergoes?|replicates?|separates?|attaches?|moves?|forms?|provides?|creates?|prevents?|supports?|enables?|absorbs?|releases?|transfers?|depends?|results?|leads?)\b/i.test(
+      lower,
+    );
+  if (!hasPredicate) return false;
+  const uniqueWords = new Set(words);
+  return uniqueWords.size >= 5;
+}
+
+function hasContextualExplanation(
+  words: string[],
+  rubric: string,
+  categories: string[][],
+): boolean {
+  const terms = (categories.flat().length ? categories.flat() : rubricConcepts(rubric)).flatMap(
+    (term) => term.split(/\s+/),
+  );
+  const isKeywordToken = (word: string) =>
+    terms.some((term) => term.length > 2 && (word === term || word.startsWith(term)));
+  const genericPredicates = new Set([
+    "cause",
+    "causes",
+    "allow",
+    "allows",
+    "help",
+    "helps",
+    "show",
+    "shows",
+    "make",
+    "makes",
+    "use",
+    "uses",
+    "involve",
+    "involves",
+    "include",
+    "includes",
+  ]);
+  const contextual = words.filter(
+    (word) => !RUBRIC_STOPWORDS.has(word) && !genericPredicates.has(word) && !isKeywordToken(word),
+  );
+  const text = words.join(" ");
+  const hasStrongPredicate =
+    /\b(convert\w*|produce\w*|occur\w*|undergo\w*|replicate\w*|separate\w*|attach\w*|move\w*|form\w*|provide\w*|create\w*|prevent\w*|support\w*|enable\w*|absorb\w*|release\w*|transfer\w*|depend\w*|result\w*|lead\w*)\b/i.test(
+      text,
+    );
+  const hasConnector =
+    /\b(and|or|because|that|which|to|in|on|for|with|during|by|as|of|into)\b/i.test(text);
+  return (
+    new Set(contextual).size >= 2 || (contextual.length >= 1 && hasStrongPredicate && hasConnector)
+  );
+}
+
 export function parseKeywordCategories(rubric: string): string[][] {
   const m = rubric.match(/\|\s*keywords?\s*:\s*(.+)$/i) ?? rubric.match(/^keywords?\s*:\s*(.+)$/i);
   if (!m) return [];
@@ -216,8 +286,9 @@ function keywordHit(answer: string, keyword: string): boolean {
 
 export function gradeEssay(answer: string, rubric: string): boolean {
   const words = essayWords(answer);
-  if (isGibberishAnswer(answer, words)) return false;
+  if (isGibberishAnswer(answer, words) || !isCoherentEssayAnswer(answer, words)) return false;
   const categories = parseKeywordCategories(rubric);
+  if (!hasContextualExplanation(words, rubric, categories)) return false;
   if (categories.length >= 2) {
     const hitCategories = categories.filter((cat) =>
       cat.some((kw) => keywordHit(answer, kw)),
@@ -384,7 +455,10 @@ async function extraAttemptsFor(quizId: string, studentId: string): Promise<numb
   return typeof grant?.extra_attempts === "number" ? grant.extra_attempts : 0;
 }
 
-function attemptCeiling(quiz: QuizConfig, extra: number): number | null {
+export function attemptCeiling(
+  quiz: Pick<QuizConfig, "allow_retake" | "max_attempts">,
+  extra: number,
+): number | null {
   if (quiz.allow_retake && quiz.max_attempts === 0) return null;
   const base = quiz.allow_retake ? quiz.max_attempts : 1;
   return base + extra;
@@ -544,7 +618,7 @@ export async function submitQuizAttempt(
     extraAttemptsFor(quiz_id, caller.id),
   ]);
   const ceiling = attemptCeiling(quiz, extra);
-  if (!isTestStudent(caller.email) && ceiling != null && attempts.length >= ceiling) {
+  if (!isTestAccount(caller.email) && ceiling != null && attempts.length >= ceiling) {
     return {
       ok: false as const,
       reason: (!quiz.allow_retake && extra === 0 ? "retakes_disabled" : "max_attempts") as
@@ -672,7 +746,7 @@ export async function quizAttemptInfo(quiz_id: string, token: string) {
     attempts_used: attempts.length,
     attempts_allowed: ceiling,
     can_retake:
-      isTestStudent(caller.email) ||
+      isTestAccount(caller.email) ||
       attempts.length === 0 ||
       ceiling == null ||
       attempts.length < ceiling,
@@ -686,7 +760,7 @@ export async function quizAttemptInfo(quiz_id: string, token: string) {
 
 export async function listMyQuizSummaries(token: string) {
   const caller = await requireSession(token);
-  const [attempts, grants, quizzes] = await Promise.all([
+  const [attempts, grants, quizzes, retakeRequests] = await Promise.all([
     unwrap<any[]>(
       db
         .from("quiz_attempts")
@@ -697,6 +771,13 @@ export async function listMyQuizSummaries(token: string) {
       db.from("quiz_retake_grants").select("quiz_id, extra_attempts").eq("student_id", caller.id),
     ),
     unwrap<any[]>(db.from("quizzes").select(QUIZ_CONFIG_COLS).is("deleted_at", null)),
+    unwrap<any[]>(
+      db
+        .from("quiz_retake_requests")
+        .select("quiz_id, status, requested_at")
+        .eq("student_id", caller.id)
+        .order("requested_at", { ascending: false }),
+    ),
   ]);
   // Students see summaries for enrolled courses' worksheets (same
   // scoping rule as listQuizzes); staff see everything.
@@ -711,6 +792,12 @@ export async function listMyQuizSummaries(token: string) {
   const extraByQuiz = new Map<string, number>(
     (grants ?? []).map((g: any) => [g.quiz_id as string, (g.extra_attempts as number) ?? 0]),
   );
+  const requestStatusByQuiz = new Map<string, "pending" | "approved" | "denied">();
+  for (const request of retakeRequests ?? []) {
+    if (!requestStatusByQuiz.has(request.quiz_id)) {
+      requestStatusByQuiz.set(request.quiz_id, request.status);
+    }
+  }
   const byQuiz = new Map<string, AttemptRow[]>();
   for (const a of attempts ?? []) {
     const arr = byQuiz.get(a.quiz_id) ?? [];
@@ -727,7 +814,7 @@ export async function listMyQuizSummaries(token: string) {
       attempts_used: list.length,
       attempts_allowed: ceiling,
       can_retake:
-        isTestStudent(caller.email) ||
+        isTestAccount(caller.email) ||
         list.length === 0 ||
         ceiling == null ||
         list.length < ceiling,
@@ -735,8 +822,104 @@ export async function listMyQuizSummaries(token: string) {
       effective_total: isScoreReleased ? (eff?.total ?? null) : null,
       score_released: isScoreReleased,
       answer_key_released: (quiz as QuizConfig).answer_key_released === true,
+      retake_request_status: requestStatusByQuiz.get(quiz.id) ?? null,
     };
   });
+}
+
+/** A student requests one additional attempt after reaching their limit. */
+export async function requestQuizRetake(quiz_id: string, token: string) {
+  const caller = await requireSession(token);
+  if (caller.role !== "student") throw new Error("Only students can request a retake.");
+  if (isTestAccount(caller.email)) throw new Error("This account can already retake worksheets.");
+  const quiz = await getQuizConfig(quiz_id);
+  await requireEnrollment(quiz.course_id, caller);
+  requireOpen(quiz, new Date());
+  const [attempts, extra] = await Promise.all([
+    attemptsFor(quiz_id, caller.id),
+    extraAttemptsFor(quiz_id, caller.id),
+  ]);
+  const ceiling = attemptCeiling(quiz, extra);
+  if (ceiling == null || attempts.length < ceiling) {
+    throw new Error("You still have an available attempt for this worksheet.");
+  }
+  const existing = await unwrap<any>(
+    db
+      .from("quiz_retake_requests")
+      .select("id")
+      .eq("quiz_id", quiz_id)
+      .eq("student_id", caller.id)
+      .eq("status", "pending")
+      .maybeSingle(),
+  );
+  if (existing) return { status: "pending" as const };
+  try {
+    await unwrap(db.from("quiz_retake_requests").insert({ quiz_id, student_id: caller.id }));
+  } catch (error) {
+    if (isUniqueViolation(error)) return { status: "pending" as const };
+    throw error;
+  }
+  return { status: "pending" as const };
+}
+
+export async function listQuizRetakeRequests(quiz_id: string, token: string) {
+  await requireQuizOwnerOrAdmin(token, quiz_id);
+  const requests = await unwrap<any[]>(
+    db
+      .from("quiz_retake_requests")
+      .select("id, quiz_id, student_id, status, requested_at")
+      .eq("quiz_id", quiz_id)
+      .eq("status", "pending")
+      .order("requested_at", { ascending: true }),
+  );
+  if (!requests.length) return [];
+  const students = await unwrap<any[]>(
+    db
+      .from("profiles")
+      .select("id, full_name, student_no, section")
+      .in(
+        "id",
+        requests.map((request) => request.student_id),
+      ),
+  );
+  const byId = new Map(students.map((student) => [student.id, student]));
+  return requests.map((request) => ({
+    ...request,
+    student: byId.get(request.student_id) ?? null,
+  }));
+}
+
+export async function reviewQuizRetakeRequest(
+  request_id: string,
+  decision: "approved" | "denied",
+  token: string,
+) {
+  const caller = await requireSession(token);
+  const request = await unwrap<any>(
+    db.from("quiz_retake_requests").select("*").eq("id", request_id).single(),
+  );
+  await requireQuizOwnerOrAdmin(token, request.quiz_id);
+  if (request.status !== "pending") throw new Error("This retake request was already reviewed.");
+  const updated = await unwrap<any>(
+    db
+      .from("quiz_retake_requests")
+      .update({ status: decision, reviewed_at: new Date().toISOString(), reviewed_by: caller.id })
+      .eq("id", request_id)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle(),
+  );
+  if (!updated) throw new Error("This retake request was already reviewed.");
+  const [quiz, student] = await Promise.all([
+    getQuizConfig(request.quiz_id),
+    getProfileById(request.student_id),
+  ]);
+  await writeAuditLog(
+    caller,
+    `quiz.retake_request.${decision}`,
+    `${decision === "approved" ? "Approved" : "Denied"} retake request for ${student?.full_name ?? request.student_id} on worksheet "${quiz.title}".`,
+  );
+  return { status: decision };
 }
 
 export async function requireQuizOwnerOrAdmin(token: string, quizId: string) {
@@ -966,6 +1149,10 @@ export async function listStudentAttemptDetail(quiz_id: string, student_id: stri
 
 export async function grantQuizRetake(quiz_id: string, student_id: string, token: string) {
   const caller = await requireQuizOwnerOrAdmin(token, quiz_id);
+  const [quiz, attempts] = await Promise.all([
+    getQuizConfig(quiz_id),
+    attemptsFor(quiz_id, student_id),
+  ]);
   const existing = await unwrap<any>(
     db
       .from("quiz_retake_grants")
@@ -974,29 +1161,57 @@ export async function grantQuizRetake(quiz_id: string, student_id: string, token
       .eq("student_id", student_id)
       .maybeSingle(),
   );
+  // A student may already have several historical attempts from the old
+  // unlimited policy. Permission must unlock one new attempt from that count.
+  const base = quiz.allow_retake ? quiz.max_attempts : 1;
+  const extraAttempts = Math.max((existing?.extra_attempts ?? 0) + 1, attempts.length + 1 - base);
   if (existing) {
     await unwrap(
       db
         .from("quiz_retake_grants")
-        .update({ extra_attempts: (existing.extra_attempts as number) + 1, granted_by: caller.id })
+        .update({ extra_attempts: extraAttempts, granted_by: caller.id })
         .eq("id", existing.id),
     );
   } else {
     await unwrap(
       db
         .from("quiz_retake_grants")
-        .insert({ quiz_id, student_id, extra_attempts: 1, granted_by: caller.id }),
+        .insert({ quiz_id, student_id, extra_attempts: extraAttempts, granted_by: caller.id }),
     );
   }
+  const student = await getProfileById(student_id);
+  await writeAuditLog(
+    caller,
+    "quiz.retake.granted",
+    `Granted one additional attempt for worksheet "${quiz.title}" to ${student?.full_name ?? student_id}. Total approved extra attempts: ${extraAttempts}.`,
+  );
 }
 
 export async function resetQuizAttempts(quiz_id: string, student_id: string, token: string) {
-  await requireQuizOwnerOrAdmin(token, quiz_id);
+  const caller = await requireQuizOwnerOrAdmin(token, quiz_id);
+  const [quiz, student, attempts, grant] = await Promise.all([
+    getQuizConfig(quiz_id),
+    getProfileById(student_id),
+    attemptsFor(quiz_id, student_id),
+    unwrap<any>(
+      db
+        .from("quiz_retake_grants")
+        .select("extra_attempts")
+        .eq("quiz_id", quiz_id)
+        .eq("student_id", student_id)
+        .maybeSingle(),
+    ),
+  ]);
   await unwrap(
     db.from("quiz_attempts").delete().eq("quiz_id", quiz_id).eq("student_id", student_id),
   );
   await unwrap(
     db.from("quiz_retake_grants").delete().eq("quiz_id", quiz_id).eq("student_id", student_id),
+  );
+  await writeAuditLog(
+    caller,
+    "quiz.attempts.reset",
+    `Reset ${attempts.length} attempt(s) and removed ${grant?.extra_attempts ?? 0} retake grant(s) for ${student?.full_name ?? student_id} on worksheet "${quiz.title}".`,
   );
 }
 

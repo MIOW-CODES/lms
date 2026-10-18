@@ -1350,7 +1350,6 @@ def main():
     pdf_targets = [
         REPO_ROOT / 'docs/IT10/IT10-TOS-and-Question-Bank.pdf',
         REPO_ROOT / 'materials-it10/IT 10 - TOS and Question Bank (Quizzes and Exam).pdf',
-        REPO_ROOT / 'IT10-TOS-and-Question-Bank.pdf'
     ]
 
     primary_pdf = pdf_targets[0]

@@ -2,9 +2,19 @@
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db, supabaseAdmin } from "@/integrations/db/client.server";
-import { getBucket } from "@/lib/rate-limit";
+import {
+  authRateLimitAllows,
+  clearAuthFailures,
+  consumeAuthAttempt,
+  recordAuthFailure,
+} from "@/lib/server/auth-rate-limit.server";
 import { unwrap, withoutToken } from "@/lib/server/utils.server";
-import { createSessionToken, revokeSessions, sessionSecret } from "@/lib/server/sessions.server";
+import {
+  createSessionToken,
+  revokeSessions,
+  sessionSecret,
+  sessionJti,
+} from "@/lib/server/sessions.server";
 import { schemas } from "@/lib/server/schemas.server";
 import { type ProfileRow, type ProfileRole, type HttpError } from "@/lib/server/db-types";
 
@@ -17,17 +27,24 @@ export function isValidPinFormat(pin: string): boolean {
   return PIN_FORMAT_RE.test(pin);
 }
 
-/** Policy: only students are forced to pick a private PIN (pin_must_change). */
+/** Temporary, administrator-issued credentials may be non-numeric until changed. */
+export function canVerifyPinCandidate(
+  pin: string,
+  pinMustChange: boolean | null | undefined,
+): boolean {
+  return isValidPinFormat(pin) || pinMustChange === true;
+}
+
+/** All roles must replace an explicitly issued temporary PIN. */
 export function pinGateRequiredForRole(role: ProfileRole): boolean {
-  return role === "student";
+  return role === "student" || role === "teacher" || role === "admin";
 }
 
 /**
- * A credential write that sets a PIN (self-service change or staff reset)
- * clears the forced-change flag — the PIN on file is now one the user chose
- * or an admin just reset.
+ * Detect a non-empty PIN write; callers distinguish private changes from
+ * administrator-issued temporary resets.
  */
-export function pinWriteClearsGate(patch: Record<string, unknown>): boolean {
+export function hasPinWrite(patch: Record<string, unknown>): boolean {
   return typeof patch["pin"] === "string" && patch["pin"].length > 0;
 }
 
@@ -56,7 +73,7 @@ export function safeProfile(p: ProfileRow & { pin_must_change?: boolean | null }
     rfid_uid: null,
     has_pin: !!p.pin_hash || !!p.pin,
     has_rfid: !!p.rfid_uid,
-    // Forced PIN-change gate (student policy) — surfaced on every login and
+    // Forced PIN-change gate (all roles) — surfaced on every login and
     // session refresh so the client can block until the PIN is replaced.
     pin_must_change: p.pin_must_change === true && pinGateRequiredForRole(p.role),
   };
@@ -77,13 +94,13 @@ export async function findByRfid(uid: string) {
 
 async function verifyPin(p: ProfileRow, pin: string): Promise<boolean> {
   const key = `pin:${p.id ?? p.student_id ?? p.email ?? "unknown"}`;
-  const bucket = getBucket(key);
-  if (bucket.remaining === 0) {
+  if (!(await authRateLimitAllows(key))) {
     const err = new Error("Too many attempts") as HttpError;
     err.status = 429;
     throw err;
   }
   let ok = false;
+  if (!canVerifyPinCandidate(pin, p.pin_must_change)) return false;
   if (typeof p.pin_hash === "string" && p.pin_hash) {
     try {
       ok = await bcrypt.compare(pin, p.pin_hash);
@@ -100,7 +117,8 @@ async function verifyPin(p: ProfileRow, pin: string): Promise<boolean> {
       .eq("id", p.id);
     ok = true;
   }
-  if (!ok) bucket.consume();
+  if (!ok) await recordAuthFailure(key);
+  else await clearAuthFailures(key);
   return ok;
 }
 
@@ -111,19 +129,28 @@ const LOGIN_LOCK_MINUTES = 15;
 
 async function verifySecret(p: ProfileRow, secret: string): Promise<boolean> {
   if (await verifyPin(p, secret)) return true;
-  const bucket = getBucket(`secret:${p.id ?? p.email ?? "unknown"}`);
-  if (!bucket.consume()) {
+  const key = `secret:${p.id ?? p.email ?? "unknown"}`;
+  if (!(await authRateLimitAllows(key))) {
     const err = new Error("Too many attempts") as HttpError;
     err.status = 429;
     throw err;
   }
   if (typeof p.password_hash === "string" && p.password_hash) {
     try {
-      return await bcrypt.compare(secret, p.password_hash);
+      const ok = await bcrypt.compare(secret, p.password_hash);
+      if (ok) {
+        await Promise.all([
+          clearAuthFailures(key),
+          clearAuthFailures(`pin:${p.id ?? p.student_id ?? p.email ?? "unknown"}`),
+        ]);
+      } else await recordAuthFailure(key);
+      return ok;
     } catch {
+      await recordAuthFailure(key);
       return false;
     }
   }
+  await recordAuthFailure(key);
   return false;
 }
 
@@ -131,12 +158,11 @@ export async function verifyPinLogin(login: string, secret: string) {
   const dbgS = (msg: string, data?: unknown) => {
     if (process.env["DEBUG_LOGS"] === "true") console.debug(`[auth:server] ${msg}`, data ?? "");
   };
-  dbgS("verifyPinLogin called", { login: login.trim() });
   const identifier = login.trim().replace(/[*%_]/g, "");
   if (!identifier || !secret) return { ok: false as const, reason: "invalid" as const };
 
-  const identBucket = getBucket(`login:ident:${identifier.toLowerCase()}`);
-  if (!identBucket.consume()) {
+  const identifierKey = `login:ident:${identifier.toLowerCase()}`;
+  if (!(await authRateLimitAllows(identifierKey))) {
     const err = new Error("Too many attempts") as HttpError;
     err.status = 429;
     throw err;
@@ -156,11 +182,11 @@ export async function verifyPinLogin(login: string, secret: string) {
     if (p) break;
   }
   if (!p) {
-    dbgS("profile not found", { identifier });
+    dbgS("profile not found");
+    await recordAuthFailure(identifierKey);
     return { ok: false as const, reason: "invalid" as const };
   }
   dbgS("profile found", {
-    email: p.email,
     role: p.role,
     hasPinHash: !!p.pin_hash,
     locked: !!p.locked_until,
@@ -176,14 +202,15 @@ export async function verifyPinLogin(login: string, secret: string) {
     };
   }
 
-  const profileBucket = getBucket(`login:profile:${p.id}`);
-  if (!profileBucket.consume()) {
+  const profileKey = `login:profile:${p.id}`;
+  if (!(await authRateLimitAllows(profileKey))) {
     const err = new Error("Too many attempts") as HttpError;
     err.status = 429;
     throw err;
   }
 
   if (!(await verifySecret(p, secret))) {
+    await Promise.all([recordAuthFailure(identifierKey), recordAuthFailure(profileKey)]);
     const attempts =
       (typeof p.failed_login_attempts === "number" ? p.failed_login_attempts : 0) + 1;
     const lock = attempts >= LOGIN_MAX_ATTEMPTS;
@@ -209,7 +236,12 @@ export async function verifyPinLogin(login: string, secret: string) {
       .update({ failed_login_attempts: 0, locked_until: null })
       .eq("id", p.id);
   }
-  dbgS("login success", { email: p.email, role: p.role });
+  await Promise.all([
+    clearAuthFailures(identifierKey),
+    clearAuthFailures(profileKey),
+    clearAuthFailures(`secret:${p.id ?? p.email ?? "unknown"}`),
+  ]);
+  dbgS("login success", { role: p.role });
   return { ok: true as const, profile: safeProfile(p), token: await createSessionToken(p.id) };
 }
 
@@ -235,9 +267,8 @@ export function parseChangeOwnPinInput(data: unknown) {
  */
 export async function changeOwnPin(token: string, newPin: string, currentPin?: string | null) {
   const { requireSession } = await import("@/lib/server/auth.server");
-  const caller = await requireSession(token);
-  const bucket = getBucket(`pinchange:${caller.id}`);
-  if (!bucket.consume()) {
+  const caller = await requireSession(token, { allowTemporaryPin: true });
+  if (!(await consumeAuthAttempt(`pinchange:${caller.id}`))) {
     const err = new Error("Too many attempts") as HttpError;
     err.status = 429;
     throw err;
@@ -247,6 +278,9 @@ export async function changeOwnPin(token: string, newPin: string, currentPin?: s
     db.from("profiles").select("*").eq("id", caller.id).is("deleted_at", null).maybeSingle(),
   );
   if (!p) throw new Error("Profile not found");
+  if (p.pin_must_change && (await verifySecret(p, newPin))) {
+    throw new Error("Choose a different PIN from your temporary PIN.");
+  }
   // Current PIN is optional proof on top of the session — when given it is
   // verified through the shared rate-limited PIN verifier.
   if (typeof currentPin === "string" && currentPin.length > 0) {
@@ -255,9 +289,25 @@ export async function changeOwnPin(token: string, newPin: string, currentPin?: s
   await unwrap(
     db
       .from("profiles")
-      .update({ pin_hash: await bcrypt.hash(newPin, 12), pin: null, pin_must_change: false })
+      .update({
+        pin_hash: await bcrypt.hash(newPin, 12),
+        pin: null,
+        pin_must_change: false,
+        ...(p.pin_must_change ? { password_hash: null } : {}),
+      })
       .eq("id", caller.id),
   );
+  // A session established with the old temporary PIN must not gain access
+  // after another session replaces it. Preserve only the current session.
+  const currentJti = sessionJti(token);
+  const sessions = await unwrap<Array<{ jti: string }>>(
+    db.from("sessions").select("jti").eq("profile_id", caller.id).is("revoked_at", null),
+  );
+  const stale = sessions.filter((s) => s.jti !== currentJti).map((s) => s.jti);
+  if (stale.length)
+    await unwrap(
+      db.from("sessions").update({ revoked_at: new Date().toISOString() }).in("jti", stale),
+    );
   return getProfileById(caller.id);
 }
 
@@ -282,6 +332,7 @@ export async function createProfile(input: z.infer<typeof schemas.profileInput>)
   if (typeof row["pin"] === "string" && row["pin"]) {
     row["pin_hash"] = await bcrypt.hash(row["pin"], 10);
     row["pin"] = null;
+    row["pin_must_change"] = true;
   }
   const p = await unwrap<ProfileRow>(db.from("profiles").insert(row).select().single());
   return safeProfile(p);
@@ -309,7 +360,8 @@ export async function authorizeProfileUpdate(
   const { requireSession } = await import("@/lib/server/auth.server");
   const caller = await requireSession(token);
   if (caller.id === targetId) {
-    return caller.role === "student" ? selfServicePatch(patch) : patch;
+    const allowed = caller.role === "student" ? selfServicePatch(patch) : patch;
+    return hasPinWrite(allowed) ? { ...allowed, pin_must_change: false } : allowed;
   }
   if (caller.role === "student") throw new Error("Forbidden");
 
@@ -342,12 +394,12 @@ export async function updateProfile(id: string, patch: Record<string, unknown>) 
     },
     id,
   );
-  if (pinWriteClearsGate(row)) {
-    // A fresh PIN (self-service change or staff "Reset PIN") satisfies the
-    // forced-change policy — hash it and clear the gate flag in the same write.
+  if (hasPinWrite(row)) {
+    // Administrative resets issue temporary PINs; self-service callers
+    // explicitly clear the flag after choosing their own PIN.
     row["pin_hash"] = await bcrypt.hash(row["pin"] as string, 10);
     row["pin"] = null;
-    row["pin_must_change"] = false;
+    row["pin_must_change"] = row["pin_must_change"] !== false;
   }
   await unwrap(db.from("profiles").update(row).eq("id", id));
   if ("role" in row || "pin_hash" in row || "password_hash" in row) {
@@ -357,7 +409,7 @@ export async function updateProfile(id: string, patch: Record<string, unknown>) 
 
 export async function updateTeacherSettings(teacherId: string, patch: Record<string, unknown>) {
   if (Object.keys(patch).length === 0) throw new Error("Nothing to update");
-  await updateProfile(teacherId, patch);
+  await updateProfile(teacherId, hasPinWrite(patch) ? { ...patch, pin_must_change: false } : patch);
   const fresh = await getProfileById(teacherId);
   if (!fresh) throw new Error("Unauthorized");
   return fresh;
@@ -506,6 +558,7 @@ export async function createTeacher(input: z.infer<typeof schemas.teacherInput>)
   });
   row["email"] = email;
   row["role"] = "teacher";
+  row["pin_must_change"] = true;
   row["pin_hash"] = await bcrypt.hash(input.pin, 12);
   row["pin"] = null;
   row["username"] = input.employee_id.trim();

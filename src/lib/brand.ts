@@ -22,6 +22,6 @@ export const BRAND_COLORS = {
 
 /** Official logomark asset. Branding settings must not allow overriding this. */
 export const BRAND_LOGO_SRC = "/miow-logo.svg";
-export const BRAND_ICON_SRC = "/favicon.svg";
+export const BRAND_ICON_SRC = "/favicon.svg?v=pink";
 
 export const pageTitle = (page: string) => `${page} | MIOW - Integrated Developmental School`;

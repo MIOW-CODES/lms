@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Save, Trash2, Wand2, X } from "lucide-react";
+import { Download, FileSpreadsheet, Plus, Save, Trash2, Wand2, X } from "lucide-react";
 import { courseLevelLabel } from "@/lib/course-levels";
 import { toast } from "sonner";
 import {
@@ -26,6 +26,7 @@ import {
   useProfile,
 } from "@/components/lms";
 import { cn } from "@/lib/utils";
+import { buildXlsx, downloadBlob, downloadCsv, type XlsxCell } from "@/lib/xlsx";
 
 /** Bloom's taxonomy levels allowed for a TOS item (mirrors the server enum). */
 const COGNITIVE_LEVELS: CognitiveLevel[] = [
@@ -230,6 +231,40 @@ export function TosView({
     }
   };
 
+  const exportRows: XlsxCell[][] = [
+    [
+      "Course",
+      "Quarter",
+      "TOS Title",
+      "Topic",
+      "No. of Items",
+      "Cognitive Level",
+      "Linked Quiz",
+      "Note",
+    ],
+    ...(draft?.items ?? []).map((item) => [
+      course.code,
+      termLabel(quarter, course),
+      draft?.title ?? "",
+      item.topic,
+      item.no_of_items,
+      COGNITIVE_LABEL[item.cognitive_level],
+      courseQuizzes.find((q) => q.id === item.quiz_id)?.title ?? "",
+      item.note ?? "",
+    ]),
+  ];
+  const exportCsv = () => {
+    downloadCsv(exportRows, `${course.code}-tos-Q${quarter}.csv`);
+    toast.success("TOS CSV exported.");
+  };
+  const exportXlsx = () => {
+    downloadBlob(
+      buildXlsx([{ name: "TOS", rows: exportRows }]),
+      `${course.code}-tos-Q${quarter}.xlsx`,
+    );
+    toast.success("TOS Excel file exported.");
+  };
+
   const openGenerate = () => {
     const preselected = new Set(
       courseQuizzes
@@ -344,6 +379,20 @@ export function TosView({
             className="flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
             <Save className="h-4 w-4" /> {saving ? "Saving…" : "Save"}
+          </button>
+          <button
+            onClick={exportCsv}
+            disabled={!draft?.items.length}
+            className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" /> CSV
+          </button>
+          <button
+            onClick={exportXlsx}
+            disabled={!draft?.items.length}
+            className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50"
+          >
+            <FileSpreadsheet className="h-4 w-4" /> Excel
           </button>
         </div>
       </div>

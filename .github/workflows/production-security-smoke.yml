@@ -1,0 +1,42 @@
+name: Production security smoke checks
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 0 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-security-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun x playwright install --with-deps chromium
+      - name: Check production auth boundary and security headers
+        env:
+          PLAYWRIGHT_BASE_URL: https://miow-lms.ter-ids.online
+        run: bun x playwright test tests/e2e/production-security.spec.ts --project chromium
+      - name: Notify MIOW operations channel on failure
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [[ -z "${DISCORD_WEBHOOK_URL:-}" ]]; then
+            echo "::warning::DISCORD_WEBHOOK_URL is not configured; skipping alert delivery."
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg url "$RUN_URL" '{content: ("🚨 MIOW production security smoke checks failed. Details: " + $url)}')" \
+            "$DISCORD_WEBHOOK_URL"

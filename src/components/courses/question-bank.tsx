@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Pencil, Plus, Search, X } from "lucide-react";
+import { Check, Download, FileSpreadsheet, Pencil, Plus, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   listCourses,
@@ -21,6 +21,7 @@ import {
 import { compareWorksheetOrder } from "@/lib/question-bank-groups";
 import { courseLevelLabel } from "@/lib/course-levels";
 import { cn } from "@/lib/utils";
+import { buildXlsx, downloadBlob, downloadCsv, type XlsxCell } from "@/lib/xlsx";
 
 /** One worksheet summary chip — derived from the bank rows themselves. */
 interface WorksheetSummary {
@@ -167,6 +168,44 @@ export function QuestionBank({
       });
   }, [courseRows, quizId, search, worksheetOrder]);
 
+  const exportRows = useMemo<XlsxCell[][]>(() => {
+    const header = [
+      "Course",
+      "Worksheet",
+      "Position",
+      "Question",
+      "Options",
+      "Answer Key",
+      "Lab Task",
+      "Required",
+    ];
+    return [
+      header,
+      ...visible.map((r) => [
+        r.course_code ?? "",
+        r.quiz_title ?? quizById.get(r.quiz_id) ?? "Worksheet",
+        r.position,
+        r.question,
+        r.options.join(" | "),
+        r.correct_answer,
+        r.lab_task ? "Yes" : "No",
+        r.required ? "Yes" : "No",
+      ]),
+    ];
+  }, [visible, quizById]);
+
+  const exportCsv = () => {
+    downloadCsv(exportRows, "miow-question-bank.csv");
+    toast.success("Question bank CSV exported.");
+  };
+  const exportXlsx = () => {
+    downloadBlob(
+      buildXlsx([{ name: "Question Bank", rows: exportRows }]),
+      "miow-question-bank.xlsx",
+    );
+    toast.success("Question bank Excel file exported.");
+  };
+
   // Grouped by worksheet — a header row whenever the quiz changes.
   const groups = useMemo(() => {
     const out: Array<{
@@ -216,6 +255,10 @@ export function QuestionBank({
     }
     if (options.some((o) => o === "")) {
       toast.error("Options cannot be empty — remove unused ones.");
+      return;
+    }
+    if (r.question_type === "multiple_choice" && options.length !== 4) {
+      toast.error("Multiple-choice questions must have exactly four options (A–D).");
       return;
     }
     if (options.length > 12) {
@@ -302,6 +345,22 @@ export function QuestionBank({
               ×
             </button>
           )}
+        </div>
+        <div className="ml-auto flex flex-wrap gap-2">
+          <button
+            onClick={exportCsv}
+            disabled={!visible.length}
+            className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-sm font-semibold hover:bg-muted disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" /> CSV
+          </button>
+          <button
+            onClick={exportXlsx}
+            disabled={!visible.length}
+            className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-sm font-semibold hover:bg-muted disabled:opacity-50"
+          >
+            <FileSpreadsheet className="h-4 w-4" /> Excel
+          </button>
         </div>
       </div>
 

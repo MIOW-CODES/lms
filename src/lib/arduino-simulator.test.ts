@@ -265,3 +265,40 @@ describe("circuit netlist (manual wiring)", () => {
     expect(summary).toContain("LED2 anode → D9");
   });
 });
+
+describe("breadboard connectivity", () => {
+  const breadboard: CircuitPart = { id: "bb", type: "breadboard", label: "breadboard1" };
+  it("joins five-hole strips and continuous rails while isolating the center gap, columns, and rails", () => {
+    const { nodeNet: nets } = buildNetlist([breadboard], []);
+    const net = (terminal: string) => nets[`part:bb:${terminal}`];
+    expect(net("a1")).toBe(net("e1"));
+    expect(net("f1")).toBe(net("j1"));
+    expect(net("a1")).not.toBe(net("f1"));
+    expect(net("a1")).not.toBe(net("a2"));
+    expect(net("top+1")).toBe(net("top+30"));
+    expect(net("top+1")).not.toBe(net("top-1"));
+    expect(net("top+1")).not.toBe(net("bottom+1"));
+  });
+  it("drives an LED through breadboard strips, a series resistor, and the ground rail", () => {
+    const parts: CircuitPart[] = [
+      breadboard,
+      { id: "led", type: "wokwi-led", label: "LED1" },
+      { id: "r", type: "wokwi-resistor", label: "resistor1" },
+    ];
+    const wires = [
+      w("1", uno(8), term("bb", "a1")),
+      w("2", term("bb", "e1"), term("led", "A")),
+      w("3", term("led", "K"), term("bb", "a2")),
+      w("4", term("bb", "e2"), term("r", "leg1")),
+      w("5", term("r", "leg2"), term("bb", "top-1")),
+      w("6", term("bb", "top-30"), uno("GND")),
+    ];
+    const states = resolvePartStates(parts, wires, boardWithDigital(8, 1, "OUTPUT"));
+    expect(states.led!.lit).toBe(true);
+    expect(states.led!.warning).toBeNull();
+    expect(resolvePartStates(parts, wires, boardWithDigital(8, 0, "OUTPUT")).led!.lit).toBe(false);
+    expect(
+      resolvePartStates(parts, wires.slice(0, -1), boardWithDigital(8, 1, "OUTPUT")).led!.lit,
+    ).toBe(false);
+  });
+});

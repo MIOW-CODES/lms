@@ -8,6 +8,7 @@ export {
   sessionJti,
   setSessionRoleView,
   revokeSessions,
+  revokeSessionJti,
   sessionSecret,
 } from "./sessions.server";
 
@@ -75,6 +76,8 @@ export {
 } from "./announcements.server";
 export type { AnnouncementAttachment } from "./announcements.server";
 
+export { listFeedbackReports, createFeedbackReport, updateFeedbackReport } from "./feedback.server";
+
 export {
   listCourses,
   createCourse,
@@ -105,6 +108,9 @@ export {
   updateQuizRetakePolicy,
   listQuizAttemptsForQuiz,
   grantQuizRetake,
+  requestQuizRetake,
+  listQuizRetakeRequests,
+  reviewQuizRetakeRequest,
   resetQuizAttempts,
   overrideQuizAttempt,
   listStudentAttemptDetail,

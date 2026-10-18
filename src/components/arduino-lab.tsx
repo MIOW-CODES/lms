@@ -189,8 +189,9 @@ export function ArduinoLab({
   onConnectionsChange,
   initialTask = ARDUINO_TASKS.find((task) => task.id === "button-led") ?? null,
 }: ArduinoLabProps = {}) {
-  const [selectedSketch, setSelectedSketch] = useState(0);
-  const [code, setCode] = useState(STARTER_SKETCHES[0]?.code ?? "");
+  const worksheetBlank = initialTask === null;
+  const [selectedSketch, setSelectedSketch] = useState(worksheetBlank ? -1 : 0);
+  const [code, setCode] = useState(worksheetBlank ? "" : (STARTER_SKETCHES[0]?.code ?? ""));
   const [logs, setLogs] = useState<string[]>([]);
   const [boardState, setBoardState] = useState<ArduinoBoardState | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -212,7 +213,7 @@ export function ArduinoLab({
   const [analogValues, setAnalogValues] = useState<number[]>([512, 0, 0, 0, 0, 0]);
 
   const simRef = useRef<ArduinoSimulator | null>(null);
-  const serialEndRef = useRef<HTMLDivElement | null>(null);
+  const serialMonitorRef = useRef<HTMLDivElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const oscRef = useRef<OscillatorNode | null>(null);
 
@@ -302,7 +303,8 @@ export function ArduinoLab({
   }, []);
 
   useEffect(() => {
-    serialEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const monitor = serialMonitorRef.current;
+    if (monitor) monitor.scrollTop = monitor.scrollHeight;
   }, [logs]);
 
   const handleRun = () => {
@@ -366,7 +368,7 @@ export function ArduinoLab({
   };
 
   return (
-    <div className="space-y-6">
+    <div data-testid="arduino-lab" className="min-w-0 w-full max-w-full space-y-6">
       {/* Header & Controls Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm backdrop-blur-md">
         <div className="flex items-center gap-3">
@@ -374,7 +376,7 @@ export function ArduinoLab({
             <Cpu className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-foreground">Arduino Practice Lab</h2>
+            <h2 className="text-base font-bold text-foreground">Arduino Lab</h2>
             <p className="text-xs text-muted-foreground">
               Try a circuit, run the code, and observe what happens.
             </p>
@@ -415,7 +417,7 @@ export function ArduinoLab({
       )}
 
       {/* Main Grid: Code Editor on Top/Left, Full Workbench on Bottom or Full-Width */}
-      <div className="grid gap-6">
+      <div className="grid min-w-0 grid-cols-1 gap-6">
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm">
           <p className="font-semibold text-foreground">Start here</p>
           <ol className="mt-2 grid gap-1 text-muted-foreground sm:grid-cols-3">
@@ -495,7 +497,7 @@ export function ArduinoLab({
                 className={cn(
                   "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
                   activeTask?.id === t.id
-                    ? "border-emerald-500/60 bg-emerald-500/20 text-emerald-300 shadow-inner"
+                    ? "border-emerald-500/60 bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 shadow-inner"
                     : "border-border/70 bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
@@ -505,7 +507,7 @@ export function ArduinoLab({
             {activeTask && (
               <p
                 data-testid="task-hint"
-                className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] leading-relaxed text-emerald-200"
+                className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] leading-relaxed text-emerald-900 dark:text-emerald-200"
               >
                 <strong className="font-semibold">{activeTask.title}:</strong> {activeTask.hint}
               </p>
@@ -707,7 +709,7 @@ export function ArduinoLab({
         {/* Code Editor & Serial Monitor Row */}
         <div className="grid gap-6 lg:grid-cols-12">
           {/* Code Editor (8 cols) */}
-          <div className="space-y-4 lg:col-span-8">
+          <div className="space-y-4 min-w-0 lg:col-span-8">
             <div className="rounded-2xl border border-border/80 bg-card/80 p-4 shadow-sm backdrop-blur-md">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
                 <div className="flex items-center gap-2">
@@ -767,7 +769,7 @@ export function ArduinoLab({
           </div>
 
           {/* Serial Monitor (4 cols) */}
-          <div className="space-y-4 lg:col-span-4">
+          <div className="space-y-4 min-w-0 lg:col-span-4">
             <div className="rounded-2xl border border-border/80 bg-card/80 p-4 shadow-sm backdrop-blur-md flex flex-col h-full">
               <div className="mb-2 flex items-center justify-between border-b border-border/60 pb-2">
                 <div className="flex items-center gap-2">
@@ -782,9 +784,16 @@ export function ArduinoLab({
                   Clear
                 </button>
               </div>
-              <div className="min-h-[220px] flex-1 overflow-y-auto rounded-xl border border-input bg-zinc-950 p-3 font-mono text-xs text-emerald-400 shadow-inner">
+              <div
+                ref={serialMonitorRef}
+                data-testid="serial-monitor-output"
+                role="region"
+                aria-label="Serial output"
+                tabIndex={0}
+                className="h-80 min-h-0 shrink-0 overflow-y-auto overscroll-contain rounded-xl border border-input bg-zinc-950 p-3 font-mono text-xs text-emerald-400 shadow-inner"
+              >
                 {logs.length === 0 ? (
-                  <span className="text-zinc-600">
+                  <span className="text-zinc-400">
                     // Serial output will appear here when running...
                   </span>
                 ) : (
@@ -794,7 +803,6 @@ export function ArduinoLab({
                     </div>
                   ))
                 )}
-                <div ref={serialEndRef} />
               </div>
             </div>
           </div>

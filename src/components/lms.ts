@@ -8,7 +8,6 @@ export { useProfile, useSignOut, useTheme, useRfidScanner } from "@/hooks";
 export {
   ThemeToggle,
   Badge,
-  attendanceTone,
   Card,
   MotionCard,
   FadeIn,
@@ -16,8 +15,6 @@ export {
   EmptyState,
   LoadError,
   FilterTabs,
-  courseStyle,
-  COURSE_STYLE,
   Modal,
   Field,
   SelectField,
@@ -33,3 +30,5 @@ export {
   settingsPathFor,
   AppShell,
 } from "@/components/sidebar";
+
+export { attendanceTone, courseStyle, COURSE_STYLE } from "@/lib/ui-styles";

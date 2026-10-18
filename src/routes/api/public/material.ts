@@ -1,8 +1,7 @@
 // Streams course handouts and student submission files from the private
 // "course-materials" bucket. The prefix is only "public" in the routing sense —
-// every request must carry a valid signed LMS session token. Token is read from
-// Authorization: Bearer header first (preferred — avoids token leakage in logs),
-// fallback to ?t= query is deprecated and kept only for backward compat.
+// every request must carry a valid signed LMS session cookie. Authorization
+// and ?t= token support remains for old links during the migration.
 //
 // Access rules (P2a, user-signed 2026-10-06 — see src/lib/server/availability.ts):
 //  - Course materials (handouts): staff (teacher/admin) always; students only
@@ -13,6 +12,7 @@
 //    enrollment. No attempt-gating, ever.
 //  - Submission files: the owning student, or any staff member.
 import { createFileRoute } from "@tanstack/react-router";
+import { COOKIE_SESSION_MARKER } from "@/lib/session";
 
 const PATH_RE_MATERIAL =
   /^[0-9a-f-]{36}\/material_\d+_[0-9a-f]{6,8}\.(pdf|docx?|pptx?|png|jpe?g|zip)$/;
@@ -36,13 +36,11 @@ export const Route = createFileRoute("/api/public/material")({
         const p = url.searchParams.get("p") ?? "";
         // Prefer Authorization header; ?t= is deprecated fallback
         const auth = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-        const t = (auth || url.searchParams.get("t")) ?? "";
+        const t = auth || url.searchParams.get("t") || COOKIE_SESSION_MARKER;
 
         const isMaterial = PATH_RE_MATERIAL.test(p);
         const submissionMatch = p.match(PATH_RE_SUBMISSION);
         if (!isMaterial && !submissionMatch) return new Response("Bad Request", { status: 400 });
-        if (!t) return new Response("Unauthorized", { status: 401 });
-
         const server = await import("@/lib/server");
         let caller;
         try {

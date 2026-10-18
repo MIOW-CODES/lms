@@ -56,7 +56,8 @@ export type CircuitPartType =
   | "wokwi-buzzer"
   | "wokwi-servo"
   | "wokwi-hc-sr04"
-  | "wokwi-resistor";
+  | "wokwi-resistor"
+  | "breadboard";
 
 export interface CircuitPart {
   id: string;
@@ -123,6 +124,15 @@ function partNode(partId: string, terminal: string): string {
   return `part:${partId}:${terminal}`;
 }
 
+/** Each five-hole strip shares a net; the center channel and four rails stay isolated. */
+export const BREADBOARD_GROUPS: string[][] = [
+  ...Array.from({ length: 30 }, (_, i) => ["a", "b", "c", "d", "e"].map((row) => `${row}${i + 1}`)),
+  ...Array.from({ length: 30 }, (_, i) => ["f", "g", "h", "i", "j"].map((row) => `${row}${i + 1}`)),
+  ...["top+", "top-", "bottom+", "bottom-"].map((rail) =>
+    Array.from({ length: 30 }, (_, i) => `${rail}${i + 1}`),
+  ),
+];
+
 /**
  * Union-find over wire endpoints. Two wires landing on the same Uno pin (or
  * the shared GND rail) collapse into a single net. Part terminals stay
@@ -155,6 +165,15 @@ export function buildNetlist(parts: CircuitPart[], wires: WireSpec[]): CircuitNe
     const a = endpointNodeId(w.from);
     const b = endpointNodeId(w.to);
     union(a, b);
+  }
+
+  for (const part of parts) {
+    if (part.type !== "breadboard") continue;
+    for (const group of BREADBOARD_GROUPS) {
+      for (const terminal of group.slice(1)) {
+        union(partNode(part.id, group[0]!), partNode(part.id, terminal));
+      }
+    }
   }
 
   const nodeNet: Record<string, string> = {};

@@ -1,4 +1,5 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { RequirePrivatePin } from "@/components/require-private-pin";
 
 // Layout route for the admin/teacher portal. The dashboard body lives in
 // dashboard.admin.index.tsx; child pages (students, courses, gradebook,
@@ -22,5 +23,9 @@ export const Route = createFileRoute("/dashboard/admin")({
 });
 
 function AdminLayout() {
-  return <Outlet />;
+  return (
+    <RequirePrivatePin>
+      <Outlet />
+    </RequirePrivatePin>
+  );
 }

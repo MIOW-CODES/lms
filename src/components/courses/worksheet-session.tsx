@@ -1,20 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
+  Calculator,
+  Maximize2,
+  Minimize2,
+  FlaskConical,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Eye,
   EyeOff,
-  Paperclip,
   RotateCcw,
   ShieldCheck,
   Timer,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { setAssessmentMode } from "@/lib/assessment-mode";
 import { EXAM_LOCKDOWN_COPY, LockdownOverlay } from "@/components/lockdown";
 import { useLockdown, useLockdownDemand } from "@/hooks/useLockdown";
@@ -27,47 +30,16 @@ import {
 } from "@/lib/anti-cheat";
 import {
   getQuiz,
-  enrollmentsForStudent,
-  fmtDateTime,
-  listCourses,
-  listQuizzes,
-  materialHref,
-  myQuizSummaries,
   submitQuizAnswers,
+  type Quiz,
   type QuizQuestionPublic,
   type SubmitQuizResult,
 } from "@/lib/lms";
 import { isTestStudent } from "@/lib/role-view";
-import {
-  AppShell,
-  Badge,
-  EmptyState,
-  Modal,
-  MotionCard,
-  STUDENT_NAV,
-  courseStyle,
-  useProfile,
-} from "@/components/lms";
+import { Badge, Modal, useProfile } from "@/components/lms";
 import { cn } from "@/lib/utils";
+import { QUESTION_TYPE_LABELS } from "@/lib/question-types";
 import { LoadingSkeleton } from "@/components/ui-elements";
-
-export const Route = createFileRoute("/dashboard/student/quizzes")({
-  head: () => ({
-    meta: [
-      { title: "Worksheets | MIOW - Integrated Developmental School" },
-      {
-        name: "description",
-        content: "Take timed worksheets and exams — scores appear after teacher release.",
-      },
-      { property: "og:title", content: "Worksheets | MIOW - Integrated Developmental School" },
-      {
-        property: "og:description",
-        content: "Take timed worksheets and exams — scores appear after teacher release.",
-      },
-    ],
-  }),
-  component: QuizzesPage,
-});
 
 type QuizSuccess = Extract<SubmitQuizResult, { ok: true }>;
 
@@ -95,112 +67,215 @@ function attemptLabel(used: number, allowed: number | null, next = false): strin
   return `Attempt ${n} of ${allowed}`;
 }
 
-function QuizzesPage() {
+function evaluateWorksheetExpression(expression: string): string {
+  const normalized = expression.trim();
+  if (!normalized || normalized.length > 160) return "Enter a calculation under 160 characters.";
+  try {
+    const tokens = normalized.match(/\d+(?:\.\d+)?|[A-Za-z]+|[()+\-*/%^]/g) ?? [];
+    if (tokens.length > 80 || tokens.join("") !== normalized.replace(/\s+/g, ""))
+      return "Invalid calculation.";
+    let cursor = 0;
+    const primary = (): number => {
+      if (cursor > 80) throw new Error("expression too deep");
+      const token = tokens[cursor++];
+      if (token === "(") {
+        const value = expressionValue();
+        if (tokens[cursor++] !== ")") throw new Error("missing parenthesis");
+        return value;
+      }
+      if (token === "+" || token === "-") {
+        const value = primary();
+        return token === "-" ? -value : value;
+      }
+      if (!token) throw new Error("invalid token");
+      if (/^[A-Za-z]+$/.test(token)) {
+        if (token === "pi") return Math.PI;
+        if (token === "e") return Math.E;
+        if (tokens[cursor++] !== "(") throw new Error("missing function parenthesis");
+        const value = expressionValue();
+        if (tokens[cursor++] !== ")") throw new Error("missing parenthesis");
+        const functions: Record<string, (value: number) => number> = {
+          abs: Math.abs,
+          cos: Math.cos,
+          ln: Math.log,
+          log: Math.log10,
+          sin: Math.sin,
+          sqrt: Math.sqrt,
+          tan: Math.tan,
+        };
+        const fn = functions[token];
+        if (!fn) throw new Error("unknown function");
+        return fn(value);
+      }
+      if (!/^\d/.test(token)) throw new Error("invalid token");
+      return Number(token);
+    };
+    const power = (): number => {
+      const value = primary();
+      if (tokens[cursor] === "^") {
+        cursor++;
+        return value ** power();
+      }
+      return value;
+    };
+    const term = (): number => {
+      let value = power();
+      while (["*", "/", "%"].includes(tokens[cursor] ?? "")) {
+        const operator = tokens[cursor++];
+        const right = power();
+        if (operator === "*") value *= right;
+        else if (operator === "/") value /= right;
+        else value %= right;
+      }
+      return value;
+    };
+    function expressionValue(): number {
+      let value = term();
+      while (["+", "-"].includes(tokens[cursor] ?? "")) {
+        const operator = tokens[cursor++];
+        const right = term();
+        value = operator === "+" ? value + right : value - right;
+      }
+      return value;
+    }
+    const value = expressionValue();
+    if (cursor !== tokens.length) return "Invalid calculation.";
+    return typeof value === "number" && Number.isFinite(value)
+      ? String(value)
+      : "Invalid calculation.";
+  } catch {
+    return "Invalid calculation.";
+  }
+}
+
+function isCalculationQuestion(question: QuizQuestionPublic | undefined): boolean {
+  if (!question) return false;
+  const text = question.question;
+  return (
+    /\b(calculate|compute|solve|determine|find|what is the value|how many|how much)\b/i.test(
+      text,
+    ) ||
+    (/\b(resistance|voltage|current|power|ohm(?:s)?|watt(?:s)?|amp(?:s)?)\b/i.test(text) &&
+      /\d/.test(text))
+  );
+}
+
+function fourthChoiceFor(question: QuizQuestionPublic): string {
+  const text = question.question.toLowerCase();
+  if (text.includes("arduino")) return "microcontroller-based";
+  if (text.includes("resistor") || text.includes("resistance")) return "wire-wound";
+  return "embedded-system";
+}
+
+// Persist timer + answers per quiz so closing/reopening or accidental reload doesn't reset progress
+const getStoredTimer = (id: string): number | null => {
+  try {
+    const v = localStorage.getItem(`miow_quiz_timer_${id}`);
+    return v ? Number(v) : null;
+  } catch {
+    return null;
+  }
+};
+const setStoredTimer = (id: string, sec: number) => {
+  try {
+    localStorage.setItem(`miow_quiz_timer_${id}`, String(sec));
+  } catch {
+    /* ignore storage quota or access error */
+  }
+};
+const clearStoredProgress = (id: string) => {
+  try {
+    localStorage.removeItem(`miow_quiz_timer_${id}`);
+    localStorage.removeItem(`miow_quiz_answers_${id}`);
+    localStorage.removeItem(`miow_quiz_questions_${id}`);
+  } catch {
+    /* ignore storage access error */
+  }
+};
+const getStoredAnswers = (id: string): Record<string, string> => {
+  try {
+    const v = localStorage.getItem(`miow_quiz_answers_${id}`);
+    return v ? JSON.parse(v) : {};
+  } catch {
+    return {};
+  }
+};
+const setStoredAnswers = (id: string, a: Record<string, string>) => {
+  try {
+    localStorage.setItem(`miow_quiz_answers_${id}`, JSON.stringify(a));
+  } catch {
+    /* ignore storage quota or access error */
+  }
+};
+// Persist the drawn question set per quiz so a mid-exam reload resumes the
+// SAME questions (the server draws a fresh random subset per getQuiz call,
+// which would orphan answers to the previously drawn items).
+const getStoredQuestions = (id: string): QuizQuestionPublic[] | null => {
+  try {
+    const v = localStorage.getItem(`miow_quiz_questions_${id}`);
+    const parsed: unknown = v ? JSON.parse(v) : null;
+    return Array.isArray(parsed) &&
+      parsed.length > 0 &&
+      parsed.every((q) => typeof q?.id === "string")
+      ? (parsed as QuizQuestionPublic[])
+      : null;
+  } catch {
+    return null;
+  }
+};
+const setStoredQuestions = (id: string, qs: QuizQuestionPublic[]) => {
+  try {
+    localStorage.setItem(`miow_quiz_questions_${id}`, JSON.stringify(qs));
+  } catch {
+    /* ignore storage quota or access error */
+  }
+};
+
+export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () => void }) {
   const profile = useProfile(["student"]);
   const queryClient = useQueryClient();
-  const { data: courses } = useQuery({
-    queryKey: ["courses"],
-    queryFn: listCourses,
-    enabled: !!profile,
-  });
-  const { data: quizzes } = useQuery({
-    queryKey: ["quizzes"],
-    queryFn: listQuizzes,
-    enabled: !!profile,
-  });
-  const { data: summaries } = useQuery({
-    queryKey: ["quiz-summaries"],
-    queryFn: myQuizSummaries,
-    enabled: !!profile,
-  });
-  const { data: enrolledCourseIds } = useQuery({
-    queryKey: ["enrollments", "student", profile?.id],
-    queryFn: () => enrollmentsForStudent(profile!.id),
-    enabled: !!profile?.id,
-  });
-
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(quiz.id);
+  const activeQuiz = quiz;
+  useEffect(() => {
+    if (!activeId) onClose();
+  }, [activeId, onClose]);
   const [questions, setQuestions] = useState<QuizQuestionPublic[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [idx, setIdx] = useState(0);
-  // Collapsible Virtual Arduino Lab panel for problem-solving (lab_task) items.
+  // Collapsible Arduino Lab panel for problem-solving (lab_task) items.
   const [labOpen, setLabOpen] = useState(true);
-  // Auto-generated wiring description from the Virtual Arduino Lab (manual wires)
+  const [labFullscreen, setLabFullscreen] = useState(false);
+  const [confirmation, setConfirmation] = useState<{
+    title: string;
+    description: string;
+    action: string;
+    cancel: string;
+    confirm: () => void;
+  } | null>(null);
+  // Auto-generated wiring description from the Arduino Lab (manual wires)
   const [connSummary, setConnSummary] = useState("");
-  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   // Which worksheet the timer/answers below belong to, and whether the current
   // attempt has finished loading. Both are guards against a newly selected
   // worksheet inheriting the previous one's countdown/answers while its async
   // fetch is still resolving — timer and answers are persisted per quiz id, so
   // a stale write under the new id would leak the old attempt's state forward.
   const [readyQuizId, setReadyQuizId] = useState<string | null>(null);
-  const [loadingAttempt, setLoadingAttempt] = useState(false);
+  const [loadingAttempt, setLoadingAttempt] = useState(true);
   const [result, setResult] = useState<QuizSuccess | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  // Persist timer + answers per quiz so closing/reopening or accidental reload doesn't reset progress
-  const getStoredTimer = (id: string): number | null => {
-    try {
-      const v = localStorage.getItem(`miow_quiz_timer_${id}`);
-      return v ? Number(v) : null;
-    } catch {
-      return null;
-    }
-  };
-  const setStoredTimer = (id: string, sec: number) => {
-    try {
-      localStorage.setItem(`miow_quiz_timer_${id}`, String(sec));
-    } catch {
-      /* ignore storage quota or access error */
-    }
-  };
-  const clearStoredProgress = (id: string) => {
-    try {
-      localStorage.removeItem(`miow_quiz_timer_${id}`);
-      localStorage.removeItem(`miow_quiz_answers_${id}`);
-      localStorage.removeItem(`miow_quiz_questions_${id}`);
-    } catch {
-      /* ignore storage access error */
-    }
-  };
-  const getStoredAnswers = (id: string): Record<string, string> => {
-    try {
-      const v = localStorage.getItem(`miow_quiz_answers_${id}`);
-      return v ? JSON.parse(v) : {};
-    } catch {
-      return {};
-    }
-  };
-  const setStoredAnswers = (id: string, a: Record<string, string>) => {
-    try {
-      localStorage.setItem(`miow_quiz_answers_${id}`, JSON.stringify(a));
-    } catch {
-      /* ignore storage quota or access error */
-    }
-  };
-  // Persist the drawn question set per quiz so a mid-exam reload resumes the
-  // SAME questions (the server draws a fresh random subset per getQuiz call,
-  // which would orphan answers to the previously drawn items).
-  const getStoredQuestions = (id: string): QuizQuestionPublic[] | null => {
-    try {
-      const v = localStorage.getItem(`miow_quiz_questions_${id}`);
-      const parsed: unknown = v ? JSON.parse(v) : null;
-      return Array.isArray(parsed) &&
-        parsed.length > 0 &&
-        parsed.every((q) => typeof q?.id === "string")
-        ? (parsed as QuizQuestionPublic[])
-        : null;
-    } catch {
-      return null;
-    }
-  };
-  const setStoredQuestions = (id: string, qs: QuizQuestionPublic[]) => {
-    try {
-      localStorage.setItem(`miow_quiz_questions_${id}`, JSON.stringify(qs));
-    } catch {
-      /* ignore storage quota or access error */
-    }
-  };
-
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [calculatorExpression, setCalculatorExpression] = useState("");
+  const [calculatorResult, setCalculatorResult] = useState<string | null>(null);
+  const currentQuestionId = questions[idx]?.id;
+  useEffect(() => {
+    setCalculatorOpen(false);
+    setCalculatorExpression("");
+    setCalculatorResult(null);
+  }, [currentQuestionId]);
+  const finishRef = useRef<(() => Promise<void>) | null>(null);
+  const warnedAttemptRef = useRef<string | null>(null);
+  const attemptLoadRef = useRef(0);
   const savedTimerRef = useRef<Map<string, number>>(new Map());
   const savedAnswersRef = useRef<Map<string, Record<string, string>>>(new Map());
   // Persist the sampled question set for the in-progress attempt so reopening a
@@ -220,15 +295,6 @@ function QuizzesPage() {
     >
   >(new Map());
 
-  const activeQuiz = useMemo(
-    () => (quizzes ?? []).find((q) => q.id === activeId),
-    [quizzes, activeId],
-  );
-  const summaryByQuiz = useMemo(
-    () => new Map((summaries ?? []).map((s) => [s.quiz_id, s])),
-    [summaries],
-  );
-
   // Assessment integrity: hide the ClassMate Assistant while a worksheet is
   // actively being taken (restored on the review screen and on unmount).
   const taking = !!activeId && !result;
@@ -238,7 +304,22 @@ function QuizzesPage() {
   }, [taking]);
 
   // Anti-cheat: detect tab switches / devtools / paste during active assessment
-  const { tabSwitches, switchCount, counts, showFlash, flashType } = useAntiCheat(taking);
+  const integrityActive =
+    taking && readyQuizId === activeId && !loadingAttempt && questions.length > 0;
+  const handleFirstIntegrityEvent = useCallback(
+    (event: { type: Parameters<typeof integrityLabel>[0] }) => {
+      toast.warning("Integrity rule triggered", {
+        description: `${integrityLabel(event.type)} detected. Your worksheet is being submitted automatically.`,
+        duration: 6000,
+      });
+      void finishRef.current?.();
+    },
+    [],
+  );
+  const { tabSwitches, switchCount, counts, showFlash, flashType } = useAntiCheat(
+    integrityActive,
+    handleFirstIntegrityEvent,
+  );
   // Hard lock while taking: fullscreen + input blocking (installed PWA kiosk).
   // The exam demand joins the app-wide kiosk lockdown through the single
   // shared activation (LockdownProvider in the student layout) so the two
@@ -248,78 +329,142 @@ function QuizzesPage() {
 
   // Resume or start attempt: restore saved timer/answers if the student
   // closed and reopened the same worksheet within this session.
-  const beginAttempt = async (id: string) => {
-    // Reuse the in-progress attempt's sampled questions when present so a
-    // reopen doesn't swap the question set (and lose already-answered items).
-    let attempt = savedAttemptRef.current.get(id);
-    if (!attempt) {
-      const { quiz, questions } = await getQuiz(id);
-      // A reload mid-exam must resume the SAME drawn subset — prefer the
-      // persisted set over the server's fresh draw. Cleared on submit/retake,
-      // so a NEW attempt still fetches a fresh set.
-      const persisted = getStoredQuestions(id);
-      attempt = {
-        questions: persisted ?? questions,
-        duration: quiz.duration_minutes * 60,
-        closesAt:
-          !isTestStudent(profile?.email) && quiz.closes_at
-            ? new Date(quiz.closes_at).getTime()
-            : null,
-        submissionId: newSubmissionId(),
-      };
-      if (!persisted) setStoredQuestions(id, attempt.questions);
-      savedAttemptRef.current.set(id, attempt);
-    }
-    setQuestions(attempt.questions);
-    setResult(null);
-    // Restore saved answers if they exist for this quiz
-    const localAnswers = getStoredAnswers(id);
-    const inMemAnswers = savedAnswersRef.current.get(id);
-    const restoredAnswers =
-      Object.keys(localAnswers).length > 0 ? localAnswers : (inMemAnswers ?? {});
-    setAnswers(restoredAnswers);
-    setIdx(0);
-    // The server hard-blocks any submit after closes_at, so the countdown must
-    // never run past the window: clamp the starting seconds to the time
-    // remaining until closes_at (effective = min(duration, window remaining)).
-    const windowSec =
-      attempt.closesAt != null
-        ? Math.max(0, Math.floor((attempt.closesAt - Date.now()) / 1000))
-        : Number.POSITIVE_INFINITY;
-    const startSec = Math.min(attempt.duration, windowSec);
-    // Restore saved timer or start fresh. Restored time is clamped to the
-    // window too, so a resumed attempt can't exceed closes_at either.
-    const localTimer = getStoredTimer(id);
-    const saved = savedTimerRef.current.get(id);
-    const activeSec = localTimer ?? saved;
-    if (activeSec != null && activeSec > 0) {
-      setSecondsLeft(Math.min(activeSec, windowSec));
-    } else {
-      setSecondsLeft(startSec);
-    }
-    // Arm the guard only once this worksheet's own questions/answers/timer are
-    // all applied, so the persistence effects never write them under another id.
-    setReadyQuizId(id);
-  };
+  const beginAttempt = useCallback(
+    async (id: string) => {
+      const loadId = ++attemptLoadRef.current;
+      // Reuse the in-progress attempt's sampled questions when present so a
+      // reopen doesn't swap the question set (and lose already-answered items).
+      let attempt = savedAttemptRef.current.get(id);
+      if (!attempt) {
+        const { quiz, questions } = await getQuiz(id);
+        if (loadId !== attemptLoadRef.current) return;
+        // A reload mid-exam must resume the SAME drawn subset — prefer the
+        // persisted set over the server's fresh draw. Cleared on submit/retake,
+        // so a NEW attempt still fetches a fresh set.
+        let persisted = getStoredQuestions(id);
+        // An older cached paper must not hide formats added to the IT10 bank.
+        // This applies only to banks explicitly carrying all four formats.
+        const formats = Object.keys(QUESTION_TYPE_LABELS);
+        if (
+          persisted &&
+          formats.every((type) => questions.some((q) => q.question_type === type)) &&
+          !formats.every((type) => persisted!.some((q) => q.question_type === type))
+        ) {
+          persisted = null;
+          clearStoredProgress(id);
+          savedAnswersRef.current.delete(id);
+          savedTimerRef.current.delete(id);
+          toast.info(
+            "This worksheet was updated. Your new paper includes all four question types.",
+          );
+        }
+        attempt = {
+          questions: persisted ?? questions,
+          duration: quiz.duration_minutes * 60,
+          closesAt:
+            !isTestStudent(profile?.email) && quiz.closes_at
+              ? new Date(quiz.closes_at).getTime()
+              : null,
+          submissionId: newSubmissionId(),
+        };
+        if (!persisted) setStoredQuestions(id, attempt.questions);
+        savedAttemptRef.current.set(id, attempt);
+      }
+      if (loadId !== attemptLoadRef.current) return;
+      setQuestions(attempt.questions);
+      setResult(null);
+      // Restore saved answers if they exist for this quiz
+      const localAnswers = getStoredAnswers(id);
+      const inMemAnswers = savedAnswersRef.current.get(id);
+      const restoredAnswers =
+        Object.keys(localAnswers).length > 0 ? localAnswers : (inMemAnswers ?? {});
+      setAnswers(restoredAnswers);
+      setIdx(0);
+      // The server hard-blocks any submit after closes_at, so the countdown must
+      // never run past the window: clamp the starting seconds to the time
+      // remaining until closes_at (effective = min(duration, window remaining)).
+      const windowSec =
+        attempt.closesAt != null
+          ? Math.max(0, Math.floor((attempt.closesAt - Date.now()) / 1000))
+          : Number.POSITIVE_INFINITY;
+      const startSec = Math.min(attempt.duration, windowSec);
+      if (!Number.isFinite(startSec) || startSec <= 0)
+        throw new Error("This worksheet is no longer available.");
+      // Restore saved timer or start fresh. Restored time is clamped to the
+      // window too, so a resumed attempt can't exceed closes_at either.
+      const localTimer = getStoredTimer(id);
+      const saved = savedTimerRef.current.get(id);
+      const activeSec = localTimer ?? saved;
+      if (activeSec != null && activeSec > 0) {
+        setSecondsLeft(Math.min(activeSec, windowSec));
+      } else {
+        setSecondsLeft(startSec);
+      }
+      // Arm the guard only once this worksheet's own questions/answers/timer are
+      // all applied, so the persistence effects never write them under another id.
+      setReadyQuizId(id);
+    },
+    [profile?.email],
+  );
 
   useEffect(() => {
-    if (activeId) {
+    let cancelled = false;
+    if (activeId && profile?.id) {
       submittedRef.current = false;
       // Disarm the guard for the async window: the render right after the id
       // change still holds the previous worksheet's state, and beginAttempt
       // re-arms it when the fresh attempt is applied.
       setReadyQuizId(null);
+      setSecondsLeft(null);
       setLoadingAttempt(true);
-      void beginAttempt(activeId).finally(() => setLoadingAttempt(false));
+      void beginAttempt(activeId)
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          toast.error(
+            error instanceof Error && error.message === "This worksheet is no longer available."
+              ? error.message
+              : "Could not open this worksheet. Please try again.",
+          );
+          setActiveId(null);
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingAttempt(false);
+        });
     }
-  }, [activeId]);
+    return () => {
+      cancelled = true;
+      attemptLoadRef.current += 1;
+    };
+  }, [activeId, beginAttempt, profile?.id]);
 
   useEffect(() => {
-    if (!activeId || readyQuizId !== activeId || result || secondsLeft <= 0) return;
+    if (
+      activeId &&
+      readyQuizId === activeId &&
+      !loadingAttempt &&
+      !result &&
+      warnedAttemptRef.current !== activeId
+    ) {
+      warnedAttemptRef.current = activeId;
+      toast.warning("Before you begin", {
+        description:
+          "Keep this worksheet tab focused. Leaving the tab, pasting, opening developer tools, or exiting fullscreen triggers one warning and submits your attempt automatically.",
+        duration: 9000,
+      });
+    }
+    if (result) warnedAttemptRef.current = null;
+  }, [activeId, loadingAttempt, readyQuizId, result]);
+
+  useEffect(() => {
+    if (!activeId || readyQuizId !== activeId || result || secondsLeft == null || secondsLeft <= 0)
+      return;
     // Persist remaining time so closing/reopening or reload preserves it
     savedTimerRef.current.set(activeId, secondsLeft);
     setStoredTimer(activeId, secondsLeft);
-    const t = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
+    const t = setTimeout(
+      () => setSecondsLeft((s) => (s == null ? null : Math.max(0, s - 1))),
+      1000,
+    );
     return () => clearTimeout(t);
   }, [activeId, readyQuizId, secondsLeft, result]);
 
@@ -341,31 +486,20 @@ function QuizzesPage() {
     }
   }, [result, activeId]);
 
-  const finishRef = useRef<(() => Promise<void>) | null>(null);
   const submittedRef = useRef(false);
 
   useEffect(() => {
-    if (activeId && readyQuizId === activeId && secondsLeft === 0 && finishRef.current)
+    if (
+      activeId &&
+      readyQuizId === activeId &&
+      !loadingAttempt &&
+      secondsLeft === 0 &&
+      finishRef.current
+    )
       finishRef.current();
-  }, [activeId, readyQuizId, secondsLeft]);
-
-  const isLoading = !courses || !quizzes || !summaries || !enrolledCourseIds;
+  }, [activeId, readyQuizId, secondsLeft, loadingAttempt]);
 
   if (!profile) return null;
-
-  if (isLoading)
-    return (
-      <AppShell nav={STUDENT_NAV} profile={profile} subtitle="Student Portal">
-        <LoadingSkeleton />
-      </AppShell>
-    );
-
-  // Server returns enrolled courses only; enrollment check is display-only.
-  // Grade level is never a fallback — it must not widen visibility.
-  const enrolled = new Set(enrolledCourseIds ?? []);
-  const myCourses = (courses ?? []).filter((c) => enrolled.has(c.id));
-  const courseIds = new Set(myCourses.map((c) => c.id));
-  const myQuizzes = (quizzes ?? []).filter((q) => courseIds.has(q.course_id));
 
   const finish = async () => {
     if (!activeId || result || !questions.length || submittedRef.current) return;
@@ -404,136 +538,28 @@ function QuizzesPage() {
 
   finishRef.current = finish;
 
-  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
-  const ss = String(secondsLeft % 60).padStart(2, "0");
+  const mm = String(Math.floor((secondsLeft ?? 0) / 60)).padStart(2, "0");
+  const ss = String((secondsLeft ?? 0) % 60).padStart(2, "0");
   const current = questions[idx];
-  const answeredCount = Object.keys(answers).length;
+  const currentOptions =
+    current?.question_type === "multiple_choice" && current.options.length === 3
+      ? [...current.options, fourthChoiceFor(current)]
+      : (current?.options ?? []);
+  const calculationQuestion = isCalculationQuestion(current);
+  const answeredCount = questions.filter((q) => answers[q.id]?.trim()).length;
 
   return (
-    <AppShell nav={STUDENT_NAV} profile={profile} subtitle="Student Portal">
-      <h1 className="font-display text-2xl font-bold sm:text-3xl">Worksheets</h1>
-      <p className="mb-6 mt-1 text-sm text-muted-foreground">
-        Timed worksheets, drills, and exams — scores appear after your teacher releases them.
-      </p>
-
-      {myQuizzes.length === 0 ? (
-        <EmptyState title="No worksheets available yet" />
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {myQuizzes.map((q, i) => {
-            const course = myCourses.find((c) => c.id === q.course_id);
-            const st = courseStyle(course?.color ?? "indigo");
-            const s = summaryByQuiz.get(q.id);
-            const used = s?.attempts_used ?? 0;
-            const isTester = isTestStudent(profile?.email);
-            const isClosed =
-              !isTester && q.closes_at ? new Date(q.closes_at).getTime() < Date.now() : false;
-            const notYetOpen =
-              !isTester && q.opens_at ? new Date(q.opens_at).getTime() > Date.now() : false;
-            const canTake = !isClosed && !notYetOpen && (isTester || !s || s.can_retake);
-            return (
-              <MotionCard key={q.id} delay={Math.min(i * 0.05, 0.3)} className="p-5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className={cn("rounded-md px-2 py-0.5 text-[11px] font-bold", st.soft)}>
-                    {course?.code}
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {notYetOpen && q.opens_at ? (
-                      <Badge tone="amber">Opens {fmtDateTime(q.opens_at)}</Badge>
-                    ) : isClosed ? (
-                      <Badge tone="red">Closed</Badge>
-                    ) : q.closes_at ? (
-                      <Badge tone="sky">Closes {fmtDateTime(q.closes_at)}</Badge>
-                    ) : null}
-                    {used > 0 && (
-                      <Badge tone={canTake ? "indigo" : "slate"}>
-                        {attemptLabel(used, s?.attempts_allowed ?? null)}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                <p className="mt-2 font-semibold">{q.title}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {q.duration_minutes} minutes
-                  {used > 0 && s?.effective_score != null && (
-                    <>
-                      {" · "}Standing score: {s.effective_score}/{s.effective_total}
-                    </>
-                  )}
-                </p>
-                {(q.attachments ?? []).length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {q.attachments!.map((a) => (
-                      <a
-                        key={a.path}
-                        href={materialHref(a)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-1 rounded-lg border border-border/60 bg-muted/40 px-2 py-1 text-[11px] font-medium text-primary hover:underline"
-                      >
-                        <Paperclip className="h-3 w-3" />
-                        {a.name}
-                      </a>
-                    ))}
-                  </div>
-                )}
-                <button
-                  onClick={() => {
-                    toast(
-                      `Are you sure you want to start "${q.title}"? Your timer will begin immediately.`,
-                      {
-                        action: {
-                          label: "Start",
-                          onClick: () => {
-                            examLock.lock();
-                            setActiveId(q.id);
-                          },
-                        },
-                        cancel: {
-                          label: "Cancel",
-                          onClick: () => {},
-                        },
-                        duration: 8000,
-                      },
-                    );
-                  }}
-                  disabled={!canTake}
-                  title={
-                    notYetOpen && q.opens_at
-                      ? `This worksheet opens on ${fmtDateTime(q.opens_at)}.`
-                      : isClosed
-                        ? "The deadline for this worksheet has passed."
-                        : !canTake
-                          ? "Maximum attempts reached. Contact your teacher to request a retake."
-                          : undefined
-                  }
-                  className={cn(
-                    "mt-4 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl text-sm font-semibold",
-                    canTake
-                      ? "bg-primary text-primary-foreground hover:opacity-90"
-                      : "cursor-not-allowed bg-muted text-muted-foreground",
-                  )}
-                >
-                  {used > 0 && canTake && <RotateCcw className="h-3.5 w-3.5" />}
-                  {notYetOpen
-                    ? "Opens soon"
-                    : isClosed
-                      ? "Submission closed"
-                      : used === 0
-                        ? "Start worksheet"
-                        : canTake
-                          ? `Retake — ${attemptLabel(used, s?.attempts_allowed ?? null, true)}`
-                          : "Max attempts reached"}
-                </button>
-              </MotionCard>
-            );
-          })}
-        </div>
-      )}
-
+    <>
       <Modal
         open={!!activeId}
-        onClose={() => setActiveId(null)}
+        onClose={() => {
+          if (confirmation) return;
+          // Worksheets stay locked in the fullscreen assessment view. The
+          // student can leave through the explicit Done/submit actions only.
+          if (result) setActiveId(null);
+        }}
+        fullscreen
+        hideClose
         title={activeQuiz?.title ?? "Worksheet"}
         wide
       >
@@ -725,10 +751,17 @@ function QuizzesPage() {
               <p
                 className={cn(
                   "flex items-center gap-1.5 font-display text-lg font-bold tabular-nums",
-                  secondsLeft < 60 && "text-rose-600",
+                  secondsLeft != null && secondsLeft < 60 && "text-rose-600",
                 )}
               >
                 <Timer className="h-4 w-4" /> {mm}:{ss}
+              </p>
+            </div>
+            <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-200">
+              <p className="font-semibold">One integrity warning</p>
+              <p className="mt-0.5">
+                Keep this worksheet focused. Leaving the tab, pasting, opening developer tools, or
+                exiting fullscreen submits this attempt automatically.
               </p>
             </div>
             <p className="mb-4 flex items-center gap-1.5 rounded-xl border border-border/60 bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
@@ -799,7 +832,12 @@ function QuizzesPage() {
 
             {current && (
               <div>
-                <p className="mb-3 text-sm font-semibold">
+                {current.question_type && (
+                  <div className="mb-2">
+                    <Badge tone="indigo">{QUESTION_TYPE_LABELS[current.question_type]}</Badge>
+                  </div>
+                )}
+                <p data-testid="worksheet-question" className="mb-3 text-sm font-semibold">
                   {idx + 1}. {current.question}
                 </p>
                 {current.image_url && (
@@ -809,7 +847,28 @@ function QuizzesPage() {
                     className="mx-auto mb-3 max-h-56 rounded-lg border border-border bg-background object-contain"
                   />
                 )}
-                {current.options.length === 0 ? (
+                {current.question_type === "matching" ? (
+                  <div className="space-y-2">
+                    <label htmlFor={`match-${current.id}`} className="block text-sm font-medium">
+                      Column B — choose the matching description
+                    </label>
+                    <select
+                      id={`match-${current.id}`}
+                      value={answers[current.id] ?? ""}
+                      onChange={(e) =>
+                        setAnswers((prev) => ({ ...prev, [current.id]: e.target.value }))
+                      }
+                      className="min-h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-ring"
+                    >
+                      <option value="">Select a match…</option>
+                      {current.options.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : current.options.length === 0 ? (
                   // Fill-in-the-blank and essay items have no options — free text.
                   <textarea
                     value={answers[current.id] ?? ""}
@@ -828,7 +887,7 @@ function QuizzesPage() {
                   />
                 ) : (
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {current.options.map((opt) => (
+                    {currentOptions.map((opt) => (
                       <button
                         key={opt}
                         onClick={() => setAnswers((a) => ({ ...a, [current.id]: opt }))}
@@ -882,28 +941,149 @@ function QuizzesPage() {
                       </p>
                     </div>
 
-                    <div className="mt-4 overflow-hidden rounded-xl border border-primary/30">
-                      <button
-                        type="button"
-                        data-testid="lab-panel-toggle"
-                        onClick={() => setLabOpen((o) => !o)}
-                        className="flex w-full items-center justify-between gap-2 bg-primary/5 px-4 py-3 text-left text-sm font-semibold hover:bg-primary/10"
-                      >
-                        <span>🧪 Virtual Arduino Lab — build &amp; test your solution here</span>
-                        <ChevronDown
-                          className={cn(
-                            "h-4 w-4 shrink-0 transition-transform",
-                            labOpen && "rotate-180",
+                    <div
+                      className={cn(
+                        "mt-4 overflow-hidden rounded-xl border border-primary/30",
+                        labFullscreen &&
+                          "absolute inset-0 z-10 m-0 flex flex-col rounded-none border-0 bg-background",
+                      )}
+                      data-fullscreen-content={labFullscreen || undefined}
+                    >
+                      <div className="flex items-center bg-primary/5">
+                        <button
+                          type="button"
+                          aria-expanded={labOpen}
+                          data-testid="lab-panel-toggle"
+                          onClick={() => setLabOpen((o) => !o)}
+                          className="flex w-full items-center justify-between gap-2 bg-primary/5 px-4 py-3 text-left text-sm font-semibold hover:bg-primary/10"
+                        >
+                          <span className="flex items-center gap-2">
+                            <FlaskConical className="h-4 w-4 shrink-0" />
+                            Arduino Lab
+                          </span>
+                          <ChevronDown
+                            className={cn(
+                              "h-4 w-4 shrink-0 transition-transform",
+                              labOpen && "rotate-180",
+                            )}
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLabOpen(true);
+                            setLabFullscreen((v) => !v);
+                          }}
+                          className="m-2 inline-flex shrink-0 items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold hover:bg-muted"
+                          aria-label={labFullscreen ? "Return to worksheet" : "Open lab fullscreen"}
+                        >
+                          {labFullscreen ? (
+                            <Minimize2 className="h-4 w-4" />
+                          ) : (
+                            <Maximize2 className="h-4 w-4" />
                           )}
-                        />
-                      </button>
+                          {labFullscreen ? "Return to worksheet" : "Fullscreen"}
+                        </button>
+                      </div>
+                      {labFullscreen && (
+                        <div className="border-t border-primary/20 bg-primary/5 px-4 py-3 text-sm font-semibold">
+                          Question {idx + 1}: {current.question}
+                        </div>
+                      )}
                       {labOpen && (
-                        <div className="max-h-[70vh] overflow-y-auto border-t border-border p-3">
+                        <div
+                          className={cn(
+                            "overflow-auto border-t border-border p-3",
+                            labFullscreen ? "min-h-0 flex-1" : "max-h-[70vh]",
+                          )}
+                        >
                           <ArduinoLab initialTask={null} onConnectionsChange={setConnSummary} />
                         </div>
                       )}
                     </div>
                   </>
+                )}
+                {calculationQuestion && (
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      onClick={() => setCalculatorOpen((open) => !open)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted"
+                    >
+                      <Calculator className="h-4 w-4" />{" "}
+                      {calculatorOpen ? "Hide calculator" : "Open calculator"}
+                    </button>
+                    {calculatorOpen && (
+                      <div className="mt-2 max-w-md rounded-xl border border-border bg-muted/40 p-3">
+                        <label
+                          className="block text-xs font-semibold"
+                          htmlFor="worksheet-calculator"
+                        >
+                          Scientific calculator{" "}
+                          <span className="font-normal text-muted-foreground">(radians)</span>
+                        </label>
+                        <div className="mt-2 grid grid-cols-6 gap-1">
+                          {[
+                            "sin(",
+                            "cos(",
+                            "tan(",
+                            "sqrt(",
+                            "log(",
+                            "ln(",
+                            "π",
+                            "e",
+                            "^",
+                            "(",
+                            ")",
+                            "AC",
+                          ].map((token) => (
+                            <button
+                              key={token}
+                              type="button"
+                              onClick={() => {
+                                if (token === "AC") {
+                                  setCalculatorExpression("");
+                                  setCalculatorResult(null);
+                                  return;
+                                }
+                                const value = token === "π" ? "pi" : token;
+                                setCalculatorExpression((expression) => `${expression}${value}`);
+                                setCalculatorResult(null);
+                              }}
+                              className="rounded-md border border-border bg-background px-2 py-1.5 text-xs font-semibold hover:bg-muted"
+                            >
+                              {token}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="mt-2 flex gap-2">
+                          <input
+                            id="worksheet-calculator"
+                            value={calculatorExpression}
+                            onChange={(e) => {
+                              setCalculatorExpression(e.target.value);
+                              setCalculatorResult(null);
+                            }}
+                            inputMode="decimal"
+                            placeholder="Example: sqrt(220^2 + 100^2)"
+                            className="h-10 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCalculatorResult(evaluateWorksheetExpression(calculatorExpression))
+                            }
+                            className="rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground"
+                          >
+                            Calculate
+                          </button>
+                        </div>
+                        {calculatorResult && (
+                          <p className="mt-2 text-sm font-semibold">= {calculatorResult}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -933,18 +1113,14 @@ function QuizzesPage() {
                       unans > 0
                         ? `You have ${unans} unanswered question${unans === 1 ? "" : "s"}. Are you sure you want to submit?`
                         : "Are you sure you want to submit your answers? This attempt will be finalized.";
-                    toast(warn, {
-                      action: {
-                        label: "Submit",
-                        onClick: () => {
-                          void finish();
-                        },
+                    setConfirmation({
+                      title: "Submit worksheet?",
+                      description: warn,
+                      action: "Submit answers",
+                      cancel: "Review answers",
+                      confirm: () => {
+                        void finish();
                       },
-                      cancel: {
-                        label: "Review",
-                        onClick: () => {},
-                      },
-                      duration: 9000,
                     });
                   }}
                   disabled={submitting}
@@ -959,6 +1135,35 @@ function QuizzesPage() {
           </>
         )}
       </Modal>
-    </AppShell>
+      <AlertDialog.Root
+        open={!!confirmation}
+        onOpenChange={(open) => {
+          if (!open) setConfirmation(null);
+        }}
+      >
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="fixed inset-0 z-[60] bg-slate-950/50" />
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[61] w-[calc(100%_-_2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 shadow-xl">
+            <AlertDialog.Title className="text-lg font-bold">
+              {confirmation?.title}
+            </AlertDialog.Title>
+            <AlertDialog.Description className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              {confirmation?.description}
+            </AlertDialog.Description>
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <AlertDialog.Cancel className="min-h-11 rounded-xl border border-border px-4 text-sm font-semibold hover:bg-muted">
+                {confirmation?.cancel}
+              </AlertDialog.Cancel>
+              <AlertDialog.Action
+                onClick={() => confirmation?.confirm()}
+                className="min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              >
+                {confirmation?.action}
+              </AlertDialog.Action>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+    </>
   );
 }

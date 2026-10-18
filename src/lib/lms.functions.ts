@@ -3,30 +3,93 @@
 // declarations so code splitting never ships runtime helpers to the client.
 //
 // Access model:
-// - Login endpoints (RFID, PIN) are public and ISSUE a signed token. They
-//   are the sole entry points — there is no demo/quick-login bypass.
+// - Login endpoints (RFID, PIN) are public and issue a signed HttpOnly cookie.
+//   They are the sole entry points — there is no demo/quick-login bypass.
 // - listAnnouncements stays public for the kiosk sign-in screen ticker; it
 //   exposes only non-sensitive, publicly displayed data.
-// - Everything else verifies the caller's signed session token server-side:
+// - Everything else verifies the caller's signed cookie session server-side
+//   (legacy tokens are accepted during migration):
 //   admin-only for console settings/role management, teacher-only for
 //   gradebook editing, staff-only for other management writes, self-or-staff
 //   for student-scoped records, any valid session for catalog reads.
 import { createServerFn } from "@tanstack/react-start";
 import * as server from "./server";
 import { changeOwnPin, parseChangeOwnPinInput } from "./server/profiles.server";
+import { deleteCookie, getCookie, setCookie } from "@tanstack/react-start/server";
+import { SESSION_COOKIE_NAME, requireSession } from "./server/auth.server";
+import { COOKIE_SESSION_MARKER } from "@/lib/session";
+
+const sessionCookieOptions = {
+  httpOnly: true,
+  secure: process.env["NODE_ENV"] === "production",
+  sameSite: "lax" as const,
+  path: "/",
+  maxAge:
+    Number(process.env["SESSION_TTL_MS"]) > 0
+      ? Math.floor(Number(process.env["SESSION_TTL_MS"]) / 1000)
+      : 43_200,
+};
 
 /* ---------- Profiles & kiosk auth (public — they issue tokens) ---------- */
 
 export const getProfileByRfidFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.rfid.parse(data))
-  .handler(async ({ data }) => server.findByRfid(data.uid));
+  .handler(async ({ data }) => {
+    const result = await server.findByRfid(data.uid);
+    if (!result) return null;
+    setCookie(SESSION_COOKIE_NAME, result.token, sessionCookieOptions);
+    return { profile: result.profile };
+  });
 
 // Unified sign-in for ALL roles: one identifier (student ID, email, or
 // username) + secret (PIN or password). Public because it ISSUES the token;
 // server-side lockout (5 attempts / 15 min) protects every account type.
 export const pinLoginFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.pinLogin.parse(data))
-  .handler(async ({ data }) => server.verifyPinLogin(data.login, data.secret));
+  .handler(async ({ data }) => {
+    const result = await server.verifyPinLogin(data.login, data.secret);
+    if (result.ok) {
+      setCookie(SESSION_COOKIE_NAME, result.token, sessionCookieOptions);
+      return { ok: true as const, profile: result.profile };
+    }
+    return result;
+  });
+
+export const logoutFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.session.parse(data))
+  .handler(async ({ data }) => {
+    const token =
+      data.token === COOKIE_SESSION_MARKER ? getCookie(SESSION_COOKIE_NAME) : data.token;
+    if (token) {
+      let caller: Awaited<ReturnType<typeof requireSession>> | null = null;
+      try {
+        caller = await requireSession(token, { allowTemporaryPin: true });
+      } catch (error) {
+        console.warn(
+          "[auth] sign-out session validation failed",
+          error instanceof Error ? error.message : "unknown error",
+        );
+      }
+      if (caller) {
+        const jti = server.sessionJti(token);
+        if (jti) {
+          try {
+            await server.revokeSessionJti(jti, caller.id);
+          } catch (error) {
+            console.error(
+              "[auth] sign-out could not revoke server session",
+              error instanceof Error ? error.message : "unknown error",
+            );
+          }
+        }
+      }
+    }
+    deleteCookie(SESSION_COOKIE_NAME, {
+      path: "/",
+      secure: process.env["NODE_ENV"] === "production",
+    });
+    return { ok: true as const };
+  });
 
 /* ---------- Profile management (staff only) ---------- */
 
@@ -54,7 +117,12 @@ export const updateProfileFn = createServerFn({ method: "POST" })
 // rate limiting as sign-in applies on the server.
 export const changeOwnPinFn = createServerFn({ method: "POST" })
   .validator((data) => parseChangeOwnPinInput(data))
-  .handler(async ({ data }) => changeOwnPin(data.token, data.new_pin, data.current_pin ?? null));
+  .handler(async ({ data }) => {
+    const token =
+      data.token === COOKIE_SESSION_MARKER ? getCookie(SESSION_COOKIE_NAME) : data.token;
+    if (!token) throw new Error("Unauthorized");
+    return changeOwnPin(token, data.new_pin, data.current_pin ?? null);
+  });
 
 // User removal is ADMIN-only (teachers cannot remove accounts) and runs
 // as a soft delete with self-deletion and last-admin safeguards.
@@ -155,7 +223,16 @@ export const updateUserRoleFn = createServerFn({ method: "POST" })
 // permissions re-evaluate without requiring a fresh sign-in.
 export const refreshSessionFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.session.parse(data))
-  .handler(async ({ data }) => server.requireSession(data.token));
+  .handler(async ({ data }) => {
+    const token =
+      data.token === COOKIE_SESSION_MARKER ? getCookie(SESSION_COOKIE_NAME) : data.token;
+    if (!token) throw new Error("Unauthorized");
+    const profile = await server.requireSession(token, { allowTemporaryPin: true });
+    // One-time migration for sessions issued before the HttpOnly cookie rollout.
+    if (data.token !== COOKIE_SESSION_MARKER)
+      setCookie(SESSION_COOKIE_NAME, token, sessionCookieOptions);
+    return profile;
+  });
 
 // Test-account role view switch (allowlist-guarded). The server checks the
 // SESSION's real profile email against a hard allowlist and throws "Forbidden"
@@ -172,6 +249,18 @@ export const setTestRoleViewFn = createServerFn({ method: "POST" })
 export const listAnnouncementsFn = createServerFn({ method: "GET" }).handler(async () =>
   server.listAnnouncements(),
 );
+
+export const listFeedbackReportsFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.session.parse(data))
+  .handler(async ({ data }) => server.listFeedbackReports(data.token));
+
+export const createFeedbackReportFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.feedbackReportInput.parse(data))
+  .handler(async ({ data }) => server.createFeedbackReport(data.token, data));
+
+export const updateFeedbackReportFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.feedbackReportPatch.parse(data))
+  .handler(async ({ data }) => server.updateFeedbackReport(data.token, data.id, data.patch));
 
 export const createAnnouncementFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.announcementInput.parse(data))
@@ -445,6 +534,20 @@ export const grantQuizRetakeFn = createServerFn({ method: "POST" })
 export const resetQuizAttemptsFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.retakeGrant.parse(data))
   .handler(async ({ data }) => server.resetQuizAttempts(data.quiz_id, data.student_id, data.token));
+
+export const requestQuizRetakeFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.retakeRequest.parse(data))
+  .handler(async ({ data }) => server.requestQuizRetake(data.quiz_id, data.token));
+
+export const listQuizRetakeRequestsFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.quizScoped.parse(data))
+  .handler(async ({ data }) => server.listQuizRetakeRequests(data.quiz_id, data.token));
+
+export const reviewQuizRetakeRequestFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.retakeRequestReview.parse(data))
+  .handler(async ({ data }) =>
+    server.reviewQuizRetakeRequest(data.request_id, data.decision, data.token),
+  );
 
 // Teacher override of a student's effective worksheet score (AI may mis-grade).
 export const overrideAttemptFn = createServerFn({ method: "POST" })
@@ -821,3 +924,11 @@ export const listQuestionBankFn = createServerFn({ method: "POST" })
 export const updateQuestionFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.questionUpdate.parse(data))
   .handler(async ({ data }) => server.updateQuestion(data.token, data.id, data.patch));
+
+export const pendingTasksFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.session.parse(data))
+  .handler(async ({ data }) => {
+    const caller = await server.requireSession(data.token);
+    const { pendingTasks } = await import("./server/pending-tasks.server");
+    return pendingTasks(caller);
+  });

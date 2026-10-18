@@ -4,7 +4,8 @@ import { unwrap } from "@/lib/server/utils.server";
 import { type ProfileRow } from "@/lib/server/db-types";
 
 export type NotificationChannel = "email" | "sms";
-export type NotificationEventType = "announcement" | "assignment" | "worksheet" | "quiz";
+export type NotificationEventType =
+  "announcement" | "assignment" | "worksheet" | "quiz" | "feedback";
 
 export interface NotificationPayload {
   type: NotificationEventType;
@@ -59,16 +60,18 @@ export async function sendEmailNotification(
   to: string,
   subject: string,
   content: string,
+  eventType: NotificationEventType = "announcement",
 ): Promise<boolean> {
-  const smtpUser = process.env["SMTP_USER"] || process.env["GMAIL_USER"];
-  const smtpPass = process.env["SMTP_PASS"] || process.env["GMAIL_PASS"];
+  const resendKey = process.env["RESEND_API_KEY"]?.trim();
+  const mailFrom = process.env["MAIL_FROM"]?.trim() || process.env["RESEND_FROM"]?.trim();
+  const mailEndpoint = process.env["SMTP_WEBHOOK_URL"]?.trim();
 
-  if (!smtpUser || !smtpPass || process.env["NODE_ENV"] === "test") {
+  if (process.env["NODE_ENV"] === "test" || ((!resendKey || !mailFrom) && !mailEndpoint)) {
     // Graceful mock mode in development / testing or when SMTP credentials are not yet set
     await logNotification({
       recipient_email: to,
       channel: "email",
-      event_type: "announcement",
+      event_type: eventType,
       title: subject,
       status: "mock",
     });
@@ -76,9 +79,19 @@ export async function sendEmailNotification(
   }
 
   try {
+    if (resendKey && mailFrom) {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ from: mailFrom, to: [to], subject, text: content }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status} from Resend`);
+    }
     // If external SMTP endpoint or webhook is specified:
-    const mailEndpoint = process.env["SMTP_WEBHOOK_URL"];
-    if (mailEndpoint) {
+    else if (mailEndpoint) {
       const res = await fetch(mailEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -90,7 +103,7 @@ export async function sendEmailNotification(
     await logNotification({
       recipient_email: to,
       channel: "email",
-      event_type: "announcement",
+      event_type: eventType,
       title: subject,
       status: "sent",
     });
@@ -100,7 +113,7 @@ export async function sendEmailNotification(
     await logNotification({
       recipient_email: to,
       channel: "email",
-      event_type: "announcement",
+      event_type: eventType,
       title: subject,
       status: "failed",
       error: message,
@@ -112,7 +125,11 @@ export async function sendEmailNotification(
 /**
  * Send an SMS via Free SMS Gateway / Webhook / API.
  */
-export async function sendSmsNotification(phone: string, text: string): Promise<boolean> {
+export async function sendSmsNotification(
+  phone: string,
+  text: string,
+  eventType: NotificationEventType = "announcement",
+): Promise<boolean> {
   const smsGatewayUrl = process.env["SMS_GATEWAY_URL"];
   const smsApiKey = process.env["SMS_API_KEY"];
 
@@ -121,7 +138,7 @@ export async function sendSmsNotification(phone: string, text: string): Promise<
     await logNotification({
       recipient_phone: phone,
       channel: "sms",
-      event_type: "announcement",
+      event_type: eventType,
       title: text.slice(0, 50),
       status: "mock",
     });
@@ -146,7 +163,7 @@ export async function sendSmsNotification(phone: string, text: string): Promise<
     await logNotification({
       recipient_phone: phone,
       channel: "sms",
-      event_type: "announcement",
+      event_type: eventType,
       title: text.slice(0, 50),
       status: "sent",
     });
@@ -156,7 +173,7 @@ export async function sendSmsNotification(phone: string, text: string): Promise<
     await logNotification({
       recipient_phone: phone,
       channel: "sms",
-      event_type: "announcement",
+      event_type: eventType,
       title: text.slice(0, 50),
       status: "failed",
       error: message,
@@ -215,6 +232,8 @@ async function resolveRecipientsUncapped(payload: NotificationPayload): Promise<
     query = query.eq("role", "student");
   } else if (payload.target_audience === "teachers") {
     query = query.eq("role", "teacher");
+  } else if (payload.target_audience === "admins") {
+    query = query.eq("role", "admin");
   }
 
   return await unwrap<ProfileRow[]>(query);
@@ -243,11 +262,12 @@ export async function dispatchNotification(
         r.email,
         `[MIOW LMS] ${payload.title}`,
         payload.body,
+        payload.type,
       );
       if (emailOk) result.email_sent++;
     }
     if (r.phone) {
-      const smsOk = await sendSmsNotification(r.phone, formattedSms);
+      const smsOk = await sendSmsNotification(r.phone, formattedSms, payload.type);
       if (smsOk) result.sms_sent++;
     }
   }
