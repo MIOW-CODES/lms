@@ -30,7 +30,7 @@ test.describe("Security headers", () => {
     // server.ts applySecurityHeaders adds these
     expect(headers["x-content-type-options"]).toBe("nosniff");
     expect(headers["x-frame-options"]).toBe("DENY");
-    // HSTS set even on http (browsers ignore)
-    expect(headers["strict-transport-security"]).toContain("max-age=");
+    // The deployment HSTS policy is limited to akios.site, not localhost.
+    expect(headers["strict-transport-security"]).toBeUndefined();
   });
 });

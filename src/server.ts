@@ -34,12 +34,10 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   if (!isH3SwallowedErrorBody(body)) return response;
 
   console.error(consumeLastCapturedError() ?? new Error(`h3 swallowed SSR error: ${body}`));
-  return applySecurityHeaders(
-    new Response(renderErrorPage(), {
-      status: 500,
-      headers: { "content-type": "text/html; charset=utf-8" },
-    }),
-  );
+  return new Response(renderErrorPage(), {
+    status: 500,
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
 }
 
 function isH3SwallowedErrorBody(body: string): boolean {
@@ -51,7 +49,7 @@ function isH3SwallowedErrorBody(body: string): boolean {
   }
 }
 
-export function applySecurityHeaders(res: Response) {
+export function applySecurityHeaders(res: Response, host?: string) {
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -67,18 +65,32 @@ export function applySecurityHeaders(res: Response) {
       `default-src 'self'; script-src 'self' ${scriptSrc} https://accounts.google.com https://apis.google.com https://www.gstatic.com https://va.vercel-scripts.com https://pulse.joalvergs.tech; frame-src https://content.googleapis.com https://content-docs.googleapis.com https://accounts.google.com https://docs.google.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://www.googleapis.com https://accounts.google.com https://va.vercel-scripts.com https://vitals.vercel-insights.com https://pulse.joalvergs.tech`,
     );
   }
-  // HSTS only over https - set anyway, browsers ignore on http
-  res.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+  let isApexHost = false;
+  if (host) {
+    try {
+      isApexHost = new URL(`http://${host}`).hostname.toLowerCase() === "akios.site";
+    } catch {
+      isApexHost = false;
+    }
+  }
+  if (isApexHost) {
+    // Start with a short apex-only policy; subdomains and preload require a
+    // separate inventory and HTTPS verification before they can be included.
+    res.headers.set("Strict-Transport-Security", "max-age=86400");
+  } else {
+    res.headers.delete("Strict-Transport-Security");
+  }
   return res;
 }
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    const host = request.headers.get("host") ?? new URL(request.url).host;
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       const normalized = await normalizeCatastrophicSsrResponse(response);
-      return applySecurityHeaders(normalized);
+      return applySecurityHeaders(normalized, host);
     } catch (error) {
       console.error(error);
       return applySecurityHeaders(
@@ -86,6 +98,7 @@ export default {
           status: 500,
           headers: { "content-type": "text/html; charset=utf-8" },
         }),
+        host,
       );
     }
   },
