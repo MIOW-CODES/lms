@@ -44,10 +44,9 @@ const MODES: readonly Mode[] = ["scan", "pin"];
 
 function AuthPage() {
   const navigate = useNavigate();
-  // PIN-first is the everyday sign-in; the reader-first RFID screen belongs to
-  // the gate kiosk. Start PIN everywhere (SSR-stable), then hand the screen to
-  // the reader on wide, kiosk-like viewports after hydration. Phones and small
-  // screens never flip — they keep PIN as the default.
+  // PIN-first is the everyday sign-in and must remain stable through hydration.
+  // RFID remains available as an explicit tab; automatically switching modes
+  // after mount can hide a PIN form while a student is filling or submitting it.
   const [mode, setMode] = useState<Mode>("pin");
   const [uid, setUid] = useState("");
   const [login, setLogin] = useState("");
@@ -80,11 +79,6 @@ function AuthPage() {
     const existing = loadSession();
     if (existing) navigate({ to: dashboardPathFor(existing.role), replace: true });
   }, [navigate]);
-
-  // Reader-first (RFID) stays the default on wide, kiosk-like screens only.
-  useEffect(() => {
-    if (window.matchMedia("(min-width: 1024px)").matches) setMode("scan");
-  }, []);
 
   const handleModeKeyDown = (e: React.KeyboardEvent) => {
     const i = MODES.indexOf(mode);
