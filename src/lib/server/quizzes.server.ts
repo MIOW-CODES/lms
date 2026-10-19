@@ -863,7 +863,7 @@ export async function requestQuizRetake(quiz_id: string, token: string) {
 }
 
 export async function listQuizRetakeRequests(quiz_id: string, token: string) {
-  await requireQuizOwnerOrAdmin(token, quiz_id);
+  await requireQuizViewer(token, quiz_id);
   const requests = await unwrap<any[]>(
     db
       .from("quiz_retake_requests")
@@ -876,13 +876,15 @@ export async function listQuizRetakeRequests(quiz_id: string, token: string) {
   const students = await unwrap<any[]>(
     db
       .from("profiles")
-      .select("id, full_name, student_no, section")
+      .select("id, full_name, student_id, section")
       .in(
         "id",
         requests.map((request) => request.student_id),
       ),
   );
-  const byId = new Map(students.map((student) => [student.id, student]));
+  const byId = new Map(
+    students.map((student) => [student.id, { ...student, student_no: student.student_id ?? null }]),
+  );
   return requests.map((request) => ({
     ...request,
     student: byId.get(request.student_id) ?? null,
@@ -923,8 +925,18 @@ export async function reviewQuizRetakeRequest(
 }
 
 export async function requireQuizOwnerOrAdmin(token: string, quizId: string) {
+  return requireQuizAccess(token, quizId, false);
+}
+
+/** Read access used by LiveUser/Test View without granting mutation rights. */
+async function requireQuizViewer(token: string, quizId: string) {
+  return requireQuizAccess(token, quizId, true);
+}
+
+async function requireQuizAccess(token: string, quizId: string, allowTestViewer: boolean) {
   const caller = await requireStaff(token);
   if (caller.role === "teacher") {
+    if (allowTestViewer && isTestAccount(caller.email)) return caller;
     const quiz = await getQuizConfig(quizId);
     const course = await unwrap<any>(
       db.from("courses").select("teacher_id").eq("id", quiz.course_id).maybeSingle(),
@@ -952,7 +964,7 @@ export async function updateQuizRetakePolicy(
 }
 
 export async function listQuizAttemptsForQuiz(quiz_id: string, token: string) {
-  await requireQuizOwnerOrAdmin(token, quiz_id);
+  await requireQuizViewer(token, quiz_id);
   const quiz = await getQuizConfig(quiz_id);
   const [attempts, grants, overrides] = await Promise.all([
     unwrap<any[]>(
@@ -1090,7 +1102,7 @@ export async function overrideQuizAttempt(
 
 /** Full attempt detail incl. per-question results for one student. */
 export async function listStudentAttemptDetail(quiz_id: string, student_id: string, token: string) {
-  await requireQuizOwnerOrAdmin(token, quiz_id);
+  await requireQuizViewer(token, quiz_id);
   const [quiz, profile, attempts, override] = await Promise.all([
     unwrap<any>(db.from("quizzes").select("id, title").eq("id", quiz_id).maybeSingle()),
     unwrap<any>(

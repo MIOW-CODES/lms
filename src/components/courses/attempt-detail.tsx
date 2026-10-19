@@ -24,7 +24,7 @@ export function AttemptDetail({
   onChanged?: () => void;
 }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const { data, error, isLoading, isFetching, refetch } = useQuery({
     queryKey: ["quiz-attempt-detail", quizId, studentId],
     queryFn: () => listStudentAttemptDetail(quizId, studentId),
   });
@@ -76,6 +76,20 @@ export function AttemptDetail({
     }
   };
 
+  if (error)
+    return (
+      <div className="mt-3 border-t border-border/60 py-6 text-center">
+        <p className="text-sm font-semibold text-rose-600">Could not load attempt details.</p>
+        <button
+          type="button"
+          disabled={isFetching}
+          onClick={() => void refetch()}
+          className="mt-3 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+        >
+          {isFetching ? "Retrying…" : "Retry"}
+        </button>
+      </div>
+    );
   if (isLoading)
     return <p className="py-6 text-center text-sm text-muted-foreground">Loading attempt…</p>;
   if (!data) return null;

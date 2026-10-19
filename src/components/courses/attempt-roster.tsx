@@ -23,7 +23,7 @@ import {
 
 export function AttemptRoster({ quizId }: { quizId: string }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const { data, error, isLoading, isFetching, refetch } = useQuery({
     queryKey: ["quiz-attempts", quizId],
     queryFn: () => listQuizAttempts(quizId),
   });
@@ -102,6 +102,23 @@ export function AttemptRoster({ quizId }: { quizId: string }) {
     }
   };
 
+  if (error)
+    return (
+      <div className="py-8 text-center">
+        <p className="text-sm font-semibold text-rose-600">Could not load attempts.</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {error instanceof Error ? error.message : "Please try again."}
+        </p>
+        <button
+          type="button"
+          disabled={isFetching}
+          onClick={() => void refetch()}
+          className="mt-3 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+        >
+          {isFetching ? "Retrying…" : "Retry"}
+        </button>
+      </div>
+    );
   if (isLoading || data === undefined)
     return <p className="py-8 text-center text-sm text-muted-foreground">Loading attempts…</p>;
   if (data.students.length === 0) {
