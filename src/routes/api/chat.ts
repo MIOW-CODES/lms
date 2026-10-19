@@ -2,12 +2,12 @@
 // Calls OpenCode Go directly with mimo-v2.5 (bypasses AI SDK streaming for reasoning models).
 import { createFileRoute } from "@tanstack/react-router";
 import { SOURCE_MATERIAL_MAX_CHARS } from "@/lib/classmate-source";
-
-type ChatRequestBody = {
-  messages?: unknown;
-  token?: unknown;
-  worksheetContext?: unknown;
-};
+import {
+  createChatAbortSignal,
+  MAX_CHAT_OUTPUT_TOKENS,
+  parseChatRequest,
+  type ChatMessage,
+} from "@/lib/server/chat-request.server";
 
 /** Sanitize the optional Create Worksheet form context (course/title/sourceMaterial). */
 function parseWorksheetContext(raw: unknown):
@@ -57,12 +57,6 @@ function parseWorksheetContext(raw: unknown):
   return ctx;
 }
 
-interface ChatMessage {
-  role: "user" | "assistant";
-  content?: string;
-  parts?: Array<{ type?: string; text?: string }>;
-}
-
 /**
  * Keep prompts small enough to start fast — long source dumps are the main
  * latency driver. Tuned to the mimo-v2.5 context window; revisit if the model
@@ -110,20 +104,11 @@ export const Route = createFileRoute("/api/chat")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        let body: ChatRequestBody;
-        try {
-          body = (await request.json()) as ChatRequestBody;
-        } catch {
-          return new Response("Invalid JSON body", { status: 400 });
+        const parsedRequest = await parseChatRequest(request);
+        if (!parsedRequest.ok) {
+          return new Response(parsedRequest.message, { status: parsedRequest.status });
         }
-        const { messages, token } = body;
-        if (!Array.isArray(messages)) {
-          return new Response("Messages are required", { status: 400 });
-        }
-        if (messages.length > 50) return new Response("Too many messages", { status: 400 });
-        if (typeof token !== "string" || token.length === 0) {
-          return new Response("Sign in to chat", { status: 401 });
-        }
+        const { messages, token } = parsedRequest.data;
 
         const apiKey = process.env["OPENCODE_API_KEY"] ?? process.env["AI_GATEWAY_KEY"];
         if (!apiKey) {
@@ -159,7 +144,7 @@ export const Route = createFileRoute("/api/chat")({
           if (now - ts > 60_000) chatRateLimits.delete(key);
         }
 
-        const ctx = parseWorksheetContext(body.worksheetContext);
+        const ctx = parseWorksheetContext(parsedRequest.data.worksheetContext);
         if (ctx?.sourceMaterial) {
           // Observability: make any received-vs-usable mismatch visible in logs
           // instead of letting the model silently under-count uploaded files.
@@ -176,25 +161,45 @@ export const Route = createFileRoute("/api/chat")({
 
         const { AI_BASE_URL } = await import("@/lib/ai-gateway.server");
         const sessionId = `miow-${profile.id}-${Date.now()}`;
-        const apiRes = await fetch(`${AI_BASE_URL}/chat/completions`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-            "x-opencode-session": sessionId,
-          },
-          body: JSON.stringify({
-            model: "mimo-v2.5",
-            messages: oaMessages,
-            stream: true,
-            max_tokens: 65536,
-          }),
-        });
+        const upstreamAbort = createChatAbortSignal(request);
+        let apiRes: Response;
+        try {
+          apiRes = await fetch(`${AI_BASE_URL}/chat/completions`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+              "x-opencode-session": sessionId,
+            },
+            body: JSON.stringify({
+              model: "mimo-v2.5",
+              messages: oaMessages,
+              stream: true,
+              max_tokens: MAX_CHAT_OUTPUT_TOKENS,
+            }),
+            signal: upstreamAbort.signal,
+          });
+        } catch {
+          upstreamAbort.dispose();
+          if (upstreamAbort.timedOut()) {
+            console.warn("[chat] OpenCode Go request timed out");
+            return new Response("AI service timed out", { status: 504 });
+          }
+          if (request.signal.aborted) return new Response(null, { status: 499 });
+          console.error("[chat] OpenCode Go request failed before response");
+          return new Response("AI service is temporarily unavailable", { status: 502 });
+        }
 
         if (!apiRes.ok) {
-          const err = await apiRes.text();
-          console.error("[chat] OpenCode Go error:", apiRes.status, err);
-          return new Response(`AI service error: ${apiRes.status}`, { status: 502 });
+          await apiRes.body?.cancel().catch(() => {});
+          upstreamAbort.dispose();
+          console.error("[chat] OpenCode Go returned error status", apiRes.status);
+          return new Response("AI service error", { status: 502 });
+        }
+        if (!apiRes.body) {
+          upstreamAbort.dispose();
+          console.error("[chat] OpenCode Go returned no response stream");
+          return new Response("AI service is temporarily unavailable", { status: 502 });
         }
 
         // Buffer-based SSE parser — handles TCP packet splits correctly
@@ -268,7 +273,57 @@ export const Route = createFileRoute("/api/chat")({
           },
         });
 
-        const body_ = apiRes.body!.pipeThrough(transform);
+        const transformed = apiRes.body.pipeThrough(transform);
+        const reader = transformed.getReader();
+        let closedOrCancelled = false;
+        let upstreamDisposed = false;
+        const disposeUpstream = () => {
+          if (upstreamDisposed) return;
+          upstreamDisposed = true;
+          upstreamAbort.dispose();
+        };
+        const body_ = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            try {
+              const { done, value } = await reader.read();
+              if (closedOrCancelled) return;
+              if (done) {
+                closedOrCancelled = true;
+                controller.close();
+                upstreamAbort.dispose();
+              } else {
+                controller.enqueue(value);
+              }
+            } catch {
+              if (closedOrCancelled || request.signal.aborted) {
+                disposeUpstream();
+              } else {
+                const message = upstreamAbort.timedOut()
+                  ? "AI service timed out. Please try again."
+                  : "AI service connection failed. Please try again.";
+                controller.enqueue(sse({ type: "error", errorText: message }));
+                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                controller.close();
+                console.warn(
+                  "[chat] OpenCode Go stream ended",
+                  upstreamAbort.timedOut() ? "after timeout" : "with an upstream error",
+                );
+                closedOrCancelled = true;
+                upstreamAbort.dispose();
+              }
+            }
+          },
+          async cancel(reason) {
+            closedOrCancelled = true;
+            upstreamAbort.abort(reason);
+            try {
+              await reader.cancel(reason);
+            } catch {
+              // The upstream may already have errored or been aborted.
+            }
+            disposeUpstream();
+          },
+        });
         return new Response(body_, {
           headers: {
             "Content-Type": "text/event-stream",
