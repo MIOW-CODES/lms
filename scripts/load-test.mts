@@ -13,8 +13,8 @@
  *       --concurrency 48 --requests 480 --token "$SESSION_TOKEN"
  *
  * Notes:
- *   - For DB-backed routes, run against a local Postgres seeded with `bun run db:seed`.
- *   - Do NOT point this at production Supabase with write traffic.
+ *   - For DB-backed routes, first provision an operator-approved local PostgreSQL dataset.
+ *   - Avoid write traffic against any production deployment.
  */
 
 interface Options {

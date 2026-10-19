@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
+import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as DashboardAdminRouteImport } from './routes/dashboard.admin'
 import { Route as DashboardStudentRouteImport } from './routes/dashboard.student'
 import { Route as DashboardTeacherRouteImport } from './routes/dashboard.teacher'
@@ -71,6 +72,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
 const ApiChatRoute = ApiChatRouteImport.update({
   id: '/api/chat',
   path: '/api/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardAdminRoute = DashboardAdminRouteImport.update({
@@ -287,6 +293,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/health': typeof ApiHealthRoute
   '/dashboard/admin': typeof DashboardAdminRouteWithChildren
   '/dashboard/student': typeof DashboardStudentRouteWithChildren
   '/dashboard/teacher': typeof DashboardTeacherRouteWithChildren
@@ -332,6 +339,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/public/avatar': typeof ApiPublicAvatarRoute
   '/api/public/material': typeof ApiPublicMaterialRoute
   '/api/teacher/settings': typeof ApiTeacherSettingsRoute
@@ -375,6 +383,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/health': typeof ApiHealthRoute
   '/dashboard/admin': typeof DashboardAdminRouteWithChildren
   '/dashboard/student': typeof DashboardStudentRouteWithChildren
   '/dashboard/teacher': typeof DashboardTeacherRouteWithChildren
@@ -422,6 +431,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/sitemap.xml'
     | '/api/chat'
+    | '/api/health'
     | '/dashboard/admin'
     | '/dashboard/student'
     | '/dashboard/teacher'
@@ -467,6 +477,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/sitemap.xml'
     | '/api/chat'
+    | '/api/health'
     | '/api/public/avatar'
     | '/api/public/material'
     | '/api/teacher/settings'
@@ -509,6 +520,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/sitemap.xml'
     | '/api/chat'
+    | '/api/health'
     | '/dashboard/admin'
     | '/dashboard/student'
     | '/dashboard/teacher'
@@ -555,6 +567,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ApiChatRoute: typeof ApiChatRoute
+  ApiHealthRoute: typeof ApiHealthRoute
   DashboardAdminRoute: typeof DashboardAdminRouteWithChildren
   DashboardStudentRoute: typeof DashboardStudentRouteWithChildren
   DashboardTeacherRoute: typeof DashboardTeacherRouteWithChildren
@@ -593,6 +606,13 @@ declare module '@tanstack/react-router' {
       path: '/api/chat'
       fullPath: '/api/chat'
       preLoaderRoute: typeof ApiChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard/admin': {
@@ -966,6 +986,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   ApiChatRoute: ApiChatRoute,
+  ApiHealthRoute: ApiHealthRoute,
   DashboardAdminRoute: DashboardAdminRouteWithChildren,
   DashboardStudentRoute: DashboardStudentRouteWithChildren,
   DashboardTeacherRoute: DashboardTeacherRouteWithChildren,

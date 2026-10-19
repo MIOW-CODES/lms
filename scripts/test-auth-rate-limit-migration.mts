@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 
 const pg = new PGlite();
 try {
-  await pg.exec("CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;");
-  const migration = await Bun.file(
-    new URL("../supabase/migrations/20261018000008_shared_auth_rate_limits.sql", import.meta.url),
-  ).text();
-  await pg.exec(migration);
+  const schema = await readFile(
+    new URL("../db/migrations/20261020000000_native_initial.sql", import.meta.url),
+    "utf8",
+  );
+  await pg.exec("CREATE SCHEMA private");
+  await pg.exec(schema);
 
   const consume = () =>
     pg.query<{ allowed: boolean; remaining: number }>(
@@ -36,7 +38,7 @@ try {
     ["hashed-identity", 5, 900],
   );
   assert.deepEqual(cleared.rows[0], { allowed: true, remaining: 5 });
-  console.info("Authentication rate-limit migration passed.");
+  console.info("Native PostgreSQL authentication rate-limit checks passed.");
 } finally {
   await pg.close();
 }

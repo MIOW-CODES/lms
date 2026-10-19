@@ -13,14 +13,12 @@
  *   bun run scripts/attach-ict1-materials.ts [--dry-run]
  *   bun run db:attach-ict1-materials
  *
- * Environment (required — both handled via @supabase/supabase-js, service role):
- *   SUPABASE_URL                Supabase project URL
- *   SUPABASE_SERVICE_ROLE_KEY   Supabase service role key
+ * Environment:
+ *   DATABASE_URL     native PostgreSQL connection string
+ *   STORAGE_PATH     local persistent upload directory (defaults to ./storage)
  *
- * Get prod values with `vercel env pull .env.local` (the script loads both
- * `.env` and `.env.local`; real environment variables always win). DATABASE_URL
- * is NOT used: the file store lives in Supabase Storage, so the same service
- * role client performs both the storage upload and the attachments update.
+ * The script updates PostgreSQL and uploads files to the same local storage
+ * used by the application. Load private values from .env or the process env.
  *
  * Source files (docs/ICT1/, see QUIZ_MATERIALS below):
  *   ICT1_Week2 Productivity Tools.pptx
@@ -44,13 +42,14 @@
  */
 import "dotenv/config";
 import { config as dotenvConfig } from "dotenv";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomBytes } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { Pool } from "pg";
+import { storage } from "../src/integrations/db/storage";
 
-// `vercel env pull .env.local` — do not override values already in the env.
+// Load local operator configuration without overriding the current process env.
 dotenvConfig({ path: ".env.local" });
 
 // ── Mirrors src/lib/server/materials.server.ts ─────────────────────────────
@@ -120,15 +119,10 @@ const SOURCE_DIR = path.join("docs", "ICT1");
 // ── Config ─────────────────────────────────────────────────────────────────
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 
-function requireEnv(name: string): string {
-  const v = (process.env[name] ?? "").trim();
-  if (!v) {
-    throw new Error(
-      `${name} is not set. Get prod values with \`vercel env pull .env.local\` ` +
-        `(or export them); the script needs SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY.`,
-    );
-  }
-  return v;
+function requiredDatabaseUrl(): string {
+  const value = process.env["DATABASE_URL"]?.trim();
+  if (!value) throw new Error("DATABASE_URL is required");
+  return value;
 }
 
 /** Normalize titles so em/en/hyphen dashes and repeated spaces can't break matching. */
@@ -175,272 +169,264 @@ async function main() {
   if (args.includes("--help") || args.includes("-h")) {
     console.log(
       "Usage: bun run scripts/attach-ict1-materials.ts [--dry-run]\n" +
-        "Env:   SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (e.g. `vercel env pull .env.local`)",
+        "Env:   DATABASE_URL and optional STORAGE_PATH (see .env.example)",
     );
     return;
   }
   const dryRun = args.includes("--dry-run");
+  const pool = new Pool({ connectionString: requiredDatabaseUrl(), max: 2 });
 
-  const supabaseUrl = requireEnv("SUPABASE_URL");
-  const serviceKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
-  const sb: SupabaseClient = createClient(supabaseUrl, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  // ── Resolve the ICT1 course at runtime — never hardcode IDs ──────────────
-  const { data: byCode, error: codeErr } = await sb
-    .from("courses")
-    .select("id, code, title")
-    .ilike("code", "ICT1");
-  if (codeErr) throw new Error(`Course lookup failed (code): ${codeErr.message}`);
-  const list = byCode ?? [];
-  const exact = list.filter((c) => (c.code ?? "").trim().toLowerCase() === "ict1");
-  if (!exact.length) {
-    throw new Error('No course matched code "ICT1".');
-  }
-  if (exact.length > 1) {
-    throw new Error(
-      "Ambiguous ICT1 course match — refusing to guess. Candidates:\n" +
-        exact.map((c) => `  id=${c.id} code=${c.code ?? "-"} title=${c.title ?? "-"}`).join("\n"),
+  try {
+    // ── Resolve the ICT1 course at runtime — never hardcode IDs ──────────────
+    const { rows: list } = await pool.query<{
+      id: string;
+      code: string | null;
+      title: string | null;
+    }>("SELECT id, code, title FROM public.courses WHERE code ILIKE $1", ["ICT1"]);
+    const exact = list.filter((c) => (c.code ?? "").trim().toLowerCase() === "ict1");
+    if (!exact.length) {
+      throw new Error('No course matched code "ICT1".');
+    }
+    if (exact.length > 1) {
+      throw new Error(
+        "Ambiguous ICT1 course match — refusing to guess. Candidates:\n" +
+          exact.map((c) => `  id=${c.id} code=${c.code ?? "-"} title=${c.title ?? "-"}`).join("\n"),
+      );
+    }
+    const course = exact[0]!;
+    console.log(
+      `[attach-ict1] Course: "${course.title}" (code=${course.code ?? "-"}, id=${course.id})`,
     );
-  }
-  const course = exact[0]!;
-  console.log(
-    `[attach-ict1] Course: "${course.title}" (code=${course.code ?? "-"}, id=${course.id})`,
-  );
-  if (dryRun) console.log("[attach-ict1] DRY RUN — no uploads or database writes will occur.");
+    if (dryRun) console.log("[attach-ict1] DRY RUN — no uploads or database writes will occur.");
 
-  // ── Load this course's quizzes once ──────────────────────────────────────
-  const { data: quizRows, error: quizErr } = await sb
-    .from("quizzes")
-    .select("id, course_id, title, attachments")
-    .eq("course_id", course.id)
-    .is("deleted_at", null);
-  if (quizErr) throw new Error(`Quiz lookup failed: ${quizErr.message}`);
-  const quizzes = (quizRows ?? []) as QuizRow[];
+    // ── Load this course's quizzes once ──────────────────────────────────────
+    const { rows: quizzes } = await pool.query<QuizRow>(
+      "SELECT id, course_id, title, attachments FROM public.quizzes WHERE course_id = $1 AND deleted_at IS NULL",
+      [course.id],
+    );
 
-  // Same-named attachments already anywhere on this course's quizzes (Weeks 5–7
-  // decks live in the bucket via the PRELIM row) are reused by storage path
-  // instead of re-uploaded. Keyed by attachment name.
-  const knownByName = new Map<string, Attachment>();
-  for (const q of quizzes) {
-    for (const a of attachmentList(q.attachments)) {
-      if (a?.name && a.path && !knownByName.has(a.name)) knownByName.set(a.name, a);
-    }
-  }
-
-  let totalUploaded = 0;
-  let totalReused = 0;
-  let totalKept = 0;
-  let totalRemoved = 0;
-  let totalWouldUpload = 0;
-  let totalWouldRemove = 0;
-  let totalMissing = 0;
-  let totalQuizMissing = 0;
-  let totalFailed = 0;
-
-  for (const entry of QUIZ_MATERIALS) {
-    const want = normalizeTitle(entry.quiz);
-    const matches = quizzes.filter((q) => normalizeTitle(q.title ?? "") === want);
-    console.log(`\n[attach-ict1] Quiz: "${entry.quiz}"`);
-
-    if (!matches.length) {
-      console.log(`  ! quiz not found in course — skipped`);
-      totalQuizMissing++;
-      continue;
-    }
-    if (matches.length > 1) {
-      console.log(`  · ${matches.length} quizzes share this title — updating each`);
+    // Same-named attachments already anywhere on this course's quizzes (Weeks 5–7
+    // decks live in the bucket via the PRELIM row) are reused by storage path
+    // instead of re-uploaded. Keyed by attachment name.
+    const knownByName = new Map<string, Attachment>();
+    for (const q of quizzes) {
+      for (const a of attachmentList(q.attachments)) {
+        if (a?.name && a.path && !knownByName.has(a.name)) knownByName.set(a.name, a);
+      }
     }
 
-    for (const quiz of matches) {
-      const plan: FilePlan[] = [];
-      const current = attachmentList(quiz.attachments);
-      const desired: Attachment[] = [];
+    let totalUploaded = 0;
+    let totalReused = 0;
+    let totalKept = 0;
+    let totalRemoved = 0;
+    let totalWouldUpload = 0;
+    let totalWouldRemove = 0;
+    let totalMissing = 0;
+    let totalQuizMissing = 0;
+    let totalFailed = 0;
 
-      // ── Build the exact desired list ─────────────────────────────────────
-      for (const fileName of entry.files) {
-        const name = fileName.slice(0, 200);
+    for (const entry of QUIZ_MATERIALS) {
+      const want = normalizeTitle(entry.quiz);
+      const matches = quizzes.filter((q) => normalizeTitle(q.title ?? "") === want);
+      console.log(`\n[attach-ict1] Quiz: "${entry.quiz}"`);
 
-        // Already on this quiz → keep the existing entry as-is (idempotent).
-        const existingHere = current.find((a) => a?.name === name);
-        if (existingHere) {
-          desired.push(existingHere);
-          knownByName.set(name, existingHere);
-          plan.push({ fileName, action: "keep", detail: "already attached — kept" });
-          totalKept++;
-          continue;
-        }
-
-        // Same-named attachment already stored for this course → reuse it.
-        const known = knownByName.get(name);
-        if (known) {
-          desired.push(known);
-          plan.push({
-            fileName,
-            action: "reuse",
-            detail: `reusing existing storage object → ${known.path}`,
-          });
-          totalReused++;
-          continue;
-        }
-
-        const abs = path.resolve(REPO_ROOT, SOURCE_DIR, fileName);
-        if (!abs.startsWith(REPO_ROOT + path.sep)) {
-          plan.push({
-            fileName,
-            action: "failed",
-            detail: "FAILED — path escapes repo root",
-          });
-          totalFailed++;
-          continue;
-        }
-        let size = 0;
-        try {
-          const info = await stat(abs);
-          if (!info.isFile()) throw new Error("not a regular file");
-          size = info.size;
-        } catch {
-          plan.push({
-            fileName,
-            action: "missing",
-            detail: "source file not found — warned and skipped",
-          });
-          totalMissing++;
-          continue;
-        }
-
-        if (dryRun) {
-          plan.push({
-            fileName,
-            action: "would-attach",
-            detail: `${size} bytes → would upload + attach`,
-          });
-          totalWouldUpload++;
-          continue;
-        }
-
-        try {
-          const buffer = await readFile(abs);
-          const fileExt = path.extname(fileName).toLowerCase();
-          const contentType = EXT_TO_MIME[fileExt];
-          const ext = contentType ? MATERIAL_EXT[contentType] : undefined;
-          if (!contentType || !ext) {
-            throw new Error(`Unsupported file type (${fileExt || "no extension"})`);
-          }
-
-          // Same path convention + attachment shape as materials.server.ts.
-          const rand = randomBytes(4).toString("hex");
-          const objectPath = `${course.id}/material_${Date.now()}_${rand}.${ext}`;
-          if (buffer.byteLength > MAX_MATERIAL_BYTES) {
-            console.warn(
-              `      ! ${fileName} is ${(buffer.byteLength / 1048576).toFixed(1)} MB — above the app's ` +
-                `${MAX_MATERIAL_BYTES / 1048576} MB UI cap; uploading anyway (Supabase allows up to 50 MB).`,
-            );
-          }
-          const { error: upErr } = await sb.storage
-            .from(MATERIAL_BUCKET)
-            .upload(objectPath, buffer, { contentType, upsert: false });
-          if (upErr) throw new Error(`Storage upload failed (${upErr.message})`);
-
-          const attachment: Attachment = {
-            name,
-            url: materialUrlForPath(objectPath),
-            size: buffer.byteLength,
-            type: contentType,
-            path: objectPath,
-          };
-          desired.push(attachment);
-          knownByName.set(name, attachment);
-          plan.push({ fileName, action: "attach", detail: `uploaded → ${objectPath}` });
-          totalUploaded++;
-        } catch (e) {
-          totalFailed++;
-          plan.push({
-            fileName,
-            action: "failed",
-            detail: `FAILED — ${e instanceof Error ? e.message : String(e)}`,
-          });
-        }
+      if (!matches.length) {
+        console.log(`  ! quiz not found in course — skipped`);
+        totalQuizMissing++;
+        continue;
+      }
+      if (matches.length > 1) {
+        console.log(`  · ${matches.length} quizzes share this title — updating each`);
       }
 
-      // ── Everything not on the mapped list is removed (TVE100 PDF cleanup) ─
-      const desiredNames = new Set(entry.files.map((f) => f.slice(0, 200)));
-      const keptNames = new Set<string>();
-      const removals: Attachment[] = [];
-      for (const a of current) {
-        const n = a?.name ?? "";
-        if (a && desiredNames.has(n) && !keptNames.has(n)) {
-          keptNames.add(n);
+      for (const quiz of matches) {
+        const plan: FilePlan[] = [];
+        const current = attachmentList(quiz.attachments);
+        const desired: Attachment[] = [];
+
+        // ── Build the exact desired list ─────────────────────────────────────
+        for (const fileName of entry.files) {
+          const name = fileName.slice(0, 200);
+
+          // Already on this quiz → keep the existing entry as-is (idempotent).
+          const existingHere = current.find((a) => a?.name === name);
+          if (existingHere) {
+            desired.push(existingHere);
+            knownByName.set(name, existingHere);
+            plan.push({ fileName, action: "keep", detail: "already attached — kept" });
+            totalKept++;
+            continue;
+          }
+
+          // Same-named attachment already stored for this course → reuse it.
+          const known = knownByName.get(name);
+          if (known) {
+            desired.push(known);
+            plan.push({
+              fileName,
+              action: "reuse",
+              detail: `reusing existing storage object → ${known.path}`,
+            });
+            totalReused++;
+            continue;
+          }
+
+          const abs = path.resolve(REPO_ROOT, SOURCE_DIR, fileName);
+          if (!abs.startsWith(REPO_ROOT + path.sep)) {
+            plan.push({
+              fileName,
+              action: "failed",
+              detail: "FAILED — path escapes repo root",
+            });
+            totalFailed++;
+            continue;
+          }
+          let size = 0;
+          try {
+            const info = await stat(abs);
+            if (!info.isFile()) throw new Error("not a regular file");
+            size = info.size;
+          } catch {
+            plan.push({
+              fileName,
+              action: "missing",
+              detail: "source file not found — warned and skipped",
+            });
+            totalMissing++;
+            continue;
+          }
+
+          if (dryRun) {
+            plan.push({
+              fileName,
+              action: "would-attach",
+              detail: `${size} bytes → would upload + attach`,
+            });
+            totalWouldUpload++;
+            continue;
+          }
+
+          try {
+            const buffer = await readFile(abs);
+            const fileExt = path.extname(fileName).toLowerCase();
+            const contentType = EXT_TO_MIME[fileExt];
+            const ext = contentType ? MATERIAL_EXT[contentType] : undefined;
+            if (!contentType || !ext) {
+              throw new Error(`Unsupported file type (${fileExt || "no extension"})`);
+            }
+
+            // Same path convention + attachment shape as materials.server.ts.
+            const rand = randomBytes(4).toString("hex");
+            const objectPath = `${course.id}/material_${Date.now()}_${rand}.${ext}`;
+            if (buffer.byteLength > MAX_MATERIAL_BYTES) {
+              throw new Error(`File exceeds the ${MAX_MATERIAL_BYTES / 1048576} MB upload limit`);
+            }
+            const upload = await storage
+              .from(MATERIAL_BUCKET)
+              .upload(objectPath, buffer, { contentType, upsert: false });
+            if (upload.error) throw new Error(`Storage upload failed (${upload.error.message})`);
+
+            const attachment: Attachment = {
+              name,
+              url: materialUrlForPath(objectPath),
+              size: buffer.byteLength,
+              type: contentType,
+              path: objectPath,
+            };
+            desired.push(attachment);
+            knownByName.set(name, attachment);
+            plan.push({ fileName, action: "attach", detail: `uploaded → ${objectPath}` });
+            totalUploaded++;
+          } catch (e) {
+            totalFailed++;
+            plan.push({
+              fileName,
+              action: "failed",
+              detail: `FAILED — ${e instanceof Error ? e.message : String(e)}`,
+            });
+          }
+        }
+
+        // ── Everything not on the mapped list is removed (TVE100 PDF cleanup) ─
+        const desiredNames = new Set(entry.files.map((f) => f.slice(0, 200)));
+        const keptNames = new Set<string>();
+        const removals: Attachment[] = [];
+        for (const a of current) {
+          const n = a?.name ?? "";
+          if (a && desiredNames.has(n) && !keptNames.has(n)) {
+            keptNames.add(n);
+            continue;
+          }
+          removals.push(a);
+          const label = a?.name ?? "(unnamed attachment)";
+          if (dryRun) {
+            plan.push({
+              fileName: label,
+              action: "would-remove",
+              detail: `would remove — stale (path=${a?.path ?? "-"}, not one of ICT1's mapped decks)`,
+            });
+            totalWouldRemove++;
+          } else {
+            plan.push({
+              fileName: label,
+              action: "remove",
+              detail: `removed — stale (path=${a?.path ?? "-"}, not one of ICT1's mapped decks)`,
+            });
+            totalRemoved++;
+          }
+        }
+
+        // ── Write the exact list (skipped when nothing changed) ──────────────
+        const changed =
+          removals.length > 0 ||
+          desired.length !== current.length ||
+          desired.some((a, i) => a.name !== (current[i]?.name ?? ""));
+        const tag = matches.length > 1 ? `[quiz id=${quiz.id}] ` : "";
+        if (!changed) {
+          for (const p of plan) {
+            console.log(`  ${tag}${planMark(p.action)} ${p.fileName}: ${p.detail}`);
+          }
+          console.log(`  ${tag}· no change — attachments already exactly the mapped list`);
           continue;
         }
-        removals.push(a);
-        const label = a?.name ?? "(unnamed attachment)";
-        if (dryRun) {
-          plan.push({
-            fileName: label,
-            action: "would-remove",
-            detail: `would remove — stale (path=${a?.path ?? "-"}, not one of ICT1's mapped decks)`,
-          });
-          totalWouldRemove++;
-        } else {
-          plan.push({
-            fileName: label,
-            action: "remove",
-            detail: `removed — stale (path=${a?.path ?? "-"}, not one of ICT1's mapped decks)`,
-          });
-          totalRemoved++;
+        if (!dryRun) {
+          const updated = await pool.query<{ id: string }>(
+            "UPDATE public.quizzes SET attachments = $1::jsonb WHERE id = $2 RETURNING id",
+            [JSON.stringify(desired), quiz.id],
+          );
+          if (updated.rowCount !== 1) {
+            totalFailed++;
+            plan.push({
+              fileName: "(attachments update)",
+              action: "failed",
+              detail: "FAILED — quiz was removed before attachments could be updated",
+            });
+          }
         }
-      }
-
-      // ── Write the exact list (skipped when nothing changed) ──────────────
-      const changed =
-        removals.length > 0 ||
-        desired.length !== current.length ||
-        desired.some((a, i) => a.name !== (current[i]?.name ?? ""));
-      const tag = matches.length > 1 ? `[quiz id=${quiz.id}] ` : "";
-      if (!changed) {
         for (const p of plan) {
           console.log(`  ${tag}${planMark(p.action)} ${p.fileName}: ${p.detail}`);
         }
-        console.log(`  ${tag}· no change — attachments already exactly the mapped list`);
-        continue;
-      }
-      if (!dryRun) {
-        const { error: updErr } = await sb
-          .from("quizzes")
-          .update({ attachments: desired })
-          .eq("id", quiz.id);
-        if (updErr) {
-          totalFailed++;
-          plan.push({
-            fileName: "(attachments update)",
-            action: "failed",
-            detail: `FAILED — attachments update failed (${updErr.message})`,
-          });
-        }
-      }
-      for (const p of plan) {
-        console.log(`  ${tag}${planMark(p.action)} ${p.fileName}: ${p.detail}`);
       }
     }
-  }
 
-  console.log("\n[attach-ict1] Summary");
-  if (dryRun) {
-    console.log(`  would upload + attach: ${totalWouldUpload}`);
-    console.log(`  would remove (stale):  ${totalWouldRemove}`);
-  } else {
-    console.log(`  attached (uploaded):       ${totalUploaded}`);
-    console.log(`  reused (existing storage): ${totalReused}`);
-    console.log(`  kept (already on quiz):    ${totalKept}`);
-    console.log(`  removed (stale/unmapped):  ${totalRemoved}`);
+    console.log("\n[attach-ict1] Summary");
+    if (dryRun) {
+      console.log(`  would upload + attach: ${totalWouldUpload}`);
+      console.log(`  would remove (stale):  ${totalWouldRemove}`);
+    } else {
+      console.log(`  attached (uploaded):       ${totalUploaded}`);
+      console.log(`  reused (existing storage): ${totalReused}`);
+      console.log(`  kept (already on quiz):    ${totalKept}`);
+      console.log(`  removed (stale/unmapped):  ${totalRemoved}`);
+    }
+    console.log(`  missing:   ${totalMissing} (source file not found)`);
+    console.log(`  quizzes missing: ${totalQuizMissing}`);
+    console.log(`  failed:    ${totalFailed}`);
+    if (totalFailed > 0) process.exitCode = 1;
+    console.log("[attach-ict1] Done.");
+  } finally {
+    await pool.end();
   }
-  console.log(`  missing:   ${totalMissing} (source file not found)`);
-  console.log(`  quizzes missing: ${totalQuizMissing}`);
-  console.log(`  failed:    ${totalFailed}`);
-  if (totalFailed > 0) process.exitCode = 1;
-  console.log("[attach-ict1] Done.");
 }
 
 main().catch((e) => {
