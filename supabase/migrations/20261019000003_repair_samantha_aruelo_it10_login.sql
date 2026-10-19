@@ -14,21 +14,39 @@ BEGIN
   INTO matching_profiles
   FROM public.profiles
   WHERE student_id = '2026-0003'
-    AND role = 'student'
-    AND deleted_at IS NULL;
+     OR lower(email) = 'samanthajane.aruelo@g.msuiit.edu.ph';
 
-  IF matching_profiles <> 1 THEN
+  IF matching_profiles > 1 THEN
     RAISE EXCEPTION
-      'Expected exactly one active student profile for 2026-0003; found %',
+      'Expected at most one profile for Samantha Aruelo; found %',
       matching_profiles;
   END IF;
 
-  SELECT id
-  INTO student_uuid
-  FROM public.profiles
-  WHERE student_id = '2026-0003'
-    AND role = 'student'
-    AND deleted_at IS NULL;
+  IF matching_profiles = 0 THEN
+    INSERT INTO public.profiles (
+      student_id, email, pin, pin_hash, full_name, role,
+      grade_level, section, pin_must_change, failed_login_attempts, locked_until
+    ) VALUES (
+      '2026-0003',
+      'samanthajane.aruelo@g.msuiit.edu.ph',
+      '1234',
+      NULL,
+      'Samantha Jane Aruelo',
+      'student',
+      10,
+      'Omega',
+      true,
+      0,
+      NULL
+    )
+    RETURNING id INTO student_uuid;
+  ELSE
+    SELECT id
+    INTO student_uuid
+    FROM public.profiles
+    WHERE student_id = '2026-0003'
+       OR lower(email) = 'samanthajane.aruelo@g.msuiit.edu.ph';
+  END IF;
 
   SELECT id
   INTO course_uuid
@@ -46,7 +64,14 @@ BEGIN
   ON CONFLICT (student_id, course_id) DO NOTHING;
 
   UPDATE public.profiles
-  SET pin = '1234',
+  SET student_id = '2026-0003',
+      email = 'samanthajane.aruelo@g.msuiit.edu.ph',
+      full_name = 'Samantha Jane Aruelo',
+      role = 'student',
+      grade_level = 10,
+      section = 'Omega',
+      deleted_at = NULL,
+      pin = '1234',
       pin_hash = NULL,
       pin_must_change = true,
       failed_login_attempts = 0,
