@@ -47,3 +47,16 @@ it("does not apply the apex HSTS policy to other akios.site subdomains", () => {
   );
   expect(response.headers.get("Strict-Transport-Security")).toBeNull();
 });
+
+it("does not grant content-security-policy access to external analytics", () => {
+  const response = applySecurityHeaders(
+    new Response("<html></html>", {
+      headers: { "Content-Type": "text/html" },
+    }),
+    "akios.site",
+  );
+  const policy = response.headers.get("Content-Security-Policy") ?? "";
+  expect(policy).not.toContain("vercel-scripts");
+  expect(policy).not.toContain("vercel-insights");
+  expect(policy).not.toContain("pulse.joalvergs.tech");
+});

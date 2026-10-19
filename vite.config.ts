@@ -18,13 +18,8 @@ export default defineConfig({
     viteReact(),
     nitro(),
     VitePWA({
-      // The plugin's default outDir reads top-level build.outDir ("dist"), but
-      // Nitro/Vercel override the *client environment* outDir afterwards — a
-      // default would write sw.js where the server never looks (local 404,
-      // and on Vercel /sw.js 404 while manifest.webmanifest 200s). Pin it to
-      // the real client outDir per environment:
-      //   local Nitro → .output/public · Vercel Build Output API → .vercel/output/static
-      outDir: process.env["VERCEL"] ? ".vercel/output/static" : ".output/public",
+      // TanStack Start's Nitro server serves static files from this directory.
+      outDir: ".output/public",
       registerType: "prompt",
       // Registration is done manually in src/routes/__root.tsx (SSR-safe, prod-only).
       injectRegister: null,

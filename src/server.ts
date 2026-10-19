@@ -62,7 +62,7 @@ export function applySecurityHeaders(res: Response, host?: string) {
     const scriptSrc = isProd ? "'self' 'unsafe-inline'" : "'self' 'unsafe-inline' 'unsafe-eval'";
     res.headers.set(
       "Content-Security-Policy",
-      `default-src 'self'; script-src 'self' ${scriptSrc} https://accounts.google.com https://apis.google.com https://www.gstatic.com https://va.vercel-scripts.com https://pulse.joalvergs.tech; frame-src https://content.googleapis.com https://content-docs.googleapis.com https://accounts.google.com https://docs.google.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://www.googleapis.com https://accounts.google.com https://va.vercel-scripts.com https://vitals.vercel-insights.com https://pulse.joalvergs.tech`,
+      `default-src 'self'; script-src 'self' ${scriptSrc} https://accounts.google.com https://apis.google.com https://www.gstatic.com; frame-src https://content.googleapis.com https://content-docs.googleapis.com https://accounts.google.com https://docs.google.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://www.googleapis.com https://accounts.google.com`,
     );
   }
   let isApexHost = false;
