@@ -17,6 +17,7 @@ import appCss from "../styles.css?url";
 import { reportError } from "../lib/error-reporting";
 import { isAssessmentActive, subscribeAssessmentMode } from "../lib/assessment-mode";
 import { clearLegacyPreferences } from "../lib/settings";
+import { clearLegacyNavigationCaches } from "../lib/pwa-cache";
 
 function NotFoundComponent() {
   return (
@@ -159,6 +160,9 @@ function RootComponent() {
   // One-time cleanup of dead pre-rename keys (see clearLegacyPreferences).
   useEffect(() => {
     clearLegacyPreferences();
+    // Delete pages cached by earlier service-worker versions before any
+    // account switch can reuse them. Current navigations are network-only.
+    void clearLegacyNavigationCaches();
 
     // PWA service worker: production-only and browser-only (this code also runs
     // during SSR, where navigator/window do not exist).

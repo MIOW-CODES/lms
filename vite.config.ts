@@ -70,17 +70,12 @@ export default defineConfig({
         globIgnores: ["**/assets/shiki-*.js"],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         runtimeCaching: [
-          // Navigations: network-first so an authenticated LMS never serves another
-          // user's stale HTML; fall back to the offline page when the network is gone.
+          // Never store SSR navigations: the HTML can contain account-specific data.
+          // A static, precached offline page is used only when the network request fails.
           {
             urlPattern: ({ request }) => request.mode === "navigate",
-            handler: "NetworkFirst",
+            handler: "NetworkOnly",
             options: {
-              cacheName: "pages",
-              networkTimeoutSeconds: 5,
-              expiration: { maxEntries: 32, maxAgeSeconds: 60 * 60 * 24 * 7 },
-              cacheableResponse: { statuses: [0, 200] },
-              // Network down + nothing cached → serve the precached offline page.
               precacheFallback: { fallbackURL: "/offline.html" },
             },
           },

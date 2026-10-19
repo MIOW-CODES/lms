@@ -1,4 +1,5 @@
 import { notifyTasksChanged, type PendingTaskCounts } from "@/lib/pending-tasks";
+import { clearLegacyNavigationCaches } from "@/lib/pwa-cache";
 import {
   reviewAttemptQuestionFn,
   previewIdentificationRegradeFn,
@@ -768,7 +769,11 @@ export function sessionToken(): string {
 
 /** Clear the HttpOnly session cookie and revoke the current server session. */
 export async function logout(): Promise<void> {
-  await logoutFn({ data: { token: sessionToken() || COOKIE_SESSION_MARKER } });
+  try {
+    await logoutFn({ data: { token: sessionToken() || COOKIE_SESSION_MARKER } });
+  } finally {
+    await clearLegacyNavigationCaches();
+  }
 }
 
 /**

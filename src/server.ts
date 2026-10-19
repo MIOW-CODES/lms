@@ -51,12 +51,13 @@ function isH3SwallowedErrorBody(body: string): boolean {
   }
 }
 
-function applySecurityHeaders(res: Response) {
+export function applySecurityHeaders(res: Response) {
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   if (res.headers.get("content-type")?.includes("text/html")) {
+    res.headers.set("Cache-Control", "private, no-store");
     const isProd = process.env["NODE_ENV"] === "production";
     // 'unsafe-inline' is required for TanStack Start hydration scripts.
     // 'unsafe-eval' is only in dev for Vite HMR.
