@@ -6,7 +6,7 @@ Repository: [MIOW-CODES/lms](https://github.com/MIOW-CODES/lms)
 
 Target: Orange Pi Zero 3, 4 GB RAM, with the LMS at **https://akios.site** through **Nginx Proxy Manager (NPM)**.
 
-Status: Whole-tree inventory and scan, risk-based source review, and targeted audit write-up completed against `eb370ea2b5f1724ffe90e5f58bcc1b9cff06b8b2`. This branch carries the plan only; application, database, DNS, and deployment changes have not started. The target architecture is native PostgreSQL only, with local filesystem uploads and no Supabase runtime, SDK, provider switching, auth/storage dependency, or hosted migration workflow. Section 0.13 records limitations; deployment is blocked pending the listed fixes and verification.
+Status: Whole-tree inventory and scan, risk-based source review, and targeted audit write-up completed against `eb370ea2b5f1724ffe90e5f58bcc1b9cff06b8b2`. Implementation is underway on this branch; section 0.14 records changes, validation, and pushed commits for each finding addressed. The target architecture is native PostgreSQL only, with local filesystem uploads and no hosted database provider, auth/storage dependency, or hosted migration workflow. Orange Pi deployment remains blocked pending the listed fixes and target-environment verification.
 
 ## 0. Audit the entire repository before implementation
 
@@ -78,7 +78,7 @@ The whole-tree inventory and scan, risk-based review, and targeted write-up are 
 Fix and verify Critical/High findings before release. Run required checks on the final revision; prove native DB migration/restore behavior in a disposable environment; repeat regression review on changed files and affected callers. Keep hardware-specific ARM64, thermal, routing, reboot, and backup tests explicit for the Pi. Update each finding in this file with commit/test evidence.
 ### 0.13. Audit results and targeted remediation approach
 
-**Audit status:** A repository-wide inventory and static scan, direct review of high-risk first-party code and deployment paths, test/build checks, SQL migration exercise, and document/binary scan have been completed for the baseline below. This is a planning audit, not a certification that every line has received manual review. No application fixes have been made. Findings marked as hypotheses remain unconfirmed, and the pure-PostgreSQL conversion, browser privacy cases, actual PostgreSQL testing, Git-history scan, and Pi deployment remain future work.
+**Audit status at plan creation:** A repository-wide inventory and static scan, direct review of high-risk first-party code and deployment paths, test/build checks, SQL migration exercise, and document/binary scan were completed for the baseline below. This is a planning audit, not a certification that every line has received manual review. At that point no application fixes had been made. Findings marked as hypotheses remain unconfirmed. Section 0.14 supersedes that baseline for remediation progress.
 
 **Architecture decision:** The finished application will use PostgreSQL as its only database. Remove Supabase SDK usage and provider selection, Supabase Auth/Storage assumptions, Supabase-only shims/roles/policies, Supabase environment variables, and the Supabase production migration workflow. Keep the LMS's own signed-session and bcrypt/PIN authentication, storing its records in PostgreSQL. Use the app's local persistent filesystem for uploaded files. If existing hosted data must be retained, Supabase may be used only as a temporary, one-time export source under controlled conditions; it is not a runtime, deployment, migration, or synchronization dependency.
 
@@ -190,7 +190,20 @@ Severity describes risk in the current baseline. Confidence distinguishes reprod
 5. **Public hostname rollout:** T-17, then NPM/DNS/HTTPS steps in sections 6-10 after all Critical/High items pass.
 6. **Hardware readiness:** backup/restore, Pi restart, load and thermal checks, outside-network scan, and browser flows in section 11.
 
-**Current blockers:** AUD-01/AUD-02/AUD-03/AUD-04/AUD-05/AUD-15 are not fixed; actual PostgreSQL 16, browser, Git-history, ARM64, and Pi behavior are not verified. Therefore, the application is not ready for deployment. The scan/write-up is complete enough to direct the next work; remediation and deployment remain unstarted. Re-scan changed source and artifacts after implementation, and update each task with commit/test evidence in this same file.
+**Blockers at plan creation:** AUD-01/AUD-02/AUD-03/AUD-04/AUD-05/AUD-15 were open; actual PostgreSQL 16, browser, Git-history, ARM64, and Pi behavior were not verified. The application was not ready for deployment. Re-scan changed source and artifacts after implementation, and record each finding's pushed commit and verification in section 0.14.
+
+## 0.14. Implementation log
+
+The initial plan-only branch has moved into implementation. Each completed finding is recorded with its code commit and checks before work proceeds to the next finding. A partial mitigation is labelled as such; it does not close the finding or satisfy a deployment gate. Hardware, browser, and external-network checks remain open until run in their intended environments.
+
+| Finding | Implementation status | Evidence and limits |
+| --- | --- | --- |
+| AUD-02 | Partial remediation pushed. The production role-view override and its privileged identity bypass have been removed from server and client paths. | Code commit `9416d72`. `bun run typecheck` passed; `bun test src/` passed (469 tests, 1 Windows-only symlink skip). The historical account-specific migration content still needs replacement by the native schema baseline, and a private first-admin bootstrap path is not yet complete. |
+| AUD-04 | Runtime provider selection is removed. Server source now requires `DATABASE_URL`, and uploads use local filesystem storage. | Code commit `9416d72`. Static scan of `src/` found no Supabase provider/client/env references. Package and maintenance-script cleanup is part of AUD-15. |
+| AUD-06 | Fixed and tested. `.limit(n)` is applied as a bounded SQL `LIMIT`; single-row behavior is explicit, and projections are identifier-validated. | Code commit `9416d72`. Query-layer tests cover 0, 1, N, invalid bounds, offset pagination, parameterized filters, invalid projections, and multiple-row results. Full unit suite passed. |
+| AUD-07 | Fixed and tested. Session revocation now propagates PostgreSQL failures; logout reports durable-revocation failure after clearing its cookie. | Code commit `9416d72`. A simulated connection-loss test verifies the SQLSTATE is propagated; full unit suite and typecheck passed. End-to-end role/password change verification remains part of native PG testing. |
+| AUD-08 | Path-containment remediation is implemented and regression-tested. | Code commit `9416d72`. Tests cover traversal, sibling-prefix escape, absolute paths, partial-delete prevention, and symlinks. The symlink case is skipped on this Windows host and must run on Linux CI/ARM64. |
+| AUD-09 | Mitigation applied: protected material responses now use `Cache-Control: private, no-store`. | Code commit `9416d72`. Browser/service-worker account-switch reproduction remains unrun, so the original hypothesis stays open pending browser evidence. |
 ## 1. Recommended architecture and deployment
 
 Run the Bun LMS application, PostgreSQL 16, and persistent local upload storage using Docker Compose on the Orange Pi Zero 3 4GB. Route `https://akios.site` through Nginx Proxy Manager (NPM). Build and verify an ARM64 application image on a development machine or CI, then deploy the versioned image to the Pi.
@@ -218,7 +231,7 @@ The recommended topology assumes NPM runs on the Pi. If NPM already runs on anot
 
 ## 2. Repository and baseline used for this plan
 
-This workspace contains the repository at `eb370ea2b5f1724ffe90e5f58bcc1b9cff06b8b2`, on branch `codex/orange-pi-local-postgres`. Audit results and limitations are in section 0.13. The branch deliverable is this plan only; application, database, and deployment implementation has not started.
+This workspace contains the repository at `eb370ea2b5f1724ffe90e5f58bcc1b9cff06b8b2`, on branch `codex/orange-pi-local-postgres`. Audit results and limitations are in section 0.13. The initial branch delivered the plan; implementation progress is recorded in section 0.14.
 
 For implementation, re-check the intended upstream revision and repository instructions, preserve subsequent work, and use a current branch. Install with the committed lockfile, then run typecheck, lint, unit, integration, browser, database migration, and production build checks. Use disposable PostgreSQL 16. Do not treat baseline results as current if source has changed; review changed code, callers, migrations, generated output, and release artifacts again after fixes.
 ## 3. Convert the database layer to native PostgreSQL
