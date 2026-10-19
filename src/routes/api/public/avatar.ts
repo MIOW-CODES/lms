@@ -2,16 +2,14 @@
 // sign-in screen shows profile photos to unauthenticated viewers, and avatars
 // are rendered via plain <img src> tags, so this endpoint is public — but it
 // only ever serves objects matching the strict avatar path shape, never
-// arbitrary bucket contents. Entropy hardened: new uploads use 16-hex (64-bit)
-// random; legacy 8-hex accepted during migration. The unguessable path is the
-// capability: user enumeration via probing is infeasible at 64-bit entropy.
+// arbitrary bucket contents. New uploads use a 16-hex (64-bit) random path
+// capability; old 8-hex capabilities are intentionally no longer accepted.
 // Optional Authorization: Bearer <session_token> is validated if present (kept
 // for callers that pass it) but is not required.
 import { createFileRoute } from "@tanstack/react-router";
 
-const PATH_RE = /^[0-9a-f-]{36}\/avatar_\d+_[0-9a-f]{16}\.(png|jpe?g|webp|gif)$/;
-// Legacy 8-hex paths (pre-hardening) remain served for backward compat
-const PATH_RE_LEGACY = /^[0-9a-f-]{36}\/avatar_\d+_[0-9a-f]{8}\.(png|jpe?g|webp|gif)$/;
+const PATH_RE =
+  /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\/avatar_\d+_[0-9a-f]{16}\.(png|jpe?g|webp|gif)$/i;
 const MIME: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -26,9 +24,7 @@ export const Route = createFileRoute("/api/public/avatar")({
       GET: async ({ request }) => {
         const p = new URL(request.url).searchParams.get("p") ?? "";
         // Strict allowlist — no path traversal, no arbitrary object reads.
-        // Accept new 16-hex and legacy 8-hex during migration.
-        const validPath = PATH_RE.test(p) || PATH_RE_LEGACY.test(p);
-        if (!validPath) return new Response("Not found", { status: 404 });
+        if (!PATH_RE.test(p)) return new Response("Not found", { status: 404 });
         // If a token is supplied, validate it (defensive); absence is allowed
         // because the high-entropy path itself is the access capability.
         const auth = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
