@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 
-
 process.env["HARDWARE_API_KEY"] = "test-key-123";
 
-import { hitRateLimit, authorized, guardHardwareRequest } from "./hardware-auth.server";
+import {
+  hitRateLimit,
+  authorized,
+  guardHardwareRequest,
+  RATE_LIMIT_MAX_CLIENTS,
+} from "./hardware-auth.server";
 
 function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request("http://localhost/api/hardware", { headers });
@@ -33,6 +37,12 @@ describe("hitRateLimit", () => {
     }
     expect(hitRateLimit("rl-a")).toBe(true);
     expect(hitRateLimit("rl-b")).toBe(false);
+  });
+
+  it("bounds memory by evicting the oldest active client entry", () => {
+    for (let i = 0; i < 60; i++) hitRateLimit("rl-bound-first");
+    for (let i = 0; i < RATE_LIMIT_MAX_CLIENTS + 2; i++) hitRateLimit(`rl-bound-${i}`);
+    expect(hitRateLimit("rl-bound-first")).toBe(false);
   });
 });
 
@@ -102,15 +112,16 @@ describe("authorized", () => {
 });
 
 describe("guardHardwareRequest", () => {
-  it("returns { ok: true, ip } for a valid request", async () => {
+  it("uses NPM's validated X-Real-IP and ignores client-supplied XFF", async () => {
     const req = makeRequest({
       Authorization: "Bearer test-key-123",
       "X-Hardware-Timestamp": validTimestamp(),
+      "X-Real-IP": "192.168.1.50",
       "X-Forwarded-For": "10.0.0.1",
     });
     const result = await guardHardwareRequest(req);
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.ip).toBe("10.0.0.1");
+    if (result.ok) expect(result.ip).toBe("192.168.1.50");
   });
 
   it("returns 401 for unauthorized requests", async () => {
@@ -126,14 +137,14 @@ describe("guardHardwareRequest", () => {
     const req = makeRequest({
       Authorization: "Bearer test-key-123",
       "X-Hardware-Timestamp": validTimestamp(),
-      "X-Forwarded-For": "10.99.99.99",
+      "X-Real-IP": "10.99.99.99",
     });
     for (let i = 0; i < 60; i++) {
       await guardHardwareRequest(
         makeRequest({
           Authorization: "Bearer test-key-123",
           "X-Hardware-Timestamp": validTimestamp(),
-          "X-Forwarded-For": "10.99.99.99",
+          "X-Real-IP": "10.99.99.99",
         }),
       );
     }
@@ -145,7 +156,7 @@ describe("guardHardwareRequest", () => {
     }
   });
 
-  it("extracts IP from X-Real-Header when X-Forwarded-For is absent", async () => {
+  it("uses X-Real-IP when X-Forwarded-For is absent", async () => {
     const req = makeRequest({
       Authorization: "Bearer test-key-123",
       "X-Hardware-Timestamp": validTimestamp(),
@@ -156,10 +167,23 @@ describe("guardHardwareRequest", () => {
     if (result.ok) expect(result.ip).toBe("192.168.1.50");
   });
 
-  it("falls back to 'unknown' when no IP headers present", async () => {
+  it("ignores forged X-Forwarded-For when X-Real-IP is absent", async () => {
     const req = makeRequest({
       Authorization: "Bearer test-key-123",
       "X-Hardware-Timestamp": validTimestamp(),
+      "X-Forwarded-For": "192.0.2.66",
+    });
+    const result = await guardHardwareRequest(req);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.ip).toBe("unknown");
+  });
+
+  it("uses the shared unknown bucket for invalid X-Real-IP values", async () => {
+    const req = makeRequest({
+      Authorization: "Bearer test-key-123",
+      "X-Hardware-Timestamp": validTimestamp(),
+      "X-Real-IP": "attacker-controlled",
+      "X-Forwarded-For": "192.0.2.67",
     });
     const result = await guardHardwareRequest(req);
     expect(result.ok).toBe(true);

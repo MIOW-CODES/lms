@@ -3,6 +3,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { guardHardwareRequest } from "@/lib/server/hardware-auth.server";
+import { readJsonBody } from "@/lib/server/read-json-body.server";
 
 const Body = z
   .object({
@@ -16,6 +17,7 @@ const Body = z
   });
 
 const MIN_CONFIDENCE = 0.45;
+const MAX_BODY_BYTES = 8 * 1024;
 
 export const Route = createFileRoute("/api/public/hardware/attendance")({
   server: {
@@ -23,13 +25,19 @@ export const Route = createFileRoute("/api/public/hardware/attendance")({
       POST: async ({ request }) => {
         const guard = await guardHardwareRequest(request);
         if (!guard.ok) return guard.response;
-        let body: z.infer<typeof Body>;
-        try {
-          body = Body.parse(await request.json());
-        } catch (e) {
-          console.error("[hw-attendance]", e);
+        const parsedBody = await readJsonBody(request, MAX_BODY_BYTES);
+        if (!parsedBody.ok) {
+          const tooLarge = parsedBody.reason === "too_large";
+          return Response.json(
+            { ok: false, error: tooLarge ? "Payload too large" : "Invalid payload" },
+            { status: tooLarge ? 413 : 400 },
+          );
+        }
+        const parsedPayload = Body.safeParse(parsedBody.value);
+        if (!parsedPayload.success) {
           return Response.json({ ok: false, error: "Invalid payload" }, { status: 400 });
         }
+        const body: z.infer<typeof Body> = parsedPayload.data;
         if (body.confidence != null && body.confidence < MIN_CONFIDENCE) {
           return Response.json({ ok: false, error: "Low confidence match" }, { status: 422 });
         }

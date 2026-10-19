@@ -1,20 +1,49 @@
 import { timingSafeEqual } from "node:crypto";
+import { isIP } from "node:net";
 import { verifyRfidDeviceKey, touchRfidDevice } from "@/lib/server/rfid-devices.server";
 
 const RATE_LIMIT_MAX = 60;
 const RATE_LIMIT_WINDOW_MS = 60_000;
-const _rate = new Map<string, number[]>();
+export const RATE_LIMIT_MAX_CLIENTS = 2048;
+const RATE_LIMIT_SWEEP_INTERVAL = 128;
+type RateEntry = { windowStartedAt: number; lastSeenAt: number; count: number };
+const _rate = new Map<string, RateEntry>();
+let rateLimitCalls = 0;
+
+function evictExpired(now: number): void {
+  for (const [key, entry] of _rate) {
+    if (now - entry.lastSeenAt >= RATE_LIMIT_WINDOW_MS) _rate.delete(key);
+  }
+}
 
 export function hitRateLimit(ip: string): boolean {
   const now = Date.now();
-  const hits = (_rate.get(ip) ?? []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
-  hits.push(now);
-  _rate.set(ip, hits);
-  for (const [k, v] of _rate) {
-    const last = v[v.length - 1];
-    if (!v.length || (last != null && now - last > RATE_LIMIT_WINDOW_MS)) _rate.delete(k);
+  rateLimitCalls++;
+  const existing = _rate.get(ip);
+  if (existing && now - existing.windowStartedAt < RATE_LIMIT_WINDOW_MS) {
+    existing.count++;
+    existing.lastSeenAt = now;
+    _rate.delete(ip);
+    _rate.set(ip, existing);
+    return existing.count > RATE_LIMIT_MAX;
   }
-  return hits.length > RATE_LIMIT_MAX;
+
+  if (rateLimitCalls % RATE_LIMIT_SWEEP_INTERVAL === 0 || _rate.size >= RATE_LIMIT_MAX_CLIENTS) {
+    evictExpired(now);
+  }
+  if (_rate.size >= RATE_LIMIT_MAX_CLIENTS) {
+    const oldestKey = _rate.keys().next().value as string | undefined;
+    if (oldestKey !== undefined) _rate.delete(oldestKey);
+  }
+
+  _rate.set(ip, { windowStartedAt: now, lastSeenAt: now, count: 1 });
+  return false;
+}
+
+/** NPM overwrites X-Real-IP with its connected client address. XFF is ignored. */
+export function clientIpFromRequest(request: Request): string {
+  const candidate = request.headers.get("x-real-ip")?.trim() ?? "";
+  return isIP(candidate) ? candidate : "unknown";
 }
 
 export function authorized(request: Request): boolean {
@@ -49,10 +78,7 @@ export async function authorizedAny(request: Request): Promise<{ ok: boolean; to
 export async function guardHardwareRequest(
   request: Request,
 ): Promise<{ ok: true; ip: string } | { ok: false; response: Response }> {
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "unknown";
+  const ip = clientIpFromRequest(request);
   if (hitRateLimit(ip)) {
     return {
       ok: false,
