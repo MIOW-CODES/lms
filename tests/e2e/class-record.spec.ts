@@ -7,7 +7,12 @@ const describeLocal = local ? test.describe : test.describe.skip;
 const teacher = "ce800000-0000-4000-8000-000000000001",
   student = "ce800000-0000-4000-8000-000000000002",
   course = "ce800000-0000-4000-8000-000000000003";
-test.use({ headless: true, launchOptions: { executablePath: "/usr/bin/chromium" } });
+test.use({
+  headless: true,
+  ...(process.env["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"]
+    ? { launchOptions: { executablePath: process.env["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"] } }
+    : {}),
+});
 describeLocal("worksheet-style class record", () => {
   test.beforeAll(async () => {
     const p = new Pool({ connectionString: databaseUrl });
@@ -77,6 +82,7 @@ describeLocal("worksheet-style class record", () => {
       await p.end();
     }
     await page.reload();
+    await page.getByLabel("Select course").selectOption(course);
     await expect(page.getByLabel("Class Record Student Q1", { exact: true })).toHaveValue("16");
     await page.getByLabel("Select Class Record Student", { exact: true }).check();
     page.once("dialog", (d) => d.accept());
