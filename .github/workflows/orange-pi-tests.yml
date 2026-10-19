@@ -17,6 +17,7 @@ on:
       - "docker-compose.pgtest.yml"
       - ".prettierrc"
       - "eslint.config.js"
+      - ".github/workflows/orange-pi-tests.yml"
 
 permissions:
   contents: read
