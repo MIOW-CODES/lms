@@ -1,8 +1,15 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { PGlite } from "@electric-sql/pglite";
-import { readFile } from "node:fs/promises";
+import { Pool } from "pg";
 
-const db = new PGlite();
+if (process.env["MIOW_PG_INTEGRATION_RUN"] !== "1") {
+  throw new Error("Run native PostgreSQL integration tests with `bun run test:integration`.");
+}
+
+const databaseUrl = process.env["DATABASE_URL"]?.trim();
+if (!databaseUrl)
+  throw new Error("DATABASE_URL is required for native PostgreSQL integration tests");
+
+const db = new Pool({ connectionString: databaseUrl, max: 3 });
 const course = crypto.randomUUID();
 const other = crypto.randomUUID();
 const actor = crypto.randomUUID();
@@ -14,12 +21,6 @@ const question = crypto.randomUUID();
 const report = crypto.randomUUID();
 
 beforeAll(async () => {
-  const schema = await readFile(
-    new URL("../../db/migrations/20261020000000_native_initial.sql", import.meta.url),
-    "utf8",
-  );
-  await db.exec("CREATE SCHEMA private");
-  await db.exec(schema);
   await db.query(
     `INSERT INTO public.profiles (id, email, full_name, role)
      VALUES ($1, 'admin@example.test', 'Test Admin', 'admin'),
@@ -40,7 +41,7 @@ beforeAll(async () => {
   );
 });
 
-afterAll(() => db.close());
+afterAll(() => db.end());
 
 function save(revision: number, publications: unknown[] = []) {
   return db.query(

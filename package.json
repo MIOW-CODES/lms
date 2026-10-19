@@ -15,6 +15,7 @@
     "test": "bun test src/",
     "test:unit": "bun test src/",
     "test:migrations": "bun test scripts/migrate.test.ts",
+    "test:integration": "bun run scripts/test-postgres-integration.ts",
     "test:watch": "bun test --watch src/",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
