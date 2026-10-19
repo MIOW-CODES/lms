@@ -470,7 +470,7 @@ For an existing installation, take a final private backup and freeze writes duri
 
 ## 12. Commit and push this plan
 
-This plan and audit record are maintained on codex/orange-pi-local-postgres. Code fixes through 6706ef4, the branch-only runner workflow (9c4ce7b), and plan/history updates through 9811c99 are pushed. Runner-group configuration and Orange Pi registration remain pending. No change merges to main, deploys the app, alters DNS, rewrites Git history, or modifies a running server.
+This plan and audit record are maintained on codex/orange-pi-local-postgres. Code fixes through 6706ef4 and the branch-only runner workflow (9c4ce7b) are pushed; the latest audit-plan update is committed and pushed on this branch. Runner-group configuration and Orange Pi registration remain pending. No change merges to main, deploys the app, alters DNS, rewrites Git history, or modifies a running server.
 
 Remaining implementation and deployment gates are:
 
