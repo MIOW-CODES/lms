@@ -99,6 +99,7 @@ test.describe("Auth page interactions", () => {
     await page.goto("/auth");
     await page.evaluate(() => localStorage.clear());
     await page.goto("/auth");
+    await expect(page.getByRole("button", { name: "Sign In", exact: true })).toBeEnabled();
     await page.getByRole("tab", { name: /RFID Card/ }).click();
     await expect(page.getByRole("tab", { name: /RFID Card/ })).toHaveAttribute(
       "aria-selected",
