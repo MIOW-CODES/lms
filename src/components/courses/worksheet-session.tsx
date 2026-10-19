@@ -35,7 +35,6 @@ import {
   type QuizQuestionPublic,
   type SubmitQuizResult,
 } from "@/lib/lms";
-import { isTestStudent } from "@/lib/role-view";
 import { Badge, Modal, useProfile } from "@/components/lms";
 import { cn } from "@/lib/utils";
 import { QUESTION_TYPE_LABELS } from "@/lib/question-types";
@@ -382,7 +381,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
           questions: persisted ?? questions,
           duration: quiz.duration_minutes * 60,
           closesAt:
-            !isTestStudent(profile?.email) && quiz.closes_at
+            quiz.closes_at
               ? new Date(quiz.closes_at).getTime()
               : null,
           submissionId: storedSubmissionId(progressKey(id)),

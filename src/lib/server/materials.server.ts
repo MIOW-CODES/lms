@@ -3,7 +3,7 @@
 import { createHmac } from "node:crypto";
 import { extname } from "node:path";
 import { z } from "zod";
-import { db, supabaseAdmin } from "@/integrations/db/client.server";
+import { db, storage } from "@/integrations/db/client.server";
 import { unwrap, withoutToken } from "@/lib/server/utils.server";
 import { requireStaff, isEnrolledIn } from "@/lib/server/auth.server";
 import { requireCourseOwnerOrAdmin } from "@/lib/server/courses.server";
@@ -66,7 +66,7 @@ async function removeMaterialObjects(items: Attachment[]) {
     .filter((p): p is string => typeof p === "string" && p.length > 0);
   if (!paths.length) return;
   try {
-    await supabaseAdmin.storage.from(MATERIAL_BUCKET).remove(paths);
+    await storage.from(MATERIAL_BUCKET).remove(paths);
   } catch (e) {
     console.error("[materials]", e);
   }
@@ -138,7 +138,7 @@ export async function uploadCourseMaterial(
     .digest("hex")
     .slice(0, 8);
   const path = `${course_id}/material_${Date.now()}_${rand}.${ext}`;
-  const { error } = await supabaseAdmin.storage
+  const { error } = await storage
     .from(MATERIAL_BUCKET)
     .upload(path, buffer, { contentType: content_type, upsert: false });
   if (error) throw new Error(`Storage upload failed (${error.message})`);
@@ -258,7 +258,7 @@ export async function uploadSubmissionFile(
     .digest("hex")
     .slice(0, 8);
   const path = `submissions/${submissionId}/file_${Date.now()}_${rand}.${ext}`;
-  const { error } = await supabaseAdmin.storage
+  const { error } = await storage
     .from(MATERIAL_BUCKET)
     .upload(path, buffer, { contentType: content_type, upsert: false });
   if (error) throw new Error(`Storage upload failed (${error.message})`);

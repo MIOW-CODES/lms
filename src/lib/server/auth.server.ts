@@ -4,7 +4,6 @@ import { db } from "@/integrations/db/client.server";
 import { unwrap } from "@/lib/server/utils.server";
 import { verifySessionToken, sessionJti } from "@/lib/server/sessions.server";
 import { getProfileById } from "@/lib/server/profiles.server";
-import { applyRoleView, isTestAccount } from "@/lib/role-view";
 import { getCookie } from "@tanstack/react-start/server";
 import { COOKIE_SESSION_MARKER } from "@/lib/session";
 
@@ -17,40 +16,27 @@ export function resolveSessionToken(token: string): string {
   return resolved;
 }
 
-/**
- * Verify the caller's token and load their profile. Throws if invalid.
- *
- * Role-view shim: the allowlisted demo test account can pick a portal view
- * (teacher/admin/student) stored on ITS session row (sessions.role_view). The
- * view is applied here — the single session read path every guard goes
- * through — so all guards consistently honor it, and ONLY for that email
- * (see applyRoleView). The real profiles.role never changes.
- */
+/** Verify the caller's signed token and confirm its JTI remains active. */
 export async function requireSession(token: string, options: { allowTemporaryPin?: boolean } = {}) {
   token = resolveSessionToken(token);
   const id = verifySessionToken(token);
-  // jti revocation check — legacy tokens without jti skip DB check (compat)
-  let storedRoleView: string | null = null;
+  const jti = sessionJti(token);
+  if (!jti) throw new Error("Unauthorized");
   try {
-    const jti = sessionJti(token);
-    if (jti) {
-      const row = await unwrap<any>(
-        db.from("sessions").select("revoked_at, role_view").eq("jti", jti).maybeSingle(),
-      );
-      if (!row || (row as any).revoked_at) throw new Error("Unauthorized");
-      storedRoleView = (row as any).role_view ?? null;
-    }
-  } catch (e: any) {
-    if (e?.message === "Unauthorized") throw e;
-    // DB unavailable — reject token to prevent revoked-session abuse.
-    console.error("[auth] JTI revocation check failed (DB may be down):", e?.message ?? e);
+    const row = await unwrap<{ revoked_at: string | null } | null>(
+      db.from("sessions").select("revoked_at").eq("jti", jti).maybeSingle(),
+    );
+    if (!row || row.revoked_at) throw new Error("Unauthorized");
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") throw error;
+    console.error("[auth] JTI revocation check failed");
     throw new Error("Unauthorized");
   }
   const profile = await getProfileById(id);
   if (!profile) throw new Error("Unauthorized");
   if (profile.pin_must_change && !options.allowTemporaryPin)
     throw new Error("Choose a new PIN before continuing.");
-  return applyRoleView(profile, storedRoleView);
+  return profile;
 }
 
 /** Caller must be a teacher or admin. */
@@ -67,17 +53,11 @@ export async function requireAdmin(token: string) {
   return profile;
 }
 
-/**
- * Caller must be a teacher. Students are always rejected; admins keep being
- * rejected too (gradebook/settings mutations are teacher-owned) — EXCEPT the
- * allowlisted test account acting from its admin view, which exercises
- * teacher-only paths on top of the admin console (role-view shim).
- */
+/** Caller must be a teacher. Students and administrators are rejected. */
 export async function requireTeacher(token: string) {
   const profile = await requireSession(token);
-  if (profile.role === "teacher") return profile;
-  if (profile.role === "admin" && isTestAccount(profile.email)) return profile;
-  throw new Error("Forbidden");
+  if (profile.role !== "teacher") throw new Error("Forbidden");
+  return profile;
 }
 
 /** Caller must be the given student, or staff. */

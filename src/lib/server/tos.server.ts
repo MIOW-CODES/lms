@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Table of Specifications (TOS) — one editable row per (course, quarter).
-// `items` is a jsonb array of TosItem; it is stored via asJsonParam so it
-// round-trips both the pg and Supabase backends (see utils.server.ts).
+// `items` is a jsonb array of TosItem; asJsonParam serializes it for node-postgres.
 import { db } from "@/integrations/db/client.server";
 import { unwrap, asJsonParam } from "@/lib/server/utils.server";
 import { requireStaff } from "@/lib/server/auth.server";

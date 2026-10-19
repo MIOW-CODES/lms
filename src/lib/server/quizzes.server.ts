@@ -25,7 +25,6 @@ import {
   isAssessmentEditable,
   AvailabilityError,
 } from "@/lib/server/availability";
-import { isTestAccount, isTestStudent } from "@/lib/role-view";
 import { schemas } from "@/lib/server/schemas.server";
 import type { IntegrityEventType } from "@/lib/integrity";
 import type { ProfileRole } from "@/lib/server/db-types";
@@ -127,14 +126,12 @@ export async function getQuizPublic(id: string, studentId?: string) {
         extraAttemptsFor(id, profile.id),
       ]);
       const ceiling = attemptCeiling(quiz, extra);
-      if (!isTestAccount(profile.email) && ceiling != null && attempts.length >= ceiling) {
+      if (ceiling != null && attempts.length >= ceiling) {
         throw new Error(
           "This worksheet has already been submitted. Ask your teacher to grant a retake.",
         );
       }
-      if (!isTestStudent(profile.email)) {
-        requireOpen(quiz, new Date());
-      }
+      requireOpen(quiz, new Date());
     }
   }
   let questions = await unwrap<any[]>(
@@ -613,9 +610,7 @@ export async function submitQuizAttempt(
   // attempt and are never gated. Staff bypass for grading/preview.
   if (caller.role === "student") {
     await requireEnrollment(quiz.course_id, caller);
-    if (!isTestStudent(caller.email)) {
-      requireOpen(quiz, new Date());
-    }
+    requireOpen(quiz, new Date());
   }
 
   const [attempts, extra] = await Promise.all([
@@ -623,7 +618,7 @@ export async function submitQuizAttempt(
     extraAttemptsFor(quiz_id, caller.id),
   ]);
   const ceiling = attemptCeiling(quiz, extra);
-  if (!isTestAccount(caller.email) && ceiling != null && attempts.length >= ceiling) {
+  if (ceiling != null && attempts.length >= ceiling) {
     return {
       ok: false as const,
       reason: (!quiz.allow_retake && extra === 0 ? "retakes_disabled" : "max_attempts") as
@@ -751,7 +746,6 @@ export async function quizAttemptInfo(quiz_id: string, token: string) {
     attempts_used: attempts.length,
     attempts_allowed: ceiling,
     can_retake:
-      isTestAccount(caller.email) ||
       attempts.length === 0 ||
       ceiling == null ||
       attempts.length < ceiling,
@@ -819,7 +813,6 @@ export async function listMyQuizSummaries(token: string) {
       attempts_used: list.length,
       attempts_allowed: ceiling,
       can_retake:
-        isTestAccount(caller.email) ||
         list.length === 0 ||
         ceiling == null ||
         list.length < ceiling,
@@ -832,11 +825,10 @@ export async function listMyQuizSummaries(token: string) {
   });
 }
 
-/** A student requests one additional attempt after reaching their limit. */
+/** A student requests one additional attempt after reaching the configured limit. */
 export async function requestQuizRetake(quiz_id: string, token: string) {
   const caller = await requireSession(token);
   if (caller.role !== "student") throw new Error("Only students can request a retake.");
-  if (isTestAccount(caller.email)) throw new Error("This account can already retake worksheets.");
   const quiz = await getQuizConfig(quiz_id);
   await requireEnrollment(quiz.course_id, caller);
   requireOpen(quiz, new Date());
@@ -868,7 +860,7 @@ export async function requestQuizRetake(quiz_id: string, token: string) {
 }
 
 export async function listQuizRetakeRequests(quiz_id: string, token: string) {
-  await requireQuizViewer(token, quiz_id);
+  await requireQuizOwnerOrAdmin(token, quiz_id);
   const requests = await unwrap<any[]>(
     db
       .from("quiz_retake_requests")
@@ -930,18 +922,8 @@ export async function reviewQuizRetakeRequest(
 }
 
 export async function requireQuizOwnerOrAdmin(token: string, quizId: string) {
-  return requireQuizAccess(token, quizId, false);
-}
-
-/** Read access used by LiveUser/Test View without granting mutation rights. */
-async function requireQuizViewer(token: string, quizId: string) {
-  return requireQuizAccess(token, quizId, true);
-}
-
-async function requireQuizAccess(token: string, quizId: string, allowTestViewer: boolean) {
   const caller = await requireStaff(token);
   if (caller.role === "teacher") {
-    if (allowTestViewer && isTestAccount(caller.email)) return caller;
     const quiz = await getQuizConfig(quizId);
     const course = await unwrap<any>(
       db.from("courses").select("teacher_id").eq("id", quiz.course_id).maybeSingle(),
@@ -969,7 +951,7 @@ export async function updateQuizRetakePolicy(
 }
 
 export async function listQuizAttemptsForQuiz(quiz_id: string, token: string) {
-  await requireQuizViewer(token, quiz_id);
+  await requireQuizOwnerOrAdmin(token, quiz_id);
   const quiz = await getQuizConfig(quiz_id);
   const [attempts, grants, overrides] = await Promise.all([
     unwrap<any[]>(
@@ -1110,7 +1092,7 @@ export async function overrideQuizAttempt(
 
 /** Full attempt detail incl. per-question results for one student. */
 export async function listStudentAttemptDetail(quiz_id: string, student_id: string, token: string) {
-  await requireQuizViewer(token, quiz_id);
+  await requireQuizOwnerOrAdmin(token, quiz_id);
   const [quiz, profile, attempts, override] = await Promise.all([
     unwrap<any>(db.from("quizzes").select("id, title").eq("id", quiz_id).maybeSingle()),
     unwrap<any>(
@@ -1441,8 +1423,9 @@ export async function deleteQuiz(tokenStr: string, id: string, mode: "soft" | "h
     .filter((p): p is string => typeof p === "string" && p.length > 0);
   if (paths.length) {
     try {
-      const { supabaseAdmin } = await import("@/integrations/db/client.server");
-      await supabaseAdmin.storage.from("course-materials").remove(paths);
+      const { storage } = await import("@/integrations/db/client.server");
+      const { error } = await storage.from("course-materials").remove(paths);
+      if (error) throw new Error(`Storage cleanup failed: ${error.message}`);
     } catch {
       /* best-effort */
     }

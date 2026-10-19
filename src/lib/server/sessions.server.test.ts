@@ -1,18 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import type { Pool } from "pg";
+import { _resetPool, _setPoolForTests } from "@/integrations/db/client.server";
+import { revokeSessions } from "./sessions.server";
 
-process.env["SUPABASE_URL"] ??= "https://test.supabase.co";
-process.env["SUPABASE_SERVICE_ROLE_KEY"] ??= "test-service-role-key-1234567890abcdef";
-process.env["SUPABASE_PUBLISHABLE_KEY"] ??= "test-publishable-key";
 
 describe("sessions.server edge cases", () => {
   const origSessionSecret = process.env["SESSION_SECRET"];
-  const origServiceKey = process.env["SUPABASE_SERVICE_ROLE_KEY"];
 
   afterEach(() => {
     if (origSessionSecret === undefined) delete process.env["SESSION_SECRET"];
     else process.env["SESSION_SECRET"] = origSessionSecret;
-    if (origServiceKey === undefined) delete process.env["SUPABASE_SERVICE_ROLE_KEY"];
-    else process.env["SUPABASE_SERVICE_ROLE_KEY"] = origServiceKey;
   });
 
   describe("sessionSecret", () => {
@@ -28,18 +25,11 @@ describe("sessions.server edge cases", () => {
       expect(() => sessionSecret()).toThrow("Missing SESSION_SECRET");
     });
 
-    it("does not fall back to SUPABASE_SERVICE_ROLE_KEY", async () => {
-      delete process.env["SESSION_SECRET"];
-      process.env["SUPABASE_SERVICE_ROLE_KEY"] = "service-key-1234567890abcdef1234";
-      const { sessionSecret } = await import("./sessions.server");
-      expect(() => sessionSecret()).toThrow("Missing SESSION_SECRET");
-    });
   });
 
   describe("verifySessionToken edge cases", () => {
     it("rejects token with missing sub field", async () => {
       process.env["SESSION_SECRET"] = "edge-case-secret-1234567890abcdef1234";
-      process.env["SUPABASE_SERVICE_ROLE_KEY"] = "other-key-1234567890abcdef1234";
 
       const { verifySessionToken } = await import("./sessions.server");
       const { createHmac } = await import("node:crypto");
@@ -53,9 +43,21 @@ describe("sessions.server edge cases", () => {
       expect(() => verifySessionToken(`${payload}.${sig}`)).toThrow("Unauthorized");
     });
 
+    it("rejects a correctly signed token without a revocable jti", async () => {
+      process.env["SESSION_SECRET"] = "legacy-token-secret-1234567890abcdef";
+      const { verifySessionToken } = await import("./sessions.server");
+      const { createHmac } = await import("node:crypto");
+      const payload = Buffer.from(
+        JSON.stringify({ sub: "user-1", exp: Date.now() + 3600000 }),
+      ).toString("base64url");
+      const sig = createHmac("sha256", process.env["SESSION_SECRET"]!)
+        .update(payload)
+        .digest("base64url");
+      expect(() => verifySessionToken(`${payload}.${sig}`)).toThrow("Unauthorized");
+    });
+
     it("rejects token with non-string jti", async () => {
       process.env["SESSION_SECRET"] = "jti-test-secret-1234567890abcdef1234";
-      process.env["SUPABASE_SERVICE_ROLE_KEY"] = "other-key-1234567890abcdef1234";
 
       const { verifySessionToken } = await import("./sessions.server");
       const { createHmac } = await import("node:crypto");
@@ -75,7 +77,6 @@ describe("sessions.server edge cases", () => {
 
     it("rejects token with missing dot separator", async () => {
       process.env["SESSION_SECRET"] = "sep-test-secret-1234567890abcdef1234";
-      process.env["SUPABASE_SERVICE_ROLE_KEY"] = "other-key-1234567890abcdef1234";
 
       const { verifySessionToken } = await import("./sessions.server");
       expect(() => verifySessionToken("noseparator")).toThrow("Unauthorized");
@@ -83,7 +84,6 @@ describe("sessions.server edge cases", () => {
 
     it("rejects empty string token", async () => {
       process.env["SESSION_SECRET"] = "empty-test-secret-1234567890abcdef";
-      process.env["SUPABASE_SERVICE_ROLE_KEY"] = "other-key-1234567890abcdef";
 
       const { verifySessionToken } = await import("./sessions.server");
       expect(() => verifySessionToken("")).toThrow("Unauthorized");
@@ -95,7 +95,6 @@ describe("sessions.server edge cases", () => {
 
     it("returns a token with payload.signature format", async () => {
       process.env["SESSION_SECRET"] = "create-test-secret-1234567890abcdef";
-      process.env["SUPABASE_SERVICE_ROLE_KEY"] = "other-key-1234567890abcdef1234";
 
       const { createSessionToken } = await import("./sessions.server");
       const token = await createSessionToken("user-abc", undefined, okWrite);
@@ -107,7 +106,6 @@ describe("sessions.server edge cases", () => {
 
     it("accepts a custom jti parameter", async () => {
       process.env["SESSION_SECRET"] = "jti-custom-secret-1234567890abcdef";
-      process.env["SUPABASE_SERVICE_ROLE_KEY"] = "other-key-1234567890abcdef1234";
 
       const { createSessionToken, verifySessionToken } = await import("./sessions.server");
       const token = await createSessionToken("user-custom", "my-custom-jti", okWrite);
@@ -141,5 +139,22 @@ describe("sessions.server edge cases", () => {
         "Sign-in failed",
       );
     });
+  });
+
+  it("propagates PostgreSQL errors when revoking a profile's sessions", async () => {
+    const fakePool = {
+      query: async () => {
+        throw Object.assign(new Error("connection lost"), { code: "08006" });
+      },
+    } as unknown as Pool;
+    _setPoolForTests(fakePool);
+    try {
+      await expect(revokeSessions("profile-1")).rejects.toMatchObject({
+        name: "DatabaseError",
+        code: "08006",
+      });
+    } finally {
+      _resetPool();
+    }
   });
 });

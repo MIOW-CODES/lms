@@ -40,8 +40,8 @@ export const Route = createFileRoute("/api/public/avatar")({
             return new Response("Unauthorized", { status: 401 });
           }
         }
-        const { supabaseAdmin } = await import("@/integrations/db/client.server");
-        const { data, error } = await supabaseAdmin.storage.from("avatars").download(p);
+        const { storage } = await import("@/integrations/db/client.server");
+        const { data, error } = await storage.from("avatars").download(p);
         if (error || !data) return new Response("Not found", { status: 404 });
         const ext = p.split(".").pop()!;
         return new Response(data, {

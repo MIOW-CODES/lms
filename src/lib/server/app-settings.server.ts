@@ -3,14 +3,9 @@
 // which puts every student session on shared/kiosk devices under the app-wide
 // hard lock (fullscreen + input blocking + wake lock).
 //
-// Persistence follows the RFID device registry pattern (supabase/migrations/
-// 20261012000030_kiosk_lockdown_setting.sql + `db` query builder). Validation
-// for the mutation lives here, in the server path.
-//
-// DB role note: the `db` client runs as service_role (SUPABASE_SERVICE_ROLE_KEY)
-// or the DATABASE_URL table owner — both see through the RLS policy on
-// app_settings. If the client is ever switched to authenticated/anon, reads
-// return no rows and kiosk lockdown silently fails open (never turns on).
+// Persistence follows the native PostgreSQL schema migration for app_settings.
+// Validation for the mutation lives here in the server path. User-facing
+// changes remain behind administrator authorization.
 import { z } from "zod";
 import { db } from "@/integrations/db/client.server";
 import { unwrap } from "@/lib/server/utils.server";

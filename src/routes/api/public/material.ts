@@ -69,8 +69,8 @@ export const Route = createFileRoute("/api/public/material")({
           if (!isOwner && !isStaff) return new Response("Forbidden", { status: 403 });
         }
 
-        const { supabaseAdmin } = await import("@/integrations/db/client.server");
-        const { data, error } = await supabaseAdmin.storage.from("course-materials").download(p);
+        const { storage } = await import("@/integrations/db/client.server");
+        const { data, error } = await storage.from("course-materials").download(p);
         if (error || !data) return new Response("Not found", { status: 404 });
         const ext = p.split(".").pop()!;
         return new Response(data, {
@@ -78,7 +78,7 @@ export const Route = createFileRoute("/api/public/material")({
             "Content-Type": MIME[ext] ?? "application/octet-stream",
             "Content-Disposition": "inline",
             // Signed-in content: never cached by shared caches.
-            "Cache-Control": "private, max-age=300",
+            "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
           },
         });

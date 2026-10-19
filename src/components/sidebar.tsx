@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { UserAvatar } from "@/components/ui-elements";
@@ -26,8 +26,6 @@ import {
   X,
 } from "lucide-react";
 import type { Profile, Role } from "@/lib/lms";
-import { dashboardPathFor, setTestRoleView } from "@/lib/lms";
-import { isTestAccount } from "@/lib/role-view";
 import { cn } from "@/lib/utils";
 import { MiowMark, MiowWordmark } from "@/components/brand";
 import {
@@ -204,79 +202,6 @@ function pathMatches(pathname: string, to: string): boolean {
   return pathname.replace(/\/+$/, "") === to.replace(/\/+$/, "");
 }
 
-const ROLE_VIEW_OPTIONS: Array<{ role: Role; label: string }> = [
-  { role: "teacher", label: "Teacher" },
-  { role: "admin", label: "Admin" },
-  { role: "student", label: "Student" },
-];
-
-/**
- * Role-view switcher for the allowlisted demo Test Account only. Rendered
- * solely when the signed-in profile email matches the hard allowlist — every
- * other account never sees it, and the server independently re-checks the same
- * allowlist in setTestRoleView (throws "Forbidden" otherwise). The chosen view
- * is session-scoped: the real role in the DB never changes and a fresh login
- * starts back at the real role.
- */
-function RoleViewSwitcher({
-  profile,
-  collapsed = false,
-}: {
-  profile: Profile;
-  collapsed?: boolean;
-}) {
-  const navigate = useNavigate();
-  const [busy, setBusy] = useState<Role | null>(null);
-  if (!isTestAccount(profile.email)) return null;
-
-  const switchTo = async (role: Role) => {
-    if (role === profile.role || busy) return;
-    setBusy(role);
-    try {
-      await setTestRoleView(role);
-      navigate({ to: dashboardPathFor(role), replace: true });
-    } catch {
-      toast.error("Could not switch the role view.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  return (
-    <div
-      data-testid="role-view-switcher"
-      className={cn("mt-2 rounded-xl bg-sidebar-accent/80 p-3", collapsed && "px-1.5")}
-    >
-      {!collapsed && (
-        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-sidebar-foreground/60">
-          Test view
-        </p>
-      )}
-      <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
-        {ROLE_VIEW_OPTIONS.map((o) => (
-          <button
-            key={o.role}
-            type="button"
-            onClick={() => void switchTo(o.role)}
-            disabled={busy !== null}
-            aria-pressed={profile.role === o.role}
-            title={`View the portal as ${o.label}`}
-            className={cn(
-              "flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors disabled:opacity-60",
-              collapsed && "w-full",
-              profile.role === o.role
-                ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                : "text-sidebar-foreground/70 hover:bg-sidebar-primary/30 hover:text-sidebar-foreground",
-            )}
-          >
-            {collapsed ? o.label.slice(0, 2) : o.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 const SIDEBAR_KEY = "miow-sidebar-collapsed";
 
 function Breadcrumbs({ nav, subtitle }: { nav: NavItem[]; subtitle: string }) {
@@ -442,7 +367,6 @@ export function AppShell({
             </button>
           </div>
         </div>
-        <RoleViewSwitcher profile={profile} collapsed={collapsed} />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -559,7 +483,6 @@ export function AppShell({
                       </p>
                     </div>
                   </div>
-                  <RoleViewSwitcher profile={profile} />
                 </div>
               </SheetContent>
             </Sheet>

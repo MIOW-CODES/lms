@@ -1,94 +1,54 @@
-// Database client — supports both Supabase and local Postgres.
-// Auto-detects based on env vars:
-//   SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY → Supabase client
-//   DATABASE_URL → local Postgres via pg Pool
-//
-// Server code uses `db.from('table').select()...` which works identically
-// with both backends thanks to Supabase's query builder API.
+// Native PostgreSQL pool and small typed query helper used by server modules.
+// This module has no remote provider or external auth/storage backend.
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { Pool, type QueryResult } from "pg";
-
-// ── Env detection ───────────────────────────────────────────────────
-
-const SUPABASE_URL = process.env["SUPABASE_URL"] ?? "";
-const SUPABASE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"] ?? "";
-const DATABASE_URL = process.env["DATABASE_URL"] ?? process.env["POSTGRES_URL"] ?? "";
-
-const USE_SUPABASE = !!(SUPABASE_URL && SUPABASE_KEY);
-const USE_PG = !!DATABASE_URL;
-
-if (!USE_SUPABASE && !USE_PG) {
-  console.error(
-    "[db] No database configured. Set SUPABASE_URL+SUPABASE_SERVICE_ROLE_KEY or DATABASE_URL.",
-  );
-}
-
-// ── Supabase client ─────────────────────────────────────────────────
-
-let _supabase: SupabaseClient | undefined;
-
-function getSupabase(): SupabaseClient {
-  if (_supabase) return _supabase;
-  if (!USE_SUPABASE)
-    throw new Error(
-      "[db] Supabase not configured (missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)",
-    );
-  _supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  if (process.env["DEBUG_LOGS"]) console.log(`[db] Using Supabase backend (${SUPABASE_URL})`);
-  return _supabase;
-}
-
-// ── Local Postgres pool ─────────────────────────────────────────────
+import { storage as localStorage } from "./storage";
 
 let _pool: Pool | undefined;
 
 function getPool(): Pool {
   if (_pool) return _pool;
-  if (!USE_PG) throw new Error("[db] Postgres not configured (missing DATABASE_URL)");
-  // Bound the pool so a burst of concurrent requests (e.g. a whole class taking
-  // a worksheet at once) queues instead of exhausting the database's connection
-  // limit. On Vercel serverless each instance keeps its own small pool, so keep
-  // `max` conservative; Supabase's pooler (port 6543) multiplexes them.
-  const max = Number(process.env["PG_POOL_MAX"] ?? 10);
+  const connectionString = process.env["DATABASE_URL"];
+  if (!connectionString) throw new Error("[db] DATABASE_URL is required");
+  const max = Number(process.env["PG_POOL_MAX"] ?? 5);
+  if (!Number.isSafeInteger(max) || max < 1 || max > 20) {
+    throw new Error("[db] PG_POOL_MAX must be an integer between 1 and 20");
+  }
   _pool = new Pool({
-    connectionString: DATABASE_URL,
-    max: Number.isFinite(max) && max > 0 ? max : 10,
+    connectionString,
+    max,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
-    // Never let a single query pin a connection indefinitely.
     statement_timeout: 15_000,
     query_timeout: 15_000,
   });
   _pool.on("error", (err) => console.error("[db] pool error", err));
   if (process.env["DEBUG_LOGS"])
-    console.log(`[db] Using local Postgres (${DATABASE_URL.replace(/:.*@/, ":***@")})`);
+    console.log(`[db] Using PostgreSQL (${connectionString.replace(/:.*@/, ":***@")})`);
   return _pool;
 }
 
-// For tests / HMR: allow resetting pool
-export function _resetPool() {
-  _pool = undefined;
-  _supabase = undefined;
+/** Fail fast during server startup when the required database setting is absent. */
+export function assertDatabaseConfigured(): void {
+  if (!process.env["DATABASE_URL"]) throw new Error("[db] DATABASE_URL is required");
 }
 
-// Re-export getPool for raw query access
+/** For tests and development hot reload. */
+export function _resetPool(): void {
+  _pool = undefined;
+}
+
+/** Inject an isolated PostgreSQL-compatible client in tests. */
+export function _setPoolForTests(pool: Pool | undefined): void {
+  _pool = pool;
+}
+
+/** Expose the native pool for explicit transactional operations. */
 export function getPoolRaw(): Pool {
   return getPool();
 }
 
-// ── Unified db export ───────────────────────────────────────────────
-// When Supabase is configured, use its native client directly.
-// When Postgres is configured, use the QueryBuilder compat layer.
-
-import { storage as localStorage } from "./storage";
-
-// Storage backend: Supabase Storage when SUPABASE_URL is set (and no STORAGE_PATH override),
-// local filesystem otherwise. Set STORAGE_PATH to force local even on Supabase.
-const storageBackend =
-  USE_SUPABASE && !process.env["STORAGE_PATH"] ? getSupabase().storage : localStorage;
+// ── Native PostgreSQL query surface ────────────────────────────────
 
 interface DbError {
   code?: string;
@@ -115,35 +75,16 @@ interface DbQueryBuilder extends PromiseLike<{ data: unknown; error: DbError | n
 
 type DbLike = {
   from(table: string): DbQueryBuilder;
-  rpc(
-    name: string,
-    args?: Record<string, unknown>,
-  ): Promise<{ data: unknown; error: DbError | null }>;
+  rpc(name: string, args?: Record<string, unknown>): Promise<{ data: unknown; error: DbError | null }>;
 };
 
-let _db: DbLike;
+const _db = createNativePgClient();
+export const storage = localStorage;
+export const db: DbLike & { storage: typeof localStorage } = Object.assign(_db, { storage });
 
-if (USE_SUPABASE) {
-  // Supabase client already has .from() — use it directly
-  const admin = createClient(SUPABASE_URL, SUPABASE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  _db = admin as unknown as DbLike;
-} else {
-  // Build the QueryBuilder compat layer for pg
-  _db = createPgCompatLayer();
-}
+// ── Internal PostgreSQL query helper ───────────────────────────────
 
-export const db: DbLike & { storage: typeof storageBackend } = Object.assign(_db, {
-  storage: storageBackend,
-});
-
-// supabaseAdmin is an alias for db (for routes that import it by name)
-export const supabaseAdmin = db;
-
-// ── Pg QueryBuilder compat layer (Supabase-like API over raw pg) ────
-
-function createPgCompatLayer(): DbLike {
+function createNativePgClient(): DbLike {
   type Filter =
     | { type: "eq"; col: string; val: unknown }
     | { type: "gte"; col: string; val: unknown }
@@ -158,9 +99,11 @@ function createPgCompatLayer(): DbLike {
     private filters: Filter[] = [];
     private orders: Array<{ col: string; ascending: boolean }> = [];
     private limitOne: boolean = false;
+    private maxRows: number | null = null;
     private rangeStart = 0;
     private rangeSize: number | null = null;
     private expectSingle: boolean = false;
+    private expectAtMostOne: boolean = false;
     private insertData: unknown = null;
     private updateData: Record<string, unknown> | null = null;
     private returning: string | null = null;
@@ -241,7 +184,10 @@ function createPgCompatLayer(): DbLike {
     }
 
     limit(n: number): this {
-      if (n === 1) this.limitOne = true;
+      if (!Number.isSafeInteger(n) || n < 0 || n > 10_000) {
+        throw new Error("Invalid query limit");
+      }
+      this.maxRows = n;
       return this;
     }
 
@@ -255,13 +201,17 @@ function createPgCompatLayer(): DbLike {
 
     maybeSingle(): this {
       this.limitOne = true;
+      this.maxRows = 2;
       this.expectSingle = false;
+      this.expectAtMostOne = true;
       return this;
     }
 
     single(): this {
       this.limitOne = true;
+      this.maxRows = 2;
       this.expectSingle = true;
+      this.expectAtMostOne = true;
       return this;
     }
 
@@ -288,9 +238,21 @@ function createPgCompatLayer(): DbLike {
     }
 
     private async run(pool: Pool): Promise<{ data: unknown; error: DbError | null }> {
-      const table = `public.${this.table}`;
+      if (!/^[a-z_][a-z0-9_]*$/i.test(this.table)) {
+        throw new Error("Invalid table identifier");
+      }
+      const table = `public.${qi(this.table)}`;
       const params: unknown[] = [];
       let idx = 1;
+
+      const projection = (value: string): string => {
+        if (value.trim() === "*") return "*";
+        const columns = value.split(",").map((column) => column.trim());
+        if (!columns.length || columns.some((column) => !column)) {
+          throw new Error("Invalid column projection");
+        }
+        return columns.map(qi).join(", ");
+      };
 
       const whereClause = (): string => {
         if (!this.filters.length) return "";
@@ -310,7 +272,7 @@ function createPgCompatLayer(): DbLike {
           if (f.type === "is") {
             if (f.val === null) return `${qi(f.col)} IS NULL`;
             params.push(f.val);
-            return `${qi(f.col)} IS $${idx++}`;
+            return `${qi(f.col)} IS NOT DISTINCT FROM $${idx++}`;
           }
           if (f.type === "in") {
             if (!f.vals.length) return "FALSE";
@@ -332,18 +294,24 @@ function createPgCompatLayer(): DbLike {
 
       const returningClause = (): string => {
         if (!this.returning) return "";
-        return this.returning === "*" ? "RETURNING *" : `RETURNING ${this.returning}`;
+        return `RETURNING ${projection(this.returning)}`;
       };
 
       if (this.op === "select") {
-        const cols = this.selectCols === "*" ? "*" : this.selectCols;
+        const cols = projection(this.selectCols);
         const sql =
-          `SELECT ${cols} FROM ${table} ${whereClause()} ${orderClause()} ${this.limitOne ? "LIMIT 1" : this.rangeSize == null ? "" : `LIMIT ${this.rangeSize} OFFSET ${this.rangeStart}`}`.trim();
+          `SELECT ${cols} FROM ${table} ${whereClause()} ${orderClause()} ${this.rangeSize == null ? this.maxRows == null ? "" : `LIMIT ${this.maxRows}` : `LIMIT ${this.rangeSize} OFFSET ${this.rangeStart}`}`.trim();
         const res: QueryResult = await pool.query(sql + ";", params);
         if (this.limitOne) {
+          if (this.expectAtMostOne && res.rows.length > 1) {
+            return {
+              data: null,
+              error: { code: "TOO_MANY_ROWS", message: "More than one row found" },
+            };
+          }
           if (!res.rows.length) {
             if (this.expectSingle)
-              return { data: null, error: { code: "PGRST116", message: "No rows found" } };
+              return { data: null, error: { code: "NO_ROWS", message: "No rows found" } };
             return { data: null, error: null };
           }
           return { data: res.rows[0], error: null };
@@ -355,6 +323,12 @@ function createPgCompatLayer(): DbLike {
         const rows = Array.isArray(this.insertData) ? this.insertData : [this.insertData];
         if (!rows.length) return { data: [], error: null };
         const keys = Object.keys(rows[0] as Record<string, unknown>);
+        if (!keys.length || rows.some((row) => {
+          const rowKeys = Object.keys(row as Record<string, unknown>);
+          return rowKeys.length !== keys.length || keys.some((key) => !rowKeys.includes(key));
+        })) {
+          throw new Error("Invalid insert rows");
+        }
         const colsSql = keys.map(qi).join(", ");
         const valuesSql = rows
           .map((row) => {
@@ -374,10 +348,8 @@ function createPgCompatLayer(): DbLike {
           if (this.ignoreDuplicates) {
             conflictClause = ` ON CONFLICT (${targetSql}) DO NOTHING`;
           } else {
-            // Supabase semantics: `onConflict` without `ignoreDuplicates` is an
-            // upsert — conflicting rows take the new values (DO UPDATE SET), not
-            // a silent DO NOTHING (which turned the insert into a unique
-            // violation on the pg backend).
+            // An explicit conflict target updates non-key columns unless the
+            // caller asked to ignore duplicates.
             const conflictCols = new Set(this.conflictTarget.split(",").map((c) => c.trim()));
             const setSql = keys
               .filter((k) => !conflictCols.has(k))
@@ -392,9 +364,15 @@ function createPgCompatLayer(): DbLike {
           `INSERT INTO ${table} (${colsSql}) VALUES ${valuesSql}${conflictClause} ${returningClause()};`.trim();
         const res = await pool.query(sql, params);
         if (this.limitOne) {
+          if (this.expectAtMostOne && res.rows.length > 1) {
+            return {
+              data: null,
+              error: { code: "TOO_MANY_ROWS", message: "More than one row found" },
+            };
+          }
           if (!res.rows.length) {
             if (this.expectSingle)
-              return { data: null, error: { code: "PGRST116", message: "No rows found" } };
+              return { data: null, error: { code: "NO_ROWS", message: "No rows found" } };
             return { data: null, error: null };
           }
           return { data: res.rows[0], error: null };
@@ -417,9 +395,15 @@ function createPgCompatLayer(): DbLike {
         const res = await pool.query(sql, params);
         if (this.returning) {
           if (this.limitOne) {
+            if (this.expectAtMostOne && res.rows.length > 1) {
+              return {
+                data: null,
+                error: { code: "TOO_MANY_ROWS", message: "More than one row found" },
+              };
+            }
             if (!res.rows.length) {
               if (this.expectSingle)
-                return { data: null, error: { code: "PGRST116", message: "No rows found" } };
+                return { data: null, error: { code: "NO_ROWS", message: "No rows found" } };
               return { data: null, error: null };
             }
             return { data: res.rows[0], error: null };
@@ -436,9 +420,15 @@ function createPgCompatLayer(): DbLike {
         const res = await pool.query(sql, params);
         if (this.returning) {
           if (this.limitOne) {
+            if (this.expectAtMostOne && res.rows.length > 1) {
+              return {
+                data: null,
+                error: { code: "TOO_MANY_ROWS", message: "More than one row found" },
+              };
+            }
             if (!res.rows.length) {
               if (this.expectSingle)
-                return { data: null, error: { code: "PGRST116", message: "No rows found" } };
+                return { data: null, error: { code: "NO_ROWS", message: "No rows found" } };
               return { data: null, error: null };
             }
             return { data: res.rows[0], error: null };
@@ -453,6 +443,9 @@ function createPgCompatLayer(): DbLike {
   }
 
   function qi(ident: string): string {
+    if (!/^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*$/i.test(ident)) {
+      throw new Error("Invalid column identifier");
+    }
     return ident
       .split(".")
       .map((p) => `"${p.replace(/"/g, '""')}"`)

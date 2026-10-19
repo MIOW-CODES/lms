@@ -51,7 +51,6 @@ import { useCourseSelection } from "@/hooks/useCourseWorkspace";
 
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { useLockdown } from "@/hooks/useLockdown";
-import { isTestAccount, isTestStudent } from "@/lib/role-view";
 import { toast } from "sonner";
 const WorksheetSession = lazy(() =>
   import("@/components/courses/worksheet-session").then((module) => ({
@@ -577,21 +576,17 @@ function StudentWorksheetRow({
   const [taking, setTaking] = useState(false);
   const [requestingRetake, setRequestingRetake] = useState(false);
   const queryClient = useQueryClient();
-  const isTester = isTestStudent(profile?.email);
-  const isLiveUser = isTestAccount(profile?.email);
-  const notYetOpen = !isTester && !!quiz.opens_at && new Date(quiz.opens_at).getTime() > Date.now();
-  const isClosed =
-    !isTester && !!quiz.closes_at && new Date(quiz.closes_at).getTime() <= Date.now();
+  const notYetOpen = !!quiz.opens_at && new Date(quiz.opens_at).getTime() > Date.now();
+  const isClosed = !!quiz.closes_at && new Date(quiz.closes_at).getTime() <= Date.now();
   const used = summary?.attempts_used ?? 0;
   const started = used > 0;
-  const canTake = !notYetOpen && !isClosed && (isLiveUser || !summary || summary.can_retake);
-  const canRequestRetake =
-    started && !!summary && !summary.can_retake && !notYetOpen && !isClosed && !isLiveUser;
+  const canTake = !notYetOpen && !isClosed && (!summary || summary.can_retake);
+  const canRequestRetake = started && !!summary && !summary.can_retake && !notYetOpen && !isClosed;
   const st = courseStyle(course?.color ?? "indigo");
   // One primary action, derived from attempt state — never "Retake" on a first try.
   const actionLabel = worksheetActionLabel({
     attemptsUsed: used,
-    canRetake: isLiveUser || (summary?.can_retake ?? true),
+    canRetake: summary?.can_retake ?? true,
   });
   return (
     <MotionCard className="flex flex-wrap items-center gap-3 p-4">

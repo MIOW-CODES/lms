@@ -60,27 +60,19 @@ export const logoutFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const token =
       data.token === COOKIE_SESSION_MARKER ? getCookie(SESSION_COOKIE_NAME) : data.token;
+    let revokeFailed = false;
     if (token) {
-      let caller: Awaited<ReturnType<typeof requireSession>> | null = null;
       try {
-        caller = await requireSession(token, { allowTemporaryPin: true });
-      } catch (error) {
-        console.warn(
-          "[auth] sign-out session validation failed",
-          error instanceof Error ? error.message : "unknown error",
-        );
-      }
-      if (caller) {
+        const profileId = server.verifySessionToken(token);
         const jti = server.sessionJti(token);
-        if (jti) {
-          try {
-            await server.revokeSessionJti(jti, caller.id);
-          } catch (error) {
-            console.error(
-              "[auth] sign-out could not revoke server session",
-              error instanceof Error ? error.message : "unknown error",
-            );
-          }
+        if (!jti) throw new Error("Session has no revocation identifier");
+        await server.revokeSessionJti(jti, profileId);
+      } catch (error) {
+        // Invalid or expired tokens cannot authorize any request; a database
+        // failure for a valid token must be surfaced so the user can retry.
+        if (!(error instanceof Error) || error.message !== "Unauthorized") {
+          console.error("[auth] sign-out could not revoke server session");
+          revokeFailed = true;
         }
       }
     }
@@ -88,6 +80,7 @@ export const logoutFn = createServerFn({ method: "POST" })
       path: "/",
       secure: process.env["NODE_ENV"] === "production",
     });
+    if (revokeFailed) throw new Error("Sign-out could not be completed on the server. Please retry.");
     return { ok: true as const };
   });
 
@@ -233,15 +226,6 @@ export const refreshSessionFn = createServerFn({ method: "POST" })
       setCookie(SESSION_COOKIE_NAME, token, sessionCookieOptions);
     return profile;
   });
-
-// Test-account role view switch (allowlist-guarded). The server checks the
-// SESSION's real profile email against a hard allowlist and throws "Forbidden"
-// for every other account — ordinary teachers/admins can never call it. The
-// chosen view is stored on the caller's session row only; the real role in the
-// DB never changes, and a fresh login starts back at the real role.
-export const setTestRoleViewFn = createServerFn({ method: "POST" })
-  .validator((data) => server.schemas.roleView.parse(data))
-  .handler(async ({ data }) => server.setTestRoleView(data.token, data.view));
 
 /* ---------- Announcements ---------- */
 

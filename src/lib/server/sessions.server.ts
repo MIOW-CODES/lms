@@ -50,9 +50,7 @@ export async function createSessionToken(
 }
 
 /**
- * JTI carried by a signed token (or null for legacy tokens issued without one).
- * The session-scoped role view is keyed by jti, so callers that need to address
- * the session row use this instead of re-implementing the payload parse.
+ * JTI carried by a signed token, or null for malformed payloads.
  */
 export function sessionJti(token: string): string | null {
   const payloadPart = token.split(".")[0];
@@ -65,69 +63,43 @@ export function sessionJti(token: string): string | null {
   }
 }
 
-/**
- * Write the session-scoped role view (allowlisted test account only — the
- * caller enforces the email allowlist). Only the CURRENT session row is
- * touched, so every fresh login starts from the real role again. Returns
- * false when the session row is missing or already revoked.
- */
-export async function setSessionRoleView(
-  jti: string,
-  profileId: string,
-  view: string,
-): Promise<boolean> {
-  const updated = await unwrap<Array<{ jti: string }>>(
-    db
-      .from("sessions")
-      .update({ role_view: view })
-      .eq("jti", jti)
-      .eq("profile_id", profileId)
-      .is("revoked_at", null)
-      .select("jti"),
-  );
-  return Array.isArray(updated) && updated.length > 0;
-}
-
 export function verifySessionToken(token: string): string {
   const [payload, sig] = token.split(".");
   if (!payload || !sig) throw new Error("Unauthorized");
-  const tryKeys = [process.env["SESSION_SECRET"]].filter(Boolean) as string[];
-  const useKeys = tryKeys.length ? tryKeys : [sessionSecret()];
-  let ok = false;
-  for (const k of useKeys) {
-    const expected = createHmac("sha256", k).update(payload).digest("base64url");
-    const a = Buffer.from(sig);
-    const b = Buffer.from(expected);
-    if (a.length === b.length && timingSafeEqual(a, b)) {
-      ok = true;
-      break;
-    }
+  const expected = createHmac("sha256", sessionSecret()).update(payload).digest("base64url");
+  const actualBytes = Buffer.from(sig);
+  const expectedBytes = Buffer.from(expected);
+  if (actualBytes.length !== expectedBytes.length || !timingSafeEqual(actualBytes, expectedBytes)) {
+    throw new Error("Unauthorized");
   }
-  if (!ok) throw new Error("Unauthorized");
   let body: { sub?: unknown; jti?: unknown; exp?: unknown };
   try {
     body = JSON.parse(Buffer.from(payload, "base64url").toString());
   } catch {
     throw new Error("Unauthorized");
   }
-  if (typeof body.sub !== "string" || typeof body.exp !== "number" || body.exp < Date.now()) {
+  if (
+    typeof body.sub !== "string" ||
+    typeof body.exp !== "number" ||
+    !Number.isFinite(body.exp) ||
+    body.exp < Date.now() ||
+    typeof body.jti !== "string" ||
+    body.jti.length === 0
+  ) {
     throw new Error("Unauthorized");
   }
-  if (body.jti != null && typeof body.jti !== "string") throw new Error("Unauthorized");
   return body.sub;
 }
 
-/** Revoke all active sessions for a profile (best-effort). */
+/** Revoke all active sessions for a profile; callers must observe DB failures. */
 export async function revokeSessions(profileId: string): Promise<void> {
-  try {
-    await (db
+  await unwrap(
+    db
       .from("sessions")
       .update({ revoked_at: new Date().toISOString() })
       .eq("profile_id", profileId)
-      .is("revoked_at", null) as any);
-  } catch (e) {
-    console.error("[sessions] JTI revoke failed:", e);
-  }
+      .is("revoked_at", null),
+  );
 }
 
 /** Revoke only the caller's current session (used for explicit sign-out). */

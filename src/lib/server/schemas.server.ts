@@ -1,6 +1,5 @@
 // Zod validation schemas for all server functions.
 import { z } from "zod";
-import { ROLE_VIEWS } from "@/lib/role-view";
 
 const uuid = z.string().uuid();
 const nullableScore = z.number().min(0).max(100).nullable();
@@ -75,7 +74,7 @@ const tosItem = z.object({
 // The Virtual Arduino Lab renders an empty board with manual pin-to-pin wiring,
 // so every lab_task question must explicitly require breadboard wiring in its
 // question text. Mirrors the DB guard in
-// supabase/migrations/20261012000020_require_breadboarding_in_sim_questions.sql.
+// native migrations/20261012000020_require_breadboarding_in_sim_questions.sql.
 export const LAB_TASK_WIRING_RE = /breadboard|wiring|wire|jumper|resistor|pin-to-pin/i;
 
 export const LAB_TASK_WIRING_MSG =
@@ -172,9 +171,6 @@ export const schemas = {
     ...token,
   }),
   session: z.object(token),
-  // Session-scoped portal view for the allowlisted test account. The handler
-  // re-checks the session's real profile email allowlist server-side.
-  roleView: z.object({ view: z.enum(ROLE_VIEWS), ...token }),
   id: z.object({ id: uuid, ...token }),
   studentScoped: z.object({ studentId: uuid, ...token }),
   courseScoped: z.object({ courseId: uuid, ...token }),

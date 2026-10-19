@@ -5,7 +5,7 @@ import { schemas, LAB_TASK_WIRING_MSG } from "@/lib/server/schemas.server";
 // Every simulation (lab_task) quiz question must have a breadboarding task: its
 // question text must require breadboard wiring (breadboard, wire/wiring,
 // jumper, resistor or pin-to-pin). lab_task = false questions stay unconstrained.
-// Mirrors supabase/migrations/20261012000020_require_breadboarding_in_sim_questions.sql.
+// Mirrors the native migration that requires breadboarding in simulation questions.
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const TOKEN = "test-token";

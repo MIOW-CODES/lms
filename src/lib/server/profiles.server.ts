@@ -1,7 +1,7 @@
 // Profiles & kiosk auth — CRUD, PIN login, RFID, biometrics.
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { db, supabaseAdmin } from "@/integrations/db/client.server";
+import { db, storage } from "@/integrations/db/client.server";
 import {
   authRateLimitAllows,
   clearAuthFailures,
@@ -706,7 +706,7 @@ export async function uploadAvatar(tokenStr: string, base64: string, contentType
     .digest("hex")
     .slice(0, 16);
   const path = `${caller.id}/avatar_${Date.now()}_${rand}.${ext}`;
-  const { error } = await supabaseAdmin.storage
+  const { error } = await storage
     .from(AVATAR_BUCKET)
     .upload(path, buffer, { contentType, upsert: false });
   if (error) throw new Error(`Storage upload failed (${error.message})`);
@@ -721,7 +721,7 @@ export async function uploadAvatar(tokenStr: string, base64: string, contentType
     const m = previous?.match(/[?&]p=([^&]+)/);
     const old = m ? decodeURIComponent(m[1]!) : null;
     if (old && old.startsWith(`${caller.id}/`) && old !== path) {
-      await supabaseAdmin.storage.from(AVATAR_BUCKET).remove([old]);
+      await storage.from(AVATAR_BUCKET).remove([old]);
     }
   } catch {
     /* cleanup is best-effort */
