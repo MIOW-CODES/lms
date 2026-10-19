@@ -22,6 +22,11 @@ export interface SeedIae106Result {
   enrollmentsAdded: number;
 }
 
+export function isIae106Cohort(profile: { grade_level: number | null; section: string | null }) {
+  const section = (profile.section ?? "").trim().toUpperCase();
+  return profile.grade_level === 14 || section.startsWith("BTLED") || section === "B8";
+}
+
 export async function seedIae106CourseAndQuizzes(): Promise<SeedIae106Result> {
   // 1. Locate or select teacher (Dr. Alan L. Vergara or any teacher/admin)
   const { data: teacherData } = await db
@@ -736,13 +741,11 @@ export async function seedIae106CourseAndQuizzes(): Promise<SeedIae106Result> {
   }
 
   // 5. Enroll Students
-  // Target: College 2nd-year (grade_level = 14), BTLED-section students, section
-  // B8, and known demo/test accounts (2026-0000 / test@). NOT every student —
-  // the previous query enrolled the whole school, which made IAE 106 appear in
-  // every learner's course list.
+  // Target only the course's actual grade/section cohort. Do not add demo/test
+  // accounts as exceptions; the previous broad query enrolled the whole school.
   const { data: eligibleStudents } = await db
     .from("profiles")
-    .select("id, grade_level, section, student_id, email")
+    .select("id, grade_level, section")
     .eq("role", "student")
     .is("deleted_at", null);
 
@@ -750,17 +753,8 @@ export async function seedIae106CourseAndQuizzes(): Promise<SeedIae106Result> {
     id: string;
     grade_level: number | null;
     section: string | null;
-    student_id: string | null;
-    email: string | null;
   };
-  const inIae106Cohort = (p: CohortProfile) =>
-    p.grade_level === 14 ||
-    (p.section ?? "").toUpperCase().startsWith("BTLED") ||
-    p.section === "B8" ||
-    p.student_id === "2026-0000" ||
-    (p.email ?? "").toLowerCase() === "test@g.msuiit.edu.ph";
-
-  const studentRows = ((eligibleStudents as CohortProfile[] | null) ?? []).filter(inIae106Cohort);
+  const studentRows = ((eligibleStudents as CohortProfile[] | null) ?? []).filter(isIae106Cohort);
   let enrollmentsAdded = 0;
   if (studentRows.length > 0) {
     for (const s of studentRows) {
