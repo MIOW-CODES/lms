@@ -41,7 +41,9 @@ BEGIN
   LIMIT 1;
 
   IF attempt_uuid IS NULL OR quiz_uuid IS NULL THEN
-    RAISE EXCEPTION 'No force-submitted IT10 attempt found for Billy Johnwel Mapula';
+    -- A fresh installation has no historical attempt to recover.
+    RAISE NOTICE 'No force-submitted IT10 attempt found; skipping historical recovery';
+    RETURN;
   END IF;
 
   SELECT id INTO reviewer_uuid

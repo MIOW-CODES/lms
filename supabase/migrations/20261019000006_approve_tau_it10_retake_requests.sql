@@ -30,6 +30,12 @@ BEGIN
     AND quiz.deleted_at IS NULL
     AND upper(btrim(course.code)) = 'IT10';
 
+  -- Fresh installations have no historical student requests to approve.
+  IF requested_quiz_count = 0 THEN
+    RAISE NOTICE 'No pending Tau IT10 retake requests; skipping historical approval';
+    RETURN;
+  END IF;
+
   IF requested_quiz_count <> 1 THEN
     RAISE EXCEPTION
       'Expected one common requested IT10 worksheet; found % distinct worksheets',
