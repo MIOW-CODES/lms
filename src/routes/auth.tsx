@@ -55,6 +55,7 @@ function AuthPage() {
   const [showPin, setShowPin] = useState(false);
   const [showPinHelp, setShowPinHelp] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const modeTabs = useRef<Partial<Record<Mode, HTMLButtonElement | null>>>({});
   // Live DOM refs for the sign-in inputs. Browser/password-manager autofill
   // can populate the fields without firing React onChange (mobile autofill
@@ -75,6 +76,7 @@ function AuthPage() {
   });
 
   useEffect(() => {
+    setHydrated(true);
     const existing = loadSession();
     if (existing) navigate({ to: dashboardPathFor(existing.role), replace: true });
   }, [navigate]);
@@ -436,7 +438,7 @@ function AuthPage() {
                 </div>
                 <button
                   type="submit"
-                  disabled={busy}
+                  disabled={!hydrated || busy}
                   className="h-11 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
                 >
                   Sign In

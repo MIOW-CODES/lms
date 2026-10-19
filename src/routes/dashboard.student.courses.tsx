@@ -44,7 +44,7 @@ import {
 import { courseLevelLabel } from "@/lib/course-levels";
 import { assignmentActionLabel, worksheetActionLabel } from "@/lib/assessment-actions";
 import { cn } from "@/lib/utils";
-import { LoadingSkeleton } from "@/components/ui-elements";
+import { LoadError, LoadingSkeleton } from "@/components/ui-elements";
 import { CourseWorkspaceShell, type WorkspaceTab } from "@/components/courses/course-workspace";
 import { DAYS } from "@/components/courses/constants";
 import { useCourseSelection } from "@/hooks/useCourseWorkspace";
@@ -81,22 +81,25 @@ function StudentCoursesPage() {
   const [tab, setTab] = useState<Tab>("courses");
   const [selectedCourseId, selectCourse] = useCourseSelection();
 
-  const { data: courses } = useQuery({
+  const coursesQuery = useQuery({
     queryKey: ["courses"],
     queryFn: listCourses,
     enabled: !!profile,
   });
-  const { data: assignments } = useQuery({
+  const { data: courses } = coursesQuery;
+  const assignmentsQuery = useQuery({
     queryKey: ["assignments"],
     queryFn: listAssignments,
     enabled: !!profile,
   });
-  const { data: quizzes } = useQuery({
+  const { data: assignments } = assignmentsQuery;
+  const quizzesQuery = useQuery({
     queryKey: ["quizzes"],
     queryFn: listQuizzes,
     enabled: !!profile,
   });
-  const { data: submissions } = useQuery({
+  const { data: quizzes } = quizzesQuery;
+  const submissionsQuery = useQuery({
     queryKey: ["submissions", profile?.id],
     queryFn: () => {
       if (!profile?.id) return [];
@@ -104,16 +107,19 @@ function StudentCoursesPage() {
     },
     enabled: !!profile,
   });
-  const { data: quizSummaries } = useQuery({
+  const { data: submissions } = submissionsQuery;
+  const quizSummariesQuery = useQuery({
     queryKey: ["quiz-summaries"],
     queryFn: myQuizSummaries,
     enabled: !!profile,
   });
-  const { data: enrolledCourseIds } = useQuery({
+  const { data: quizSummaries } = quizSummariesQuery;
+  const enrollmentsQuery = useQuery({
     queryKey: ["enrollments", "student", profile?.id],
     queryFn: () => enrollmentsForStudent(profile!.id),
     enabled: !!profile?.id,
   });
+  const { data: enrolledCourseIds } = enrollmentsQuery;
 
   // The server returns only the courses this student is enrolled in; keep the
   // enrollment check as display-only belt-and-braces. Grade level is NOT a
@@ -133,6 +139,34 @@ function StudentCoursesPage() {
     !courses || !assignments || !quizzes || !submissions || !quizSummaries || !enrolledCourseIds;
 
   if (!profile) return null;
+
+  const failedQuery = [
+    coursesQuery,
+    assignmentsQuery,
+    quizzesQuery,
+    submissionsQuery,
+    quizSummariesQuery,
+    enrollmentsQuery,
+  ].find((query) => query.isError);
+
+  if (failedQuery)
+    return (
+      <AppShell nav={STUDENT_NAV} profile={profile} subtitle="Student Portal">
+        <LoadError
+          what="courses"
+          onRetry={() => {
+            void Promise.all([
+              coursesQuery.refetch(),
+              assignmentsQuery.refetch(),
+              quizzesQuery.refetch(),
+              submissionsQuery.refetch(),
+              quizSummariesQuery.refetch(),
+              enrollmentsQuery.refetch(),
+            ]);
+          }}
+        />
+      </AppShell>
+    );
 
   if (isLoading)
     return (
