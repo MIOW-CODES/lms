@@ -80,7 +80,8 @@ export const logoutFn = createServerFn({ method: "POST" })
       path: "/",
       secure: process.env["NODE_ENV"] === "production",
     });
-    if (revokeFailed) throw new Error("Sign-out could not be completed on the server. Please retry.");
+    if (revokeFailed)
+      throw new Error("Sign-out could not be completed on the server. Please retry.");
     return { ok: true as const };
   });
 

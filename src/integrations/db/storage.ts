@@ -52,7 +52,11 @@ async function realBucketRoot(root: string, bucketRoot: string): Promise<string>
 }
 
 /** Resolve a target one directory at a time so a symlink cannot redirect mkdir outside the bucket. */
-async function safeTargetPath(target: Target, realBucket: string, createParents: boolean): Promise<string> {
+async function safeTargetPath(
+  target: Target,
+  realBucket: string,
+  createParents: boolean,
+): Promise<string> {
   const relative = path.relative(target.bucketRoot, target.full);
   if (!relative || !isWithinOrSame(target.bucketRoot, target.full)) throw new Error("Invalid path");
   const parts = relative.split(path.sep);
@@ -137,7 +141,7 @@ export const storage = {
         }
       },
 
-      async remove(paths: string[]): Promise<StorageResult<{}>> {
+      async remove(paths: string[]): Promise<StorageResult<Record<string, never>>> {
         try {
           if (!Array.isArray(paths)) throw new Error("Invalid paths");
           const targets = paths.map((filePath) => resolveTarget(bucket, filePath));

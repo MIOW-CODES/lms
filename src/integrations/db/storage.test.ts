@@ -29,6 +29,7 @@ describe("local PostgreSQL deployment file storage", () => {
     expect(await downloaded.data?.text()).toBe("pdf-data");
     const removed = await bucket.remove(["course-a/material.pdf"]);
     expect(removed.error).toBeNull();
+    expect(removed.data).toEqual({});
     expect((await bucket.download("course-a/material.pdf")).error).not.toBeNull();
   });
 
@@ -41,7 +42,9 @@ describe("local PostgreSQL deployment file storage", () => {
 
     const bucket = storage.from("avatars");
     expect((await bucket.download("../storage-evil/secret.txt")).error).not.toBeNull();
-    expect((await bucket.upload("../storage-evil/replaced.txt", Buffer.from("bad"))).error).not.toBeNull();
+    expect(
+      (await bucket.upload("../storage-evil/replaced.txt", Buffer.from("bad"))).error,
+    ).not.toBeNull();
     expect((await bucket.remove(["../storage-evil/secret.txt"])).error).not.toBeNull();
     expect(await fs.readFile(outside, "utf8")).toBe("unchanged");
     await expect(fs.access(path.join(root, "avatars", "missing.txt"))).rejects.toThrow();
@@ -65,22 +68,27 @@ describe("local PostgreSQL deployment file storage", () => {
     expect(await fs.readFile(first, "utf8")).toBe("keep until all paths are validated");
   });
 
-  it.skipIf(process.platform === "win32")("rejects symlinks into paths outside the bucket", async () => {
-    const bucketRoot = path.join(tempRoot, "storage", "avatars");
-    const externalDir = path.join(tempRoot, "outside");
-    await fs.mkdir(bucketRoot, { recursive: true });
-    await fs.mkdir(externalDir, { recursive: true });
-    const externalFile = path.join(externalDir, "secret.txt");
-    await fs.writeFile(externalFile, "unchanged");
-    await fs.symlink(externalFile, path.join(bucketRoot, "link.txt"));
-    await fs.symlink(externalDir, path.join(bucketRoot, "linked-dir"), "dir");
+  it.skipIf(process.platform === "win32")(
+    "rejects symlinks into paths outside the bucket",
+    async () => {
+      const bucketRoot = path.join(tempRoot, "storage", "avatars");
+      const externalDir = path.join(tempRoot, "outside");
+      await fs.mkdir(bucketRoot, { recursive: true });
+      await fs.mkdir(externalDir, { recursive: true });
+      const externalFile = path.join(externalDir, "secret.txt");
+      await fs.writeFile(externalFile, "unchanged");
+      await fs.symlink(externalFile, path.join(bucketRoot, "link.txt"));
+      await fs.symlink(externalDir, path.join(bucketRoot, "linked-dir"), "dir");
 
-    const bucket = storage.from("avatars");
-    expect((await bucket.download("link.txt")).error).not.toBeNull();
-    expect((await bucket.upload("link.txt", Buffer.from("bad"), { upsert: true })).error).not.toBeNull();
-    expect((await bucket.upload("linked-dir/new.txt", Buffer.from("bad"))).error).not.toBeNull();
-    expect((await bucket.remove(["link.txt"])).error).not.toBeNull();
-    expect(await fs.readFile(externalFile, "utf8")).toBe("unchanged");
-    await expect(fs.access(path.join(externalDir, "new.txt"))).rejects.toThrow();
-  });
+      const bucket = storage.from("avatars");
+      expect((await bucket.download("link.txt")).error).not.toBeNull();
+      expect(
+        (await bucket.upload("link.txt", Buffer.from("bad"), { upsert: true })).error,
+      ).not.toBeNull();
+      expect((await bucket.upload("linked-dir/new.txt", Buffer.from("bad"))).error).not.toBeNull();
+      expect((await bucket.remove(["link.txt"])).error).not.toBeNull();
+      expect(await fs.readFile(externalFile, "utf8")).toBe("unchanged");
+      await expect(fs.access(path.join(externalDir, "new.txt"))).rejects.toThrow();
+    },
+  );
 });

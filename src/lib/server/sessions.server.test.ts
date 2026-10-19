@@ -3,7 +3,6 @@ import type { Pool } from "pg";
 import { _resetPool, _setPoolForTests } from "@/integrations/db/client.server";
 import { revokeSessions } from "./sessions.server";
 
-
 describe("sessions.server edge cases", () => {
   const origSessionSecret = process.env["SESSION_SECRET"];
 
@@ -24,7 +23,6 @@ describe("sessions.server edge cases", () => {
       const { sessionSecret } = await import("./sessions.server");
       expect(() => sessionSecret()).toThrow("Missing SESSION_SECRET");
     });
-
   });
 
   describe("verifySessionToken edge cases", () => {

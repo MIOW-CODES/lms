@@ -1,6 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from "bun:test";
-import { unwrap, withoutToken, sleep, isUniqueViolation, DatabaseError, allDatabaseRows } from "./utils.server";
+import {
+  unwrap,
+  withoutToken,
+  sleep,
+  isUniqueViolation,
+  DatabaseError,
+  allDatabaseRows,
+} from "./utils.server";
 
 describe("isUniqueViolation", () => {
   it("recognizes PostgreSQL SQLSTATE 23505 only", () => {
@@ -21,7 +28,9 @@ describe("sleep", () => {
 
 describe("unwrap", () => {
   it("returns data on success", async () => {
-    await expect(unwrap(Promise.resolve({ data: { id: 1 }, error: null }))).resolves.toEqual({ id: 1 });
+    await expect(unwrap(Promise.resolve({ data: { id: 1 }, error: null }))).resolves.toEqual({
+      id: 1,
+    });
   });
 
   it("surfaces PostgreSQL errors without retrying a failed write", async () => {
@@ -49,7 +58,10 @@ describe("unwrap", () => {
 
 describe("withoutToken", () => {
   it("removes only the token property", () => {
-    expect(withoutToken({ id: "123", token: "secret", extra: true })).toEqual({ id: "123", extra: true });
+    expect(withoutToken({ id: "123", token: "secret", extra: true })).toEqual({
+      id: "123",
+      extra: true,
+    });
   });
 });
 

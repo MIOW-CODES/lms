@@ -380,10 +380,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
         attempt = {
           questions: persisted ?? questions,
           duration: quiz.duration_minutes * 60,
-          closesAt:
-            quiz.closes_at
-              ? new Date(quiz.closes_at).getTime()
-              : null,
+          closesAt: quiz.closes_at ? new Date(quiz.closes_at).getTime() : null,
           submissionId: storedSubmissionId(progressKey(id)),
         };
         if (!persisted) setStoredQuestions(progressKey(id), attempt.questions);

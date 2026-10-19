@@ -745,10 +745,7 @@ export async function quizAttemptInfo(quiz_id: string, token: string) {
     retake_score_policy: quiz.retake_score_policy,
     attempts_used: attempts.length,
     attempts_allowed: ceiling,
-    can_retake:
-      attempts.length === 0 ||
-      ceiling == null ||
-      attempts.length < ceiling,
+    can_retake: attempts.length === 0 || ceiling == null || attempts.length < ceiling,
     effective_score: isScoreReleased ? (eff?.score ?? null) : null,
     effective_total: isScoreReleased ? (eff?.total ?? null) : null,
     extra_attempts: extra,
@@ -812,10 +809,7 @@ export async function listMyQuizSummaries(token: string) {
       quiz_id: quiz.id,
       attempts_used: list.length,
       attempts_allowed: ceiling,
-      can_retake:
-        list.length === 0 ||
-        ceiling == null ||
-        list.length < ceiling,
+      can_retake: list.length === 0 || ceiling == null || list.length < ceiling,
       effective_score: isScoreReleased ? (eff?.score ?? null) : null,
       effective_total: isScoreReleased ? (eff?.total ?? null) : null,
       score_released: isScoreReleased,

@@ -75,7 +75,10 @@ interface DbQueryBuilder extends PromiseLike<{ data: unknown; error: DbError | n
 
 type DbLike = {
   from(table: string): DbQueryBuilder;
-  rpc(name: string, args?: Record<string, unknown>): Promise<{ data: unknown; error: DbError | null }>;
+  rpc(
+    name: string,
+    args?: Record<string, unknown>,
+  ): Promise<{ data: unknown; error: DbError | null }>;
 };
 
 const _db = createNativePgClient();
@@ -300,7 +303,7 @@ function createNativePgClient(): DbLike {
       if (this.op === "select") {
         const cols = projection(this.selectCols);
         const sql =
-          `SELECT ${cols} FROM ${table} ${whereClause()} ${orderClause()} ${this.rangeSize == null ? this.maxRows == null ? "" : `LIMIT ${this.maxRows}` : `LIMIT ${this.rangeSize} OFFSET ${this.rangeStart}`}`.trim();
+          `SELECT ${cols} FROM ${table} ${whereClause()} ${orderClause()} ${this.rangeSize == null ? (this.maxRows == null ? "" : `LIMIT ${this.maxRows}`) : `LIMIT ${this.rangeSize} OFFSET ${this.rangeStart}`}`.trim();
         const res: QueryResult = await pool.query(sql + ";", params);
         if (this.limitOne) {
           if (this.expectAtMostOne && res.rows.length > 1) {
@@ -323,10 +326,13 @@ function createNativePgClient(): DbLike {
         const rows = Array.isArray(this.insertData) ? this.insertData : [this.insertData];
         if (!rows.length) return { data: [], error: null };
         const keys = Object.keys(rows[0] as Record<string, unknown>);
-        if (!keys.length || rows.some((row) => {
-          const rowKeys = Object.keys(row as Record<string, unknown>);
-          return rowKeys.length !== keys.length || keys.some((key) => !rowKeys.includes(key));
-        })) {
+        if (
+          !keys.length ||
+          rows.some((row) => {
+            const rowKeys = Object.keys(row as Record<string, unknown>);
+            return rowKeys.length !== keys.length || keys.some((key) => !rowKeys.includes(key));
+          })
+        ) {
           throw new Error("Invalid insert rows");
         }
         const colsSql = keys.map(qi).join(", ");
