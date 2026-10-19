@@ -97,7 +97,73 @@ export function labTaskWiringProblem(data: {
   return LAB_TASK_WIRING_RE.test(data.question) ? null : LAB_TASK_WIRING_MSG;
 }
 
+const recordScore = z.object({
+  value: z.number().finite().min(0).max(100000),
+  reason: z.string().trim().min(1).max(1000).optional(),
+});
+const recordDate = z.union([z.literal(""), z.iso.date()]);
+export const classRecordDraftSchema = z
+  .object({
+    start: recordDate,
+    end: recordDate,
+    columns: z
+      .array(
+        z.object({
+          id: uuid,
+          title: z.string().trim().min(1).max(200),
+          category: z.enum(["ww", "ex", "pt"]),
+          maximum: z.number().finite().positive().max(100000),
+          source: z.object({ kind: z.enum(["quiz", "assignment"]), id: uuid }).optional(),
+        }),
+      )
+      .max(200),
+    scores: z.record(uuid, z.record(uuid, recordScore)),
+    attendance: z.record(uuid, recordScore.extend({ value: z.number().finite().min(0).max(100) })),
+    sessions: z
+      .array(
+        z.object({
+          id: uuid,
+          date: z.iso.date(),
+          cancelled: z.boolean(),
+          marks: z.record(uuid, z.enum(["present", "late", "excused", "absent"])),
+        }),
+      )
+      .max(500),
+  })
+  .superRefine((draft, ctx) => {
+    if (draft.start && draft.end && draft.start > draft.end)
+      ctx.addIssue({ code: "custom", message: "Period end must follow its start." });
+    if (new Set(draft.columns.map((c) => c.id)).size !== draft.columns.length)
+      ctx.addIssue({ code: "custom", message: "Duplicate assessment columns." });
+    const sources = draft.columns.flatMap((c) =>
+      c.source ? [`${c.source.kind}:${c.source.id}`] : [],
+    );
+    if (new Set(sources).size !== sources.length)
+      ctx.addIssue({ code: "custom", message: "An assessment can only appear once per period." });
+    if (new Set(draft.sessions.map((s) => s.id)).size !== draft.sessions.length)
+      ctx.addIssue({ code: "custom", message: "Duplicate sessions." });
+  });
+
 export const schemas = {
+  questionReview: z.object({
+    quizId: uuid,
+    attemptId: uuid,
+    questionId: uuid,
+    correct: z.boolean(),
+    expected: z.boolean(),
+    reason: z.string().trim().min(1).max(1000),
+    ...token,
+  }),
+  regradeIdentification: z.object({ quizId: uuid, ...token }),
+  classRecordRead: z.object({ courseId: uuid, quarter: z.number().int().min(1).max(8), ...token }),
+  classRecordSave: z.object({
+    courseId: uuid,
+    quarter: z.number().int().min(1).max(8),
+    revision: z.number().int().nonnegative(),
+    draft: classRecordDraftSchema,
+    publishIds: z.array(uuid).max(1000).default([]),
+    ...token,
+  }),
   rfid: z.object({ uid: z.string().min(1).max(64) }),
   pinLogin: z.object({ login: z.string().min(1).max(320), secret: z.string().min(1).max(200) }),
   avatarUpload: z.object({
@@ -173,6 +239,23 @@ export const schemas = {
     student_id: uuid,
     scan_type: z.enum(["in", "out"]),
     status: z.enum(["on-time", "late", "excused"]),
+    timestamp: z.string().max(50).optional(),
+    course_id: uuid.nullable().optional(),
+    ...token,
+  }),
+  bulkAttendanceLog: z.object({
+    items: z
+      .array(
+        z.object({
+          student_id: uuid,
+          scan_type: z.enum(["in", "out"]),
+          status: z.enum(["on-time", "late", "excused"]),
+          timestamp: z.string().max(50).optional(),
+          course_id: uuid.nullable().optional(),
+        }),
+      )
+      .min(1)
+      .max(1000),
     ...token,
   }),
   attendancePatch: z.object({

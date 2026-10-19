@@ -3,7 +3,8 @@ import { test, expect, type Page } from "@playwright/test";
 async function signIn(page: Page) {
   await page.goto("/auth");
   // Desktop switches to RFID in an effect, so this also waits for hydration.
-  await expect(page.getByRole("tab", { name: /RFID/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: /PIN/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("button", { name: "Sign In", exact: true })).toBeEnabled();
   await page.getByRole("tab", { name: /PIN/ }).click();
   await page.getByLabel("Student ID, email, or username").fill("test@g.msuiit.edu.ph");
   await page.getByLabel("PIN or password", { exact: true }).fill("0916");

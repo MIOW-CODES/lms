@@ -11,6 +11,7 @@ import {
   listCourses,
   listGradesForStudent,
   transmute,
+  termLabel,
   transmutedOf,
   type Course,
   type Grade,
@@ -26,6 +27,7 @@ import {
   courseStyle,
   useProfile,
 } from "@/components/lms";
+import { scaleForCourse } from "@/lib/class-record";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/dashboard/student/grades")({
@@ -76,15 +78,24 @@ function GradesPage() {
   const att = attendancePercent(logs ?? []);
   // Server returns the enrolled courses only — no client-side scoping needed.
   const myCourses = courses ?? [];
+  const hasCollege = myCourses.some((c) => scaleForCourse(c) === "college");
   const rows = myCourses.map((c) => {
     const g = (grades ?? []).find((x) => x.course_id === c.id && x.quarter === quarter);
     return { course: c, grade: g };
   });
   const withGrades = rows.filter((r) => r.grade && transmutedOf(r.grade, att) != null);
-  const gwa = withGrades.length
+  const schoolGrades = withGrades.filter((r) => scaleForCourse(r.course) === "deped");
+  const collegeGrades = withGrades.filter(
+    (r) => r.grade?.class_record_snapshot?.scale === "college",
+  );
+  const collegeAverage = collegeGrades.length
+    ? collegeGrades.reduce((sum, r) => sum + r.grade!.class_record_snapshot!.final, 0) /
+      collegeGrades.length
+    : null;
+  const gwa = schoolGrades.length
     ? Math.round(
-        (withGrades.reduce((s, r) => s + (transmutedOf(r.grade!, att) ?? 0), 0) /
-          withGrades.length) *
+        (schoolGrades.reduce((s, r) => s + (transmutedOf(r.grade!, att) ?? 0), 0) /
+          schoolGrades.length) *
           10,
       ) / 10
     : null;
@@ -96,7 +107,8 @@ function GradesPage() {
           <h1 className="font-display text-2xl font-bold sm:text-3xl">Report Card</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Weighted 10% Attendance · 20% Written Work · 30% Periodical Exam · 40% Performance
-            Tasks, then transmuted per DepEd DO 8, s. 2015. Tap a subject for the full breakdown.
+            Tasks. High school uses DepEd transmutation; college uses the worksheet’s 1.00–5.00
+            scale. Tap a subject for its published breakdown.
           </p>
         </div>
         <button
@@ -107,8 +119,8 @@ function GradesPage() {
         </button>
       </div>
 
-      <div className="mb-5 flex gap-1 rounded-xl bg-muted/80 p-1 backdrop-blur-sm">
-        {[1, 2, 3, 4].map((q) => (
+      <div className="mb-5 grid grid-cols-4 gap-1 rounded-xl bg-muted/80 p-1 backdrop-blur-sm">
+        {Array.from({ length: hasCollege ? 8 : 4 }, (_, i) => i + 1).map((q) => (
           <button
             key={q}
             onClick={() => setQuarter(q)}
@@ -117,7 +129,7 @@ function GradesPage() {
               quarter === q ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground",
             )}
           >
-            Q{q}
+            {hasCollege ? termLabel(q, { education_level: "college" }) : `Q${q}`}
           </button>
         ))}
       </div>
@@ -141,7 +153,7 @@ function GradesPage() {
       <Card className="mb-5 flex items-center justify-between p-5">
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            General Weighted Average — Quarter {quarter}
+            High school average — Period {quarter}
           </h2>
           <p className="mt-1 font-display text-3xl font-bold">{gwa ?? "—"}</p>
         </div>
@@ -152,15 +164,25 @@ function GradesPage() {
         )}
       </Card>
 
+      {collegeAverage != null && (
+        <Card className="mb-5 p-5">
+          <h2 className="text-sm font-semibold">College average — Period {quarter}</h2>
+          <p className="mt-1 text-3xl font-bold tabular-nums">{collegeAverage.toFixed(2)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Mean of published college grades. Lower is better; high school grades are averaged
+            separately.
+          </p>
+        </Card>
+      )}
       {rows.every((r) => !r.grade) ? (
         <EmptyState
-          title={`No grades encoded for Quarter ${quarter} yet`}
+          title={`No grades encoded for period ${quarter} yet`}
           sub="Check back after your teachers finalize the gradebook."
         />
       ) : (
         <Card className="overflow-x-auto">
           <h2 className="px-4 pt-4 font-display text-base font-bold">
-            Quarter {quarter} Grades by Subject
+            Period {quarter} Grades by Subject
           </h2>
           <table className="w-full min-w-[640px] text-sm">
             <thead>
@@ -171,7 +193,7 @@ function GradesPage() {
                 <th className="p-4 text-center">PT (40%)</th>
                 <th className="p-4 text-center">Exam (30%)</th>
                 <th className="p-4 text-center">Initial</th>
-                <th className="p-4 text-center">Transmuted</th>
+                <th className="p-4 text-center">Final grade</th>
                 <th className="p-4">Remarks</th>
               </tr>
             </thead>
@@ -180,6 +202,8 @@ function GradesPage() {
                 const st = courseStyle(course.color);
                 const initial = grade ? initialOf(grade, att) : null;
                 const t = grade ? transmutedOf(grade, att) : null;
+                const college = grade?.class_record_snapshot?.scale === "college";
+                const failed = t != null && (college ? t > 3 : t < 75);
                 return (
                   <tr
                     key={course.id}
@@ -195,7 +219,9 @@ function GradesPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="p-4 text-center">{att ?? "—"}</td>
+                    <td className="p-4 text-center">
+                      {grade?.class_record_snapshot?.attendance ?? att ?? "—"}
+                    </td>
                     <td className="p-4 text-center">{grade?.written_work_score ?? "—"}</td>
                     <td className="p-4 text-center">{grade?.performance_task_score ?? "—"}</td>
                     <td className="p-4 text-center">{grade?.exam_score ?? "—"}</td>
@@ -206,18 +232,30 @@ function GradesPage() {
                       <span
                         className={cn(
                           "font-display text-base font-bold",
-                          t != null && t < 75 && "text-rose-600",
+                          failed && "text-rose-600",
                         )}
                       >
-                        {t ?? "—"}
+                        {t == null ? "—" : college ? t.toFixed(2) : t}
                       </span>
                     </td>
                     <td className="p-4">
                       {t != null ? (
                         <Badge
-                          tone={t >= 90 ? "green" : t >= 80 ? "indigo" : t >= 75 ? "amber" : "red"}
+                          tone={
+                            college
+                              ? t <= 3
+                                ? "green"
+                                : "red"
+                              : t >= 90
+                                ? "green"
+                                : t >= 80
+                                  ? "indigo"
+                                  : t >= 75
+                                    ? "amber"
+                                    : "red"
+                          }
                         >
-                          {gradeRemarks(t)}
+                          {grade?.class_record_snapshot?.remarks ?? gradeRemarks(t)}
                         </Badge>
                       ) : (
                         "—"
@@ -246,7 +284,11 @@ function GradeBreakdown({ grade, att }: { grade: Grade | undefined; att: number 
   if (!grade)
     return <p className="text-sm text-muted-foreground">No scores encoded for this quarter yet.</p>;
   const components = [
-    { label: "Attendance", weight: WEIGHTS.attendance, score: att },
+    {
+      label: "Attendance",
+      weight: WEIGHTS.attendance,
+      score: grade.class_record_snapshot?.attendance ?? att,
+    },
     { label: "Written Work", weight: WEIGHTS.written_work, score: grade.written_work_score },
     { label: "Periodical Exam", weight: WEIGHTS.quarterly_exam, score: grade.exam_score },
     {
@@ -257,7 +299,8 @@ function GradeBreakdown({ grade, att }: { grade: Grade | undefined; att: number 
   ];
   const initial = initialOf(grade, att);
   const t = transmutedOf(grade, att);
-  const passed = t != null && t >= 75;
+  const college = grade.class_record_snapshot?.scale === "college";
+  const passed = t != null && (college ? t <= 3 : t >= 75);
 
   return (
     <div className="space-y-4">
@@ -291,15 +334,15 @@ function GradeBreakdown({ grade, att }: { grade: Grade | undefined; att: number 
         </div>
         <div className="rounded-xl bg-muted p-4 text-center">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Transmuted
+            {college ? "College grade" : "Transmuted"}
           </p>
           <p
             className={cn(
               "mt-1 font-display text-2xl font-bold",
-              t != null && t < 75 && "text-rose-600",
+              t != null && !passed && "text-rose-600",
             )}
           >
-            {t ?? "—"}
+            {t == null ? "—" : college ? t.toFixed(2) : t}
           </p>
         </div>
       </div>
@@ -307,8 +350,22 @@ function GradeBreakdown({ grade, att }: { grade: Grade | undefined; att: number 
         {t != null && (
           <>
             <Badge tone={passed ? "green" : "red"}>{passed ? "Passed" : "Failing"}</Badge>
-            <Badge tone={t >= 90 ? "green" : t >= 80 ? "indigo" : t >= 75 ? "amber" : "red"}>
-              {gradeRemarks(t)}
+            <Badge
+              tone={
+                college
+                  ? passed
+                    ? "green"
+                    : "red"
+                  : t >= 90
+                    ? "green"
+                    : t >= 80
+                      ? "indigo"
+                      : t >= 75
+                        ? "amber"
+                        : "red"
+              }
+            >
+              {grade.class_record_snapshot?.remarks ?? gradeRemarks(t)}
             </Badge>
           </>
         )}

@@ -176,6 +176,7 @@ void loop() {
 ];
 
 interface ArduinoLabProps {
+  persistenceKey?: string | undefined;
   /**
    * Receives the auto-generated wiring description whenever the student's
    * circuit changes (used by worksheet answer boxes for the keyword grader).
@@ -187,11 +188,26 @@ interface ArduinoLabProps {
 
 export function ArduinoLab({
   onConnectionsChange,
+  persistenceKey,
   initialTask = ARDUINO_TASKS.find((task) => task.id === "button-led") ?? null,
 }: ArduinoLabProps = {}) {
   const worksheetBlank = initialTask === null;
+  const [saved] = useState(() => {
+    try {
+      return persistenceKey
+        ? (JSON.parse(sessionStorage.getItem(`miow_lab_${persistenceKey}`) ?? "null") as {
+            code?: string;
+            circuit?: { parts: CircuitPart[]; wires: CanvasWire[] };
+          } | null)
+        : null;
+    } catch {
+      return null;
+    }
+  });
   const [selectedSketch, setSelectedSketch] = useState(worksheetBlank ? -1 : 0);
-  const [code, setCode] = useState(worksheetBlank ? "" : (STARTER_SKETCHES[0]?.code ?? ""));
+  const [code, setCode] = useState(
+    saved?.code ?? (worksheetBlank ? "" : (STARTER_SKETCHES[0]?.code ?? "")),
+  );
   const [logs, setLogs] = useState<string[]>([]);
   const [boardState, setBoardState] = useState<ArduinoBoardState | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -207,7 +223,16 @@ export function ArduinoLab({
   const [circuit, setCircuit] = useState<{ parts: CircuitPart[]; wires: CanvasWire[] }>({
     parts: [],
     wires: [],
+    ...saved?.circuit,
   });
+  useEffect(() => {
+    if (!persistenceKey) return;
+    try {
+      sessionStorage.setItem(`miow_lab_${persistenceKey}`, JSON.stringify({ code, circuit }));
+    } catch {
+      /* Storage can be disabled or full; editing stays available. */
+    }
+  }, [persistenceKey, code, circuit]);
 
   // Sliders for Analog Inputs A0-A5
   const [analogValues, setAnalogValues] = useState<number[]>([512, 0, 0, 0, 0, 0]);
@@ -386,6 +411,7 @@ export function ArduinoLab({
         <div className="flex flex-wrap items-center gap-2">
           {isRunning ? (
             <button
+              type="button"
               onClick={handleStop}
               className="inline-flex items-center gap-1.5 rounded-xl bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground shadow transition hover:opacity-90"
             >
@@ -393,6 +419,7 @@ export function ArduinoLab({
             </button>
           ) : (
             <button
+              type="button"
               onClick={handleRun}
               className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-emerald-500"
             >
@@ -401,6 +428,7 @@ export function ArduinoLab({
           )}
 
           <button
+            type="button"
             onClick={handleReset}
             className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
             title="Clear the simulation and start again"
@@ -444,6 +472,7 @@ export function ArduinoLab({
           <div className="flex items-center justify-between rounded-2xl border border-border/80 bg-card/80 p-2.5 shadow-sm backdrop-blur-md">
             <div className="flex items-center gap-1.5">
               <button
+                type="button"
                 onClick={() => setActiveTab("canvas")}
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition",
@@ -456,6 +485,7 @@ export function ArduinoLab({
                 Circuit view
               </button>
               <button
+                type="button"
                 onClick={() => setActiveTab("board")}
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition",
@@ -489,6 +519,7 @@ export function ArduinoLab({
             </span>
             {ARDUINO_TASKS.map((t) => (
               <button
+                type="button"
                 key={t.id}
                 onClick={() => setActiveTask((prev) => (prev?.id === t.id ? null : t))}
                 data-testid={`task-chip-${t.id}`}
@@ -614,6 +645,7 @@ export function ArduinoLab({
                         const isHigh = st?.digitalValue === 1;
                         return (
                           <button
+                            type="button"
                             key={pin}
                             onClick={() => handleDigitalToggle(pin)}
                             className={cn(
@@ -641,6 +673,7 @@ export function ArduinoLab({
                         const isHigh = st?.digitalValue === 1;
                         return (
                           <button
+                            type="button"
                             key={pin}
                             onClick={() => handleDigitalToggle(pin)}
                             className={cn(
@@ -719,6 +752,7 @@ export function ArduinoLab({
                 </div>
                 <div className="flex items-center gap-2">
                   <button
+                    type="button"
                     onClick={handleCopy}
                     className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                   >
@@ -736,6 +770,7 @@ export function ArduinoLab({
               <div className="mb-3 flex flex-wrap gap-1.5">
                 {STARTER_SKETCHES.map((sk, idx) => (
                   <button
+                    type="button"
                     key={sk.title}
                     onClick={() => handleSelectExample(idx)}
                     className={cn(
@@ -755,6 +790,10 @@ export function ArduinoLab({
                 <textarea
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
+                  aria-label="Arduino sketch editor"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.stopPropagation();
+                  }}
                   spellCheck={false}
                   rows={14}
                   className="w-full resize-y rounded-xl border border-input bg-zinc-950 p-3.5 font-mono text-xs text-zinc-100 outline-none transition focus:ring-2 focus:ring-ring leading-relaxed"
@@ -778,6 +817,7 @@ export function ArduinoLab({
                   <span className="text-xs text-muted-foreground font-mono">9600 baud</span>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setLogs([])}
                   className="text-xs text-muted-foreground hover:text-foreground transition"
                 >

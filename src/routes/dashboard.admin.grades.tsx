@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { courseLevelLabel } from "@/lib/course-levels";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileSpreadsheet, Search, Send } from "lucide-react";
+import { Download, FileSpreadsheet, FileUp, Search, Send } from "lucide-react";
 import { toast } from "sonner";
 import { LoadingSkeleton, UserAvatar } from "@/components/ui-elements";
+import { GradebookImportModal } from "@/components/courses/gradebook-import-modal";
 import { ATTENDANCE_LIMIT_GRADES } from "@/components/courses/constants";
 import {
   attendancePercent,
@@ -101,8 +102,11 @@ export function GradebookPage() {
   const [bulkFillColumn, setBulkFillColumn] = useState<ColumnKey | null>(null);
   const [saving, setSaving] = useState(false);
   const [published, setPublished] = useState(false);
-  const [gradeTab, setGradeTab] = useState<"grades" | "quizzes" | "class">("grades");
+  const [gradeTab, setGradeTab] = useState<"grades" | "quizzes" | "class">("class");
   const [search, setSearch] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [recordDirty, setRecordDirty] = useState(false);
+  const leaveRecord = () => !recordDirty || window.confirm("Discard unsaved class-record changes?");
 
   const course = useMemo(() => (courses ?? []).find((c) => c.id === courseId), [courses, courseId]);
 
@@ -179,7 +183,7 @@ export function GradebookPage() {
     setSection("all");
   }, [courseId]);
 
-  const isLoading = !courses || !students || !allLogs;
+  const isLoading = !courses || !students || (gradeTab === "grades" && !allLogs);
 
   if (!profile) return null;
 
@@ -303,6 +307,59 @@ export function GradebookPage() {
     );
   };
 
+  const handleApplyImport = async (
+    updatedCells: Record<string, CellState>,
+    updatedOverrides: OverridesState,
+    appliedCount: number,
+    saveImmediately = false,
+  ) => {
+    setCells(updatedCells);
+    setOverrides(updatedOverrides);
+    if (saveImmediately) {
+      setSaving(true);
+      try {
+        const valid = roster.filter((s) => {
+          const c = updatedCells[s.id];
+          const ovr = updatedOverrides[s.id];
+          const hasScores = c && (c.ww !== "" || c.pt !== "" || c.ex !== "");
+          const hasOverrides = ovr && (ovr.ww || ovr.pt || ovr.ex);
+          return hasScores || hasOverrides;
+        });
+        await Promise.all(
+          valid.map((s) => {
+            const c = updatedCells[s.id] ?? { ww: "", pt: "", ex: "" };
+            const initial = weightedInitial(num(c.ww), num(c.pt), num(c.ex), attOf(s.id));
+            const override_flags = extractOverrideFlagsPayload(updatedOverrides[s.id]);
+            return upsertGrade({
+              student_id: s.id,
+              course_id: courseId,
+              quarter,
+              written_work_score: num(c.ww),
+              performance_task_score: num(c.pt),
+              exam_score: num(c.ex),
+              transmuted_final_grade: initial != null ? transmute(initial) : null,
+              override_flags,
+            });
+          }),
+        );
+        toast.success(
+          `Imported and published grades for ${appliedCount} student${appliedCount === 1 ? "" : "s"}.`,
+        );
+        setPublished(true);
+        qc.invalidateQueries({ queryKey: ["course-grades", courseId, quarter] });
+        qc.invalidateQueries({ queryKey: ["grades"] });
+      } catch {
+        toast.error("Could not save imported grades.");
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      toast.success(
+        `Applied grades for ${appliedCount} student${appliedCount === 1 ? "" : "s"} to gradebook. Review changes and click Save & publish.`,
+      );
+    }
+  };
+
   const exportCsv = () => {
     const header = [
       "Student No",
@@ -396,15 +453,20 @@ export function GradebookPage() {
         {published && <Badge tone="green">Published</Badge>}
       </div>
       <p className="mb-6 mt-1 text-sm text-muted-foreground">
-        Enter component scores (0–100). The final grade is weighted Attendance 10% · WW 20% ·
-        Periodical Exam 30% · PT 40% and transmuted automatically. Attendance is pulled from gate
-        logs. Component cells can be flagged as teacher overrides with optional notes.
+        {gradeTab === "class"
+          ? "Record individual quizzes, examinations and performance tasks, then review class attendance. Save drafts while working; publish complete records when ready. Weights: Attendance 10% · Written Works 20% · Examination 30% · Performance Tasks 40%."
+          : "Legacy category summary: enter component percentages (0–100). Records published from Class Record must be revised and republished in that tab."}
       </p>
 
       <div className="mb-5 flex flex-wrap gap-3">
         <select
           value={courseId}
-          onChange={(e) => setCourseId(e.target.value)}
+          onChange={(e) => {
+            if (leaveRecord()) {
+              setRecordDirty(false);
+              setCourseId(e.target.value);
+            }
+          }}
           aria-label="Select course"
           className="h-11 min-w-56 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
         >
@@ -418,7 +480,12 @@ export function GradebookPage() {
           {termOptions(course).map((q) => (
             <button
               key={q}
-              onClick={() => setQuarter(q)}
+              onClick={() => {
+                if (leaveRecord()) {
+                  setRecordDirty(false);
+                  setQuarter(q);
+                }
+              }}
               className={cn(
                 "rounded-lg px-3 py-2 text-xs font-semibold sm:text-sm",
                 quarter === q ? "bg-card shadow-sm" : "text-muted-foreground",
@@ -461,42 +528,59 @@ export function GradebookPage() {
             </button>
           )}
         </div>
-        <div className="ml-auto flex gap-2">
-          <button
-            onClick={exportCsv}
-            disabled={!courseId || visibleRoster.length === 0}
-            className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50"
-          >
-            <Download className="h-4 w-4" /> CSV
-          </button>
-          <button
-            onClick={exportXlsx}
-            disabled={!courseId || visibleRoster.length === 0}
-            className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50"
-          >
-            <FileSpreadsheet className="h-4 w-4" /> Excel
-          </button>
-          {profile.role === "teacher" ? (
+        {gradeTab !== "class" && (
+          <div className="ml-auto flex flex-wrap gap-2">
+            {profile.role === "teacher" && (
+              <button
+                onClick={() => setImportOpen(true)}
+                disabled={!courseId || roster.length === 0}
+                className="flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
+                title="Import grades from Excel or CSV spreadsheet"
+              >
+                <FileUp className="h-4 w-4" /> Import
+              </button>
+            )}
             <button
-              onClick={saveAll}
-              disabled={saving || !courseId}
-              className="flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              onClick={exportCsv}
+              disabled={!courseId || visibleRoster.length === 0}
+              className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50"
             >
-              <Send className="h-4 w-4" /> {saving ? "Publishing…" : "Save & publish"}
+              <Download className="h-4 w-4" /> CSV
             </button>
-          ) : (
-            <p className="self-center text-xs text-muted-foreground">
-              View-only — only the course teacher can publish grades.
-            </p>
-          )}
-        </div>
+            <button
+              onClick={exportXlsx}
+              disabled={!courseId || visibleRoster.length === 0}
+              className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50"
+            >
+              <FileSpreadsheet className="h-4 w-4" /> Excel
+            </button>
+            {profile.role === "teacher" ? (
+              <button
+                onClick={saveAll}
+                disabled={saving || !courseId}
+                className="flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                <Send className="h-4 w-4" /> {saving ? "Publishing…" : "Save & publish"}
+              </button>
+            ) : (
+              <p className="self-center text-xs text-muted-foreground">
+                View-only — only the course teacher can publish grades.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Tab Switcher ─────────────────────────────────────────── */}
       {courseId && (
         <div className="flex gap-1 rounded-xl bg-muted p-1 mb-5 w-fit">
           <button
-            onClick={() => setGradeTab("grades")}
+            onClick={() => {
+              if (leaveRecord()) {
+                setRecordDirty(false);
+                setGradeTab("grades");
+              }
+            }}
             className={cn(
               "rounded-lg px-5 py-2 text-sm font-semibold transition",
               gradeTab === "grades"
@@ -504,10 +588,15 @@ export function GradebookPage() {
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            Grades (WW / PT / Exam)
+            Category summary (legacy)
           </button>
           <button
-            onClick={() => setGradeTab("quizzes")}
+            onClick={() => {
+              if (leaveRecord()) {
+                setRecordDirty(false);
+                setGradeTab("quizzes");
+              }
+            }}
             className={cn(
               "rounded-lg px-5 py-2 text-sm font-semibold transition",
               gradeTab === "quizzes"
@@ -762,7 +851,16 @@ export function GradebookPage() {
 
       {/* ── Class Record Tab ─────────────────────────────────────── */}
       {gradeTab === "class" && courseId && (
-        <ClassRecord courseId={courseId} courseCode={course?.code ?? ""} roster={visibleRoster} />
+        <ClassRecord
+          key={`${courseId}:${quarter}`}
+          courseId={courseId}
+          courseCode={course?.code ?? ""}
+          quarter={quarter}
+          roster={roster}
+          visibleRoster={visibleRoster}
+          editable={profile.role === "teacher"}
+          onDirtyChange={setRecordDirty}
+        />
       )}
 
       <BulkFillModal
@@ -777,6 +875,18 @@ export function GradebookPage() {
             handleBulkFill(bulkFillColumn, score, note);
           }
         }}
+      />
+
+      <GradebookImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        course={course}
+        quarter={quarter}
+        roster={roster}
+        currentCells={cells}
+        currentOverrides={overrides}
+        attOf={attOf}
+        onApply={handleApplyImport}
       />
     </AppShell>
   );

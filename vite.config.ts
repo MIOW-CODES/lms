@@ -25,7 +25,7 @@ export default defineConfig({
       // the real client outDir per environment:
       //   local Nitro → .output/public · Vercel Build Output API → .vercel/output/static
       outDir: process.env["VERCEL"] ? ".vercel/output/static" : ".output/public",
-      registerType: "autoUpdate",
+      registerType: "prompt",
       // Registration is done manually in src/routes/__root.tsx (SSR-safe, prod-only).
       injectRegister: null,
       devOptions: {
@@ -62,8 +62,8 @@ export default defineConfig({
         // trying to precache a nonexistent navigation fallback.
         navigateFallback: null,
         cleanupOutdatedCaches: true,
-        clientsClaim: true,
-        skipWaiting: true,
+        clientsClaim: false,
+        skipWaiting: false,
         globPatterns: ["**/*.{js,css,ico,png,svg,woff2,webmanifest,html}"],
         // shiki's 10 MB syntax-highlight bundle is lazy-loaded only when a
         // message needs highlighting — precaching it would cost every install.

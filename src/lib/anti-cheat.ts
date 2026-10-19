@@ -136,9 +136,14 @@ export function useAntiCheat(
     const handleVisibility = () => {
       if (document.visibilityState === "hidden") recordTabSignal("visibilitychange");
     };
+    let enteredFullscreen = !!document.fullscreenElement;
     const handleFullscreen = () => {
-      // Only flag when we actually leave full-screen while assessing.
-      if (!document.fullscreenElement) record("fullscreenchange");
+      // Ignore initialization/redundant events; only a real exit is a violation.
+      if (document.fullscreenElement) enteredFullscreen = true;
+      else if (enteredFullscreen) {
+        enteredFullscreen = false;
+        record("fullscreenchange");
+      }
     };
     const handlePaste = () => record("paste");
     const handleContextMenu = (e: MouseEvent) => {

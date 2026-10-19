@@ -105,3 +105,15 @@ describe("withoutToken", () => {
     expect(result).toEqual({ id: "abc" });
   });
 });
+
+describe("complete database paging", () => {
+  it("retains rows beyond the backend page limit", async () => {
+    const { allDatabaseRows } = await import("./utils.server");
+    const source = Array.from({ length: 1201 }, (_, id) => ({ id, score: id === 1200 ? 100 : 20 }));
+    const rows = await allDatabaseRows<{ id: number; score: number }>((from, to) =>
+      Promise.resolve({ data: source.slice(from, to + 1), error: null }),
+    );
+    expect(rows).toHaveLength(1201);
+    expect(Math.max(...rows.map((r) => r.score))).toBe(100);
+  });
+});

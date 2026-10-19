@@ -635,3 +635,36 @@ describe("gateAttemptResults", () => {
     );
   });
 });
+
+describe("reported resistor explanation", () => {
+  it("accepts a complete four-band explanation using gives as its predicate", () => {
+    expect(
+      gradeEssay(
+        "first and second band gives the significant digits, the third band gives the multiplier, the fourth band gives the tolerance",
+        "Explain how the first two bands form significant digits, the third gives a multiplier, and the fourth gives tolerance. | Keywords: digits = digit, first, second; calculation = multiplier, multiply; tolerance = tolerance, percent",
+      ),
+    ).toBe(true);
+  });
+  it("still rejects bare resistor keywords", () => {
+    expect(
+      gradeEssay(
+        "first second digit multiplier tolerance percent",
+        "Keywords: digits = digit, first, second; calculation = multiplier, multiply; tolerance = tolerance, percent",
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("highest retake calculation", () => {
+  it("keeps the highest percentage even when a later raw score is larger", async () => {
+    const { effectiveScore } = await import("./quizzes.server");
+    const attempts = [
+      { attempt_number: 1, score: 9, total: 10 },
+      { attempt_number: 2, score: 16, total: 20 },
+      { attempt_number: 3, score: 5, total: 10 },
+    ];
+    expect(effectiveScore(attempts, "highest_score")).toEqual({ score: 9, total: 10 });
+    expect(effectiveScore(attempts, "latest_attempt")).toEqual({ score: 5, total: 10 });
+    expect(effectiveScore([], "highest_score")).toBe(null);
+  });
+});
