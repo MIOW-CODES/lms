@@ -165,7 +165,11 @@ function AuthPage() {
     }
   };
 
-  const marqueeText = (announcements ?? []).map((a) => a.title).join("  •  ");
+  const announcementTitles = (announcements ?? []).map((a) => a.title).join("  •  ");
+  const marqueeText = [
+    announcementTitles || "Welcome to MIOW — SY 2026–2027 enrollment now open",
+    "Having a bug, exam problem, or other issue? After signing in, choose Report an issue from your dashboard. If you can’t sign in, contact your teacher or ICT admin.",
+  ].join("  •  ");
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -198,11 +202,18 @@ function AuthPage() {
           </div>
         </div>
         <div className="relative overflow-hidden rounded-xl border border-sidebar-border bg-sidebar-accent/60 py-2.5">
-          <div className="animate-marquee whitespace-nowrap text-xs font-medium text-sidebar-foreground/70">
-            <span className="px-4">
-              {marqueeText || "Welcome to MIOW — SY 2026–2027 enrollment now open"}
+          <div className="flex w-max animate-marquee whitespace-nowrap text-xs font-medium text-sidebar-foreground/70 motion-reduce:block motion-reduce:w-full motion-reduce:animate-none">
+            <span
+              aria-hidden="true"
+              className="px-4 motion-reduce:block motion-reduce:whitespace-normal"
+            >
+              {marqueeText}
+            </span>
+            <span aria-hidden="true" className="px-4 motion-reduce:hidden">
+              {marqueeText}
             </span>
           </div>
+          <span className="sr-only">{marqueeText}</span>
         </div>
       </div>
 
