@@ -2,9 +2,22 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { createFileRoute, useRouter, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { LogIn, LogOut, Nfc, Trash2, Volume2, VolumeX, Zap } from "lucide-react";
+import {
+  Download,
+  FileSpreadsheet,
+  FileUp,
+  LogIn,
+  LogOut,
+  Nfc,
+  Trash2,
+  Volume2,
+  VolumeX,
+  Zap,
+} from "lucide-react";
 import { toast } from "sonner";
 import { LoadingSkeleton, UserAvatar } from "@/components/ui-elements";
+import { AttendanceImportModal } from "@/components/courses/attendance-import-modal";
+import { exportAttendanceCsv, exportAttendanceXlsx } from "@/lib/attendance-import";
 import {
   ATTENDANCE_LIMIT_KIOSK,
   ATTENDANCE_LIMIT_REPORTS,
@@ -192,6 +205,7 @@ export function AttendanceKiosk() {
   const [muted, setMuted] = useState(false);
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [reportFilter, setReportFilter] = useState<FeedFilter>("all");
+  const [importOpen, setImportOpen] = useState(false);
   const [lastScan, setLastScan] = useState<{
     profile: Profile;
     scan_type: "in" | "out";
@@ -328,6 +342,16 @@ export function AttendanceKiosk() {
     }
   };
 
+  const handleExportCsv = () => {
+    exportAttendanceCsv(visibleHistory, students ?? []);
+    toast.success("Exported attendance CSV.");
+  };
+
+  const handleExportXlsx = () => {
+    exportAttendanceXlsx(visibleHistory, students ?? []);
+    toast.success("Exported attendance Excel spreadsheet.");
+  };
+
   return (
     <AppShell nav={nav} profile={profile} subtitle={subtitle}>
       {/* Big scan-result banner */}
@@ -416,15 +440,25 @@ export function AttendanceKiosk() {
                 gate cutoff applies. Absent = no tap within the session window.
               </p>
             </div>
-            <button
-              onClick={() => setMuted((m) => !m)}
-              aria-label={muted ? "Unmute scan sounds" : "Mute scan sounds"}
-              title={muted ? "Unmute scan sounds" : "Mute scan sounds"}
-              className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm font-semibold hover:bg-muted"
-            >
-              {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-              {muted ? "Muted" : "Sound on"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setImportOpen(true)}
+                className="flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-3.5 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10"
+                title="Import attendance records from Excel or CSV"
+              >
+                <FileUp className="h-4 w-4" /> Import
+              </button>
+              <button
+                onClick={() => setMuted((m) => !m)}
+                aria-label={muted ? "Unmute scan sounds" : "Mute scan sounds"}
+                title={muted ? "Unmute scan sounds" : "Mute scan sounds"}
+                className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm font-semibold hover:bg-muted"
+              >
+                {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                {muted ? "Muted" : "Sound on"}
+              </button>
+            </div>
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
@@ -465,9 +499,10 @@ export function AttendanceKiosk() {
                   disabled={busy}
                   aria-label="Simulate RFID tap"
                   title="Dispatch a simulated reader payload"
-                  onClick={() =>
-                    void handleTapPayload(createMockTapPayload(uid.trim() || undefined), true)
-                  }
+                  onClick={() => {
+                    const sampleUid = uid.trim() || students?.find((s) => s.rfid_uid)?.rfid_uid;
+                    void handleTapPayload(createMockTapPayload(sampleUid || undefined), true);
+                  }}
                   className="flex h-11 items-center gap-1.5 rounded-xl border border-border bg-card px-4 text-sm font-semibold hover:bg-muted disabled:opacity-50"
                 >
                   <Zap className="h-4 w-4" /> Simulate
@@ -513,11 +548,41 @@ export function AttendanceKiosk() {
         </>
       ) : (
         <>
-          <div className="mb-6">
-            <h1 className="font-display text-2xl font-bold sm:text-3xl">Attendance logs</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Full scan history, newest first. Override a status or delete a record where needed.
-            </p>
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="font-display text-2xl font-bold sm:text-3xl">Attendance logs</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Full scan history, newest first. Override a status or delete a record where needed.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setImportOpen(true)}
+                className="flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10"
+                title="Import attendance records from Excel or CSV"
+              >
+                <FileUp className="h-4 w-4" /> Import
+              </button>
+              <button
+                type="button"
+                onClick={handleExportCsv}
+                disabled={visibleHistory.length === 0}
+                className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50"
+                title="Export logs as CSV"
+              >
+                <Download className="h-4 w-4" /> CSV
+              </button>
+              <button
+                type="button"
+                onClick={handleExportXlsx}
+                disabled={visibleHistory.length === 0}
+                className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50"
+                title="Export logs as Excel spreadsheet"
+              >
+                <FileSpreadsheet className="h-4 w-4" /> Excel
+              </button>
+            </div>
           </div>
 
           <div>
@@ -576,6 +641,16 @@ export function AttendanceKiosk() {
           </div>
         </>
       )}
+
+      <AttendanceImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        students={students ?? []}
+        existingLogs={history}
+        onImportComplete={() => {
+          qc.invalidateQueries({ queryKey: ["attendance-all"] });
+        }}
+      />
     </AppShell>
   );
 }

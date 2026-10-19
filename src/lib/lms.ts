@@ -1,5 +1,9 @@
 import { notifyTasksChanged, type PendingTaskCounts } from "@/lib/pending-tasks";
 import {
+  reviewAttemptQuestionFn,
+  previewIdentificationRegradeFn,
+  getClassRecordFn,
+  saveClassRecordFn,
   pendingTasksFn,
   bulkAddStudentsFn,
   countRowsFn,
@@ -56,6 +60,7 @@ import {
   createTeacherFn,
   enrollBiometricsFn,
   logAttendanceFn,
+  bulkLogAttendanceFn,
   myQuizSummariesFn,
   quizAttemptInfoFn,
   recordTapFn,
@@ -301,6 +306,7 @@ export interface AttemptDetail {
   quiz: { id: string; title: string };
   student: { id: string; full_name: string; student_no: string | null; section: string | null };
   attempts: Array<{
+    id: string;
     attempt_number: number;
     score: number;
     raw_score: number;
@@ -443,6 +449,7 @@ export interface Grade {
   performance_task_score: number | null;
   exam_score: number | null;
   transmuted_final_grade: number | null;
+  class_record_snapshot?: import("./class-record").RecordSnapshot | null;
   overridden_by_teacher?: boolean;
   override_notes?: string | null;
   overridden_at?: string | null;
@@ -664,19 +671,28 @@ export function gradeRemarks(t: number): string {
 }
 
 export function initialOf(
-  g: Pick<Grade, "written_work_score" | "performance_task_score" | "exam_score">,
+  g: Pick<
+    Grade,
+    "written_work_score" | "performance_task_score" | "exam_score" | "class_record_snapshot"
+  >,
   att: number | null = null,
 ) {
+  if (g.class_record_snapshot) return g.class_record_snapshot.initial;
   return weightedInitial(g.written_work_score, g.performance_task_score, g.exam_score, att);
 }
 
 export function transmutedOf(
   g: Pick<
     Grade,
-    "written_work_score" | "performance_task_score" | "exam_score" | "transmuted_final_grade"
+    | "written_work_score"
+    | "performance_task_score"
+    | "exam_score"
+    | "transmuted_final_grade"
+    | "class_record_snapshot"
   >,
   att: number | null = null,
 ) {
+  if (g.class_record_snapshot) return g.class_record_snapshot.final;
   const initial = initialOf(g, att);
   if (initial == null) return g.transmuted_final_grade;
   return transmute(initial);
@@ -1353,8 +1369,24 @@ export async function logAttendance(
   student_id: string,
   scan_type: "in" | "out",
   status: AttendanceStatus,
+  timestamp?: string | undefined,
+  course_id?: string | null | undefined,
 ): Promise<void> {
-  await logAttendanceFn({ data: { student_id, scan_type, status, token: sessionToken() } });
+  await logAttendanceFn({
+    data: { student_id, scan_type, status, timestamp, course_id, token: sessionToken() },
+  });
+}
+
+export async function bulkLogAttendance(
+  items: Array<{
+    student_id: string;
+    scan_type: "in" | "out";
+    status: AttendanceStatus;
+    timestamp?: string | undefined;
+    course_id?: string | null | undefined;
+  }>,
+): Promise<{ count: number }> {
+  return bulkLogAttendanceFn({ data: { items, token: sessionToken() } });
 }
 
 /** Submit a reader tap; the server toggles in/out and evaluates the status
@@ -1891,4 +1923,31 @@ export async function updateQuestion(
 
 export async function getPendingTasks(): Promise<PendingTaskCounts> {
   return pendingTasksFn({ data: { token: sessionToken() } });
+}
+
+export async function getClassRecord(courseId: string, quarter: number) {
+  return getClassRecordFn({ data: { courseId, quarter, token: sessionToken() } });
+}
+export async function saveClassRecord(input: {
+  courseId: string;
+  quarter: number;
+  revision: number;
+  draft: import("./class-record").RecordDraft;
+  publishIds: string[];
+}) {
+  return saveClassRecordFn({ data: { ...input, token: sessionToken() } });
+}
+
+export async function reviewAttemptQuestion(input: {
+  quizId: string;
+  attemptId: string;
+  questionId: string;
+  correct: boolean;
+  expected: boolean;
+  reason: string;
+}) {
+  return reviewAttemptQuestionFn({ data: { ...input, token: sessionToken() } });
+}
+export async function previewIdentificationRegrade(quizId: string) {
+  return previewIdentificationRegradeFn({ data: { quizId, token: sessionToken() } });
 }

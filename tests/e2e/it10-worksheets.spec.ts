@@ -33,6 +33,12 @@ describeLocal("IT10 worksheet startup", () => {
         await pool.query(
           "UPDATE profiles SET pin = '1010', pin_hash = NULL, pin_must_change = false WHERE username = 'it10' OR student_id = 'it10'",
         );
+        // Each viewport uses a new browser context; closing the previous fullscreen
+        // context can finalize its attempt. Grant this local fixture another try.
+        await pool.query(`INSERT INTO quiz_retake_grants(quiz_id,student_id,extra_attempts)
+          SELECT q.id,p.id,(SELECT count(*)::integer+1 FROM quiz_attempts a WHERE a.quiz_id=q.id AND a.student_id=p.id)
+          FROM quizzes q CROSS JOIN profiles p WHERE q.title='Quiz — Arduino Part 2' AND q.deleted_at IS NULL AND (p.username='it10' OR p.student_id='it10')
+          ON CONFLICT(quiz_id,student_id) DO UPDATE SET extra_attempts=greatest(quiz_retake_grants.extra_attempts,EXCLUDED.extra_attempts)`);
       } finally {
         await pool.end();
       }
@@ -87,6 +93,34 @@ describeLocal("IT10 worksheet startup", () => {
           if (await dialog.getByText(kind, { exact: true }).count()) formats.add(kind);
         }
       }
+      // Enter in an editable answer must add a newline, not submit or navigate.
+      let typedAnswer = false;
+      let typedCode = false;
+      for (let i = 1; i <= 20; i++) {
+        await page.getByTestId(`question-nav-${i}`).click();
+        const answer = page.getByTestId("answer-input");
+        if (await answer.count()) {
+          if (!typedAnswer) {
+            await answer.pressSequentially("line one");
+            await answer.press("Enter");
+            await answer.pressSequentially("line two");
+            await expect(answer).toHaveValue("line one\nline two");
+            typedAnswer = true;
+          }
+          await expect(page.getByTestId(`question-nav-${i}`)).toBeVisible();
+          const editor = page.getByRole("textbox", { name: "Arduino sketch editor" });
+          if (await editor.count()) {
+            await editor.pressSequentially("void setup() {");
+            await editor.press("Enter");
+            await editor.pressSequentially("}");
+            await expect(editor).toHaveValue("void setup() {\n}");
+            typedCode = true;
+          }
+          if (typedAnswer && typedCode) break;
+        }
+      }
+      expect(typedAnswer).toBe(true);
+      expect(typedCode).toBe(true);
       expect([...formats].sort()).toEqual([
         "Essay",
         "Identification",

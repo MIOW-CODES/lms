@@ -108,6 +108,7 @@ interface DbQueryBuilder extends PromiseLike<{ data: unknown; error: DbError | n
   in(col: string, vals: unknown[]): DbQueryBuilder;
   order(col: string, opts?: { ascending?: boolean }): DbQueryBuilder;
   limit(n: number): DbQueryBuilder;
+  range(from: number, to: number): DbQueryBuilder;
   maybeSingle(): DbQueryBuilder;
   single(): DbQueryBuilder;
 }
@@ -157,6 +158,8 @@ function createPgCompatLayer(): DbLike {
     private filters: Filter[] = [];
     private orders: Array<{ col: string; ascending: boolean }> = [];
     private limitOne: boolean = false;
+    private rangeStart = 0;
+    private rangeSize: number | null = null;
     private expectSingle: boolean = false;
     private insertData: unknown = null;
     private updateData: Record<string, unknown> | null = null;
@@ -239,6 +242,14 @@ function createPgCompatLayer(): DbLike {
 
     limit(n: number): this {
       if (n === 1) this.limitOne = true;
+      return this;
+    }
+
+    range(from: number, to: number): this {
+      if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to < from)
+        throw new Error("Invalid query range");
+      this.rangeStart = from;
+      this.rangeSize = to - from + 1;
       return this;
     }
 
@@ -327,7 +338,7 @@ function createPgCompatLayer(): DbLike {
       if (this.op === "select") {
         const cols = this.selectCols === "*" ? "*" : this.selectCols;
         const sql =
-          `SELECT ${cols} FROM ${table} ${whereClause()} ${orderClause()} ${this.limitOne ? "LIMIT 1" : ""}`.trim();
+          `SELECT ${cols} FROM ${table} ${whereClause()} ${orderClause()} ${this.limitOne ? "LIMIT 1" : this.rangeSize == null ? "" : `LIMIT ${this.rangeSize} OFFSET ${this.rangeStart}`}`.trim();
         const res: QueryResult = await pool.query(sql + ";", params);
         if (this.limitOne) {
           if (!res.rows.length) {

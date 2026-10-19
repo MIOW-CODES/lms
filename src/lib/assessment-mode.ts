@@ -19,7 +19,7 @@ export function setAssessmentMode(next: boolean) {
   listeners.forEach((l) => l());
 }
 
-function subscribe(listener: () => void) {
+export function subscribeAssessmentMode(listener: () => void) {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -29,7 +29,7 @@ function subscribe(listener: () => void) {
 /** True while the student is actively taking an assessment. */
 export function useAssessmentMode(): boolean {
   return useSyncExternalStore(
-    subscribe,
+    subscribeAssessmentMode,
     () => active,
     () => false, // server snapshot: never in assessment mode during SSR
   );
@@ -51,4 +51,8 @@ export function getTabSwitches(): TabSwitch[] {
 
 export function resetTabSwitches() {
   tabSwitches = [];
+}
+
+export function isAssessmentActive() {
+  return active;
 }

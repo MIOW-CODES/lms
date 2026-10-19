@@ -25,6 +25,8 @@ import { EnrollStudentsModal } from "@/components/courses/enroll-students-modal"
 import { MeetingsPanel } from "@/components/courses/meetings-panel";
 import { SectionsPanel } from "@/components/courses/sections-panel";
 import { useCourseRoster } from "@/hooks/useCourseWorkspace";
+import { useProfile } from "@/hooks";
+import { termOptions, termLabel } from "@/lib/lms";
 import { cn } from "@/lib/utils";
 
 /** One tab inside a course workspace. */
@@ -291,6 +293,9 @@ export function StaffCourseWorkspace({
   loading?: boolean;
 }) {
   const [tab, setTab] = useState("worksheets");
+  const profile = useProfile();
+  const [recordQuarter, setRecordQuarter] = useState(1);
+  const [recordDirty, setRecordDirty] = useState(false);
   const { roster, loading: rosterLoading } = useCourseRoster(course.id);
 
   const courseQuizzes = useMemo(
@@ -337,7 +342,12 @@ export function StaffCourseWorkspace({
       onBack={onBack}
       tabs={tabs}
       activeTab={tab}
-      onTabChange={setTab}
+      onTabChange={(next) => {
+        if (!recordDirty || window.confirm("Discard unsaved class-record changes?")) {
+          setRecordDirty(false);
+          setTab(next);
+        }
+      }}
       actions={
         <>
           <button
@@ -396,7 +406,36 @@ export function StaffCourseWorkspace({
         (rosterLoading ? (
           <Card className="p-6 text-sm text-muted-foreground">Loading class record…</Card>
         ) : (
-          <ClassRecord courseId={course.id} courseCode={course.code} roster={roster} />
+          <div>
+            <label className="mb-4 block text-sm">
+              Grading period
+              <select
+                className="ml-3 h-10 rounded-lg border border-input bg-background px-3"
+                value={recordQuarter}
+                onChange={(e) => {
+                  if (!recordDirty || window.confirm("Discard unsaved class-record changes?")) {
+                    setRecordDirty(false);
+                    setRecordQuarter(Number(e.target.value));
+                  }
+                }}
+              >
+                {termOptions(course).map((q) => (
+                  <option key={q} value={q}>
+                    {termLabel(q, course)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <ClassRecord
+              key={`${course.id}:${recordQuarter}`}
+              courseId={course.id}
+              courseCode={course.code}
+              quarter={recordQuarter}
+              roster={roster}
+              editable={profile?.role === "teacher"}
+              onDirtyChange={setRecordDirty}
+            />
+          </div>
         ))}
 
       {tab === "tos" && <TosView course={course} />}

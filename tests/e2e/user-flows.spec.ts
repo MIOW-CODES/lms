@@ -88,14 +88,26 @@ test.describe("Auth page interactions", () => {
     await expect(page.locator("body")).toContainText("Integrated Developmental School");
     await expect(page.getByRole("tab", { name: /RFID Card/ })).toBeVisible();
     await expect(page.getByRole("tab", { name: /PIN Login/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Tap/ })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /PIN Login/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await expect(page.getByRole("button", { name: "Sign In", exact: true })).toBeVisible();
   });
 
-  test("auth page shows RFID tap interface by default", async ({ page }) => {
+  test("auth page opens RFID tap interface when its tab is selected", async ({ page }) => {
     await page.goto("/auth");
     await page.evaluate(() => localStorage.clear());
     await page.goto("/auth");
-    await expect(page.locator("body")).toContainText("Listening for card tap");
+    await expect(page.getByRole("button", { name: "Sign In", exact: true })).toBeEnabled();
+    await page.getByRole("tab", { name: /RFID Card/ }).click();
+    await expect(page.getByRole("tab", { name: /RFID Card/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await expect(page.getByRole("tabpanel", { name: /RFID Card/ })).toContainText(
+      "Listening for card tap",
+    );
     await expect(page.getByPlaceholder(/RFID UID/)).toBeVisible();
   });
 

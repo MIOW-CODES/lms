@@ -25,8 +25,42 @@ export async function logAttendance(
   student_id: string,
   scan_type: "in" | "out",
   status: "on-time" | "late" | "excused",
+  timestamp?: string | undefined,
+  course_id?: string | null | undefined,
 ) {
-  await unwrap(db.from("attendance_logs").insert({ student_id, scan_type, status }));
+  await unwrap(
+    db.from("attendance_logs").insert({
+      student_id,
+      scan_type,
+      status,
+      timestamp: timestamp ?? new Date().toISOString(),
+      course_id: course_id ?? null,
+    }),
+  );
+}
+
+export async function bulkLogAttendance(
+  items: Array<{
+    student_id: string;
+    scan_type: "in" | "out";
+    status: "on-time" | "late" | "excused";
+    timestamp?: string | undefined;
+    course_id?: string | null | undefined;
+  }>,
+) {
+  if (!items.length) return { count: 0 };
+  const rows = items.map((item) => ({
+    student_id: item.student_id,
+    scan_type: item.scan_type,
+    status: item.status,
+    timestamp: item.timestamp ?? new Date().toISOString(),
+    course_id: item.course_id ?? null,
+  }));
+  for (let i = 0; i < rows.length; i += 100) {
+    const batch = rows.slice(i, i + 100);
+    await unwrap(db.from("attendance_logs").insert(batch));
+  }
+  return { count: rows.length };
 }
 
 /* ---------- Tap status engine (schedule-aware) ---------- */
