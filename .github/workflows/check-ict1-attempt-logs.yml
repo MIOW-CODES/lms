@@ -19,6 +19,8 @@ jobs:
           api="https://api.supabase.com/v1/projects/${PROJECT_REF}/analytics/endpoints/logs"
           end="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           start="$(date -u -d '24 hours ago' +'%Y-%m-%dT%H:%M:%SZ')"
+          end_sql="$(date -u +'%Y-%m-%d %H:%M:%S')"
+          start_sql="$(date -u -d '24 hours ago' +'%Y-%m-%d %H:%M:%S')"
           query_logs() {
             curl -fsS --get "$api" \
               -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
@@ -28,13 +30,13 @@ jobs:
           }
 
           echo 'Log availability by source (counts and time bounds only):'
-          query_logs "select source, count() as events, min(timestamp) as first_at, max(timestamp) as last_at from logs where timestamp >= toDateTime64('${start}', 3, 'UTC') and timestamp <= toDateTime64('${end}', 3, 'UTC') group by source order by source" \
+          query_logs "select source, count() as events, min(timestamp) as first_at, max(timestamp) as last_at from logs where timestamp >= toDateTime64('${start_sql}', 3, 'UTC') and timestamp <= toDateTime64('${end_sql}', 3, 'UTC') group by source order by source" \
             | jq '{error, result}'
 
           echo 'Database events mentioning quiz attempts (counts only):'
-          query_logs "select count() as postgres_events, countIf(positionCaseInsensitive(event_message, 'quiz_attempts') > 0 or positionCaseInsensitive(log_attributes['parsed.query'], 'quiz_attempts') > 0) as attempt_mentions, countIf(positionCaseInsensitive(event_message, 'parameters:') > 0) as parameter_events, countIf(positionCaseInsensitive(event_message, 'score') > 0 or positionCaseInsensitive(log_attributes['parsed.query'], 'score') > 0) as score_mentions, countIf(startsWith(event_message, 'AUDIT')) as audit_events from logs where source = 'postgres_logs' and timestamp >= toDateTime64('${start}', 3, 'UTC') and timestamp <= toDateTime64('${end}', 3, 'UTC')" \
+          query_logs "select count() as postgres_events, countIf(positionCaseInsensitive(event_message, 'quiz_attempts') > 0 or positionCaseInsensitive(log_attributes['parsed.query'], 'quiz_attempts') > 0) as attempt_mentions, countIf(positionCaseInsensitive(event_message, 'parameters:') > 0) as parameter_events, countIf(positionCaseInsensitive(event_message, 'score') > 0 or positionCaseInsensitive(log_attributes['parsed.query'], 'score') > 0) as score_mentions, countIf(startsWith(event_message, 'AUDIT')) as audit_events from logs where source = 'postgres_logs' and timestamp >= toDateTime64('${start_sql}', 3, 'UTC') and timestamp <= toDateTime64('${end_sql}', 3, 'UTC')" \
             | jq '{error, result}'
 
           echo 'API requests targeting quiz_attempts (counts by method and status only):'
-          query_logs "select log_attributes['request.method'] as method, log_attributes['response.status_code'] as status, count() as events from logs where source = 'edge_logs' and positionCaseInsensitive(log_attributes['request.path'], '/quiz_attempts') > 0 and timestamp >= toDateTime64('${start}', 3, 'UTC') and timestamp <= toDateTime64('${end}', 3, 'UTC') group by method, status order by method, status" \
+          query_logs "select log_attributes['request.method'] as method, log_attributes['response.status_code'] as status, count() as events from logs where source = 'edge_logs' and positionCaseInsensitive(log_attributes['request.path'], '/quiz_attempts') > 0 and timestamp >= toDateTime64('${start_sql}', 3, 'UTC') and timestamp <= toDateTime64('${end_sql}', 3, 'UTC') group by method, status order by method, status" \
             | jq '{error, result}'
