@@ -57,6 +57,6 @@ BEGIN
      encode(extensions.digest('secret:' || v_profile_id::text, 'sha256'), 'hex')
    );
 
-  RAISE NOTICE 'Restored the dedicated IT10 test student's documented test login and enrollment';
+  RAISE NOTICE 'Restored the dedicated IT10 test student''s documented test login and enrollment';
 END;
 $it10_test_student_login$;
