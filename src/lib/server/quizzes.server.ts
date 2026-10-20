@@ -31,8 +31,16 @@ import type { IntegrityEventType } from "@/lib/integrity";
 import type { ProfileRole } from "@/lib/server/db-types";
 import { dispatchNotification } from "@/lib/server/notifications.server";
 import { writeAuditLog } from "@/lib/server/audit.server";
+import {
+  getQuizSectionWindow,
+  listQuizSectionWindows,
+} from "@/lib/server/quiz-section-windows.server";
 
-export async function listQuizzes(caller: { id: string; role: ProfileRole }) {
+export async function listQuizzes(caller: {
+  id: string;
+  role: ProfileRole;
+  section?: string | null;
+}) {
   const rows = await unwrap<any[]>(db.from("quizzes").select("*").is("deleted_at", null));
   // Staff (teacher/admin) see every course's rows; students only see items in
   // courses they are enrolled in AND that have opened (closed items stay
@@ -40,7 +48,18 @@ export async function listQuizzes(caller: { id: string; role: ProfileRole }) {
   if (caller.role !== "student") return rows;
   const enrolled = new Set(await enrolledCourseIds(caller.id));
   const now = new Date();
-  return rows.filter((q) => enrolled.has(q.course_id) && canViewAssessment(q, caller.role, now));
+  const visible = rows.filter(
+    (q) => enrolled.has(q.course_id) && canViewAssessment(q, caller.role, now),
+  );
+  const sectionWindows = await listQuizSectionWindows(
+    visible.map((q) => q.id as string),
+    caller.section,
+  );
+  const windowsByQuiz = new Map(sectionWindows.map((row) => [row.quiz_id, row]));
+  return visible.map((quiz) => ({
+    ...quiz,
+    section_window: windowsByQuiz.get(quiz.id) ?? null,
+  }));
 }
 
 /** In-place Fisher-Yates shuffle (uniform random permutation). */
@@ -133,7 +152,7 @@ export async function getQuizPublic(id: string, studentId?: string) {
         );
       }
       if (!isTestStudent(profile.email)) {
-        requireOpen(quiz, new Date());
+        requireOpen((await getQuizSectionWindow(id, profile.section)) ?? quiz, new Date());
       }
     }
   }
@@ -614,7 +633,7 @@ export async function submitQuizAttempt(
   if (caller.role === "student") {
     await requireEnrollment(quiz.course_id, caller);
     if (!isTestStudent(caller.email)) {
-      requireOpen(quiz, new Date());
+      requireOpen((await getQuizSectionWindow(quiz_id, caller.section)) ?? quiz, new Date());
     }
   }
 
@@ -734,7 +753,8 @@ export async function quizAttemptInfo(quiz_id: string, token: string) {
   // worksheets stay readable so scores remain reviewable; staff bypass.
   if (caller.role === "student") {
     await requireEnrollment(quiz.course_id, caller);
-    if (!hasOpened(quiz, new Date())) throw new AvailabilityError("not_yet_open");
+    const window = (await getQuizSectionWindow(quiz_id, caller.section)) ?? quiz;
+    if (!hasOpened(window, new Date())) throw new AvailabilityError("not_yet_open");
   }
   const [attempts, extra] = await Promise.all([
     attemptsFor(quiz_id, caller.id),

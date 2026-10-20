@@ -384,6 +384,8 @@ export interface Quiz {
   answer_key_released?: boolean | null;
   /** 0 = show all questions; >0 = random subset of this size per student. */
   question_count?: number;
+  /** Section-specific schedule that overrides the course-wide window. */
+  section_window?: { opens_at: string | null; closes_at: string | null } | null;
   /** Handouts uploaded by staff (PDF/DOCX/PNG/JPG/ZIP). */
   attachments?: Attachment[];
   opens_at?: string | null;

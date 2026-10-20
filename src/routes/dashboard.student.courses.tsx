@@ -579,9 +579,15 @@ function StudentWorksheetRow({
   const queryClient = useQueryClient();
   const isTester = isTestStudent(profile?.email);
   const isLiveUser = isTestAccount(profile?.email);
-  const notYetOpen = !isTester && !!quiz.opens_at && new Date(quiz.opens_at).getTime() > Date.now();
+  const availabilityWindow = quiz.section_window ?? quiz;
+  const notYetOpen =
+    !isTester &&
+    !!availabilityWindow.opens_at &&
+    new Date(availabilityWindow.opens_at).getTime() > Date.now();
   const isClosed =
-    !isTester && !!quiz.closes_at && new Date(quiz.closes_at).getTime() <= Date.now();
+    !isTester &&
+    !!availabilityWindow.closes_at &&
+    new Date(availabilityWindow.closes_at).getTime() <= Date.now();
   const used = summary?.attempts_used ?? 0;
   const started = used > 0;
   const canTake = !notYetOpen && !isClosed && (isLiveUser || !summary || summary.can_retake);
