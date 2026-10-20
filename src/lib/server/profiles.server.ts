@@ -100,7 +100,11 @@ async function verifyPin(p: ProfileRow, pin: string): Promise<boolean> {
     throw err;
   }
   let ok = false;
-  if (!canVerifyPinCandidate(pin, p.pin_must_change)) return false;
+  // College default PINs are the student ID (for example, "2024-2699").
+  // Accept that exact account ID even while the PIN-change gate is deferred;
+  // arbitrary non-numeric PINs remain limited to accounts requiring a change.
+  const isDefaultStudentId = typeof p.student_id === "string" && pin === p.student_id;
+  if (!canVerifyPinCandidate(pin, p.pin_must_change) && !isDefaultStudentId) return false;
   if (typeof p.pin_hash === "string" && p.pin_hash) {
     try {
       ok = await bcrypt.compare(pin, p.pin_hash);
