@@ -326,9 +326,16 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
   // Anti-cheat: detect tab switches / devtools / paste during active assessment
   const integrityActive =
     taking && readyQuizId === activeId && !loadingAttempt && questions.length > 0;
-  const handleFirstIntegrityEvent = useCallback(
-    (event: { type: Parameters<typeof integrityLabel>[0] }) => {
-      toast.warning("Integrity rule triggered", {
+  const handleIntegrityWarning = useCallback(
+    (event: { type: Parameters<typeof integrityLabel>[0] }, warningNumber: number) => {
+      if (warningNumber === 1) {
+        toast.warning("Integrity warning 1 of 2", {
+          description: `${integrityLabel(event.type)} detected. A second warning will submit your worksheet automatically.`,
+          duration: 6000,
+        });
+        return;
+      }
+      toast.warning("Integrity warning 2 of 2", {
         description: `${integrityLabel(event.type)} detected. Your worksheet is being submitted automatically.`,
         duration: 6000,
       });
@@ -338,7 +345,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
   );
   const { tabSwitches, switchCount, counts, showFlash, flashType } = useAntiCheat(
     integrityActive,
-    handleFirstIntegrityEvent,
+    handleIntegrityWarning,
   );
   // Hard lock while taking: fullscreen + input blocking (installed PWA kiosk).
   // The exam demand joins the app-wide kiosk lockdown through the single
@@ -468,7 +475,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
       warnedAttemptRef.current = activeId;
       toast.warning("Before you begin", {
         description:
-          "Keep this worksheet tab focused. Leaving the tab, pasting, opening developer tools, or exiting fullscreen triggers one warning and submits your attempt automatically.",
+          "Keep this worksheet tab focused. Leaving the tab, pasting, opening developer tools, or exiting fullscreen triggers an integrity warning. A second warning submits your attempt automatically.",
         duration: 9000,
       });
     }
@@ -781,10 +788,11 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
               </p>
             </div>
             <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-200">
-              <p className="font-semibold">One integrity warning</p>
+              <p className="font-semibold">Two integrity warnings</p>
               <p className="mt-0.5">
                 Keep this worksheet focused. Leaving the tab, pasting, opening developer tools, or
-                exiting fullscreen submits this attempt automatically.
+                exiting fullscreen triggers a warning. A second warning submits this attempt
+                automatically.
               </p>
             </div>
             <p className="mb-4 flex items-center gap-1.5 rounded-xl border border-border/60 bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
