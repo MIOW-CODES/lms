@@ -133,6 +133,10 @@ export async function getQuizPublic(id: string, studentId?: string) {
   const quiz = await unwrap<any>(
     db.from("quizzes").select("*").eq("id", id).is("deleted_at", null).single(),
   );
+  let studentAvailabilityWindow: {
+    opens_at: string | null;
+    closes_at: string | null;
+  } | null = null;
   // Enforcement (user policy 2026-10-06): students must be enrolled in the
   // course and may only open the worksheet inside its availability window.
   // Staff (teacher/admin) bypass for grading/preview.
@@ -151,9 +155,8 @@ export async function getQuizPublic(id: string, studentId?: string) {
           "This worksheet has already been submitted. Ask your teacher to grant a retake.",
         );
       }
-      if (!isTestStudent(profile.email)) {
-        requireOpen((await getQuizSectionWindow(id, profile.section)) ?? quiz, new Date());
-      }
+      studentAvailabilityWindow = (await getQuizSectionWindow(id, profile.section)) ?? quiz;
+      if (!isTestStudent(profile.email)) requireOpen(studentAvailabilityWindow, new Date());
     }
   }
   let questions = await unwrap<any[]>(
@@ -196,7 +199,13 @@ export async function getQuizPublic(id: string, studentId?: string) {
   // full-length exam (question_count === bank size) renders in authored order
   // and, if the seed placed the correct option first, every answer is "A".
   questions = randomizeQuestions(selected);
-  return { quiz, questions };
+  // The worksheet timer reads quiz.closes_at in the browser. Return the same
+  // section-specific window that passed the server gate, so students do not
+  // get blocked by the course-wide deadline after opening the worksheet.
+  return {
+    quiz: studentAvailabilityWindow ? { ...quiz, ...studentAvailabilityWindow } : quiz,
+    questions,
+  };
 }
 
 /* ---------- Essay auto-grading (strict) ---------- */
