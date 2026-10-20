@@ -7,6 +7,7 @@ DECLARE
   v_course_count integer;
   v_exam_id uuid;
   v_exam_count integer;
+  v_candidates text;
   v_close_at timestamptz := now() - interval '1 minute';
 BEGIN
   SELECT count(*)
@@ -21,20 +22,28 @@ BEGIN
     FROM public.courses
    WHERE upper(replace(btrim(code), ' ', '')) = 'ICT1';
 
-  SELECT count(*)
-    INTO v_exam_count
+  SELECT count(*), string_agg(format('%s (%s)', title, id), '; ' ORDER BY created_at)
+    INTO v_exam_count, v_candidates
     FROM public.quizzes
    WHERE course_id = v_course_id
-     AND lower(btrim(title)) = lower('FINAL EXAMINATION (Coverage: Weeks 1-7)')
+     AND title ILIKE '%final%'
+     AND title ILIKE '%exam%'
      AND deleted_at IS NULL;
 
   IF v_exam_count <> 1 THEN
-    RAISE EXCEPTION 'ICT1 final close stopped: expected one active ICT1 final exam, found %; no exam changed', v_exam_count;
+    SELECT string_agg(format('%s (%s)', title, id), '; ' ORDER BY created_at)
+      INTO v_candidates
+      FROM public.quizzes
+     WHERE course_id = v_course_id
+       AND (title ILIKE '%final%' OR title ILIKE '%exam%')
+       AND deleted_at IS NULL;
+    RAISE EXCEPTION 'ICT1 final close stopped: expected one active final exam, found %; candidates: %; no exam changed', v_exam_count, COALESCE(v_candidates, 'none');
   END IF;
   SELECT id INTO v_exam_id
     FROM public.quizzes
    WHERE course_id = v_course_id
-     AND lower(btrim(title)) = lower('FINAL EXAMINATION (Coverage: Weeks 1-7)')
+     AND title ILIKE '%final%'
+     AND title ILIKE '%exam%'
      AND deleted_at IS NULL;
 
   UPDATE public.quizzes
