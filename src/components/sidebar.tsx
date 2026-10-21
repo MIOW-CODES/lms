@@ -382,7 +382,7 @@ export function AppShell({
   });
 
   return (
-    <div className="relative min-h-screen bg-background lg:flex">
+    <div className="relative min-h-screen min-h-[100dvh] bg-background lg:flex">
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-40 right-[-10%] h-[28rem] w-[28rem] rounded-full bg-indigo-400/15 blur-3xl dark:bg-indigo-500/10" />
         <div className="absolute bottom-[-20%] left-[-10%] h-[26rem] w-[26rem] rounded-full bg-sky-400/10 blur-3xl dark:bg-violet-500/10" />
@@ -638,7 +638,9 @@ export function AppShell({
             </Link>
           </div>
         </aside>
-        <main className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        <main className="mx-auto w-full max-w-6xl flex-1 p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8 lg:pb-24">
+          {children}
+        </main>
         <footer className="border-t border-border/40 py-4 text-center text-xs text-muted-foreground">
           <p>© {new Date().getFullYear()} Integrated Developmental School (MIOW)</p>
           <p className="mt-1 text-xs text-muted-foreground">

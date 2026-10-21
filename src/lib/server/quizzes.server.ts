@@ -1303,7 +1303,7 @@ export async function createQuizWithQuestions(
 
 /** List all quiz scores for a course — used by the gradebook. */
 export async function listQuizScoresForCourse(course_id: string, token: string) {
-  await requireStaff(token);
+  await requireCourseOwnerOrAdmin(token, course_id);
   const quizzes = await unwrap<any[]>(
     db
       .from("quizzes")

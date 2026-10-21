@@ -50,6 +50,20 @@ describe("class record arithmetic", () => {
     d.scores[sid]![d.columns[0]!.id] = { value: 0 };
     expect(calculateRecord(d, [], sid, "deped").complete).toBe(true);
   });
+  it("keeps an ungraded category blank while preserving an explicitly entered zero", () => {
+    const d = emptyRecord();
+    d.columns = [{ id: "ww-1", title: "Quiz 1", category: "ww", maximum: 10 }];
+    const blank = calculateRecord(d, [], sid, "deped");
+    expect(blank.categories.ww.percent).toBe(null);
+    expect(blank.categories.ww.scored).toBe(0);
+    expect(blank.hasRecordedScores).toBe(false);
+
+    d.scores[sid] = { "ww-1": { value: 0 } };
+    const explicitZero = calculateRecord(d, [], sid, "deped");
+    expect(explicitZero.categories.ww.percent).toBe(0);
+    expect(explicitZero.categories.ww.scored).toBe(1);
+    expect(explicitZero.hasRecordedScores).toBe(true);
+  });
   it("does not renormalize absent categories", () => {
     const d = emptyRecord();
     d.attendance[sid] = { value: 100 };

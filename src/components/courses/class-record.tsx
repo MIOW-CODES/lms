@@ -24,9 +24,9 @@ import { cn } from "@/lib/utils";
 import type * as XLSX from "xlsx";
 
 const inputClass =
-  "h-10 rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-60";
+  "h-11 rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-60";
 const buttonClass =
-  "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-semibold hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50 disabled:cursor-not-allowed";
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-semibold hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50 disabled:cursor-not-allowed";
 const fmt = (n: number | null) => (n == null ? "—" : Number(n.toFixed(2)).toString());
 export function ClassRecord({
   courseId,
@@ -53,14 +53,21 @@ export function ClassRecord({
   });
   if (query.isPending)
     return (
-      <p role="status" className="py-10 text-muted-foreground">
-        Loading class record…
-      </p>
+      <div role="status" aria-label="Loading class record" className="space-y-3 py-8">
+        <p className="text-sm text-muted-foreground">Loading class record and assessment scores…</p>
+        <div className="h-3 w-48 animate-pulse rounded bg-muted" />
+        <div className="h-24 animate-pulse rounded-xl bg-muted/70" />
+        <div className="h-48 animate-pulse rounded-xl bg-muted/70" />
+      </div>
     );
   if (query.isError)
     return (
       <div role="alert" className="rounded-xl border border-destructive p-5">
-        <p>Could not load the class record. Your saved grades are unchanged.</p>
+        <p className="font-semibold">Could not load the class record.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Your saved grades are unchanged. If this course is not assigned to your account, ask an
+          administrator to update the course assignment.
+        </p>
         <button
           type="button"
           className={cn(buttonClass, "mt-3")}
@@ -290,8 +297,8 @@ function RecordEditor({
     win.print();
   };
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="min-w-0 space-y-5 pb-8">
+      <div className="flex min-w-0 flex-col items-start justify-between gap-4 sm:flex-row">
         <div>
           <h2 className="text-lg font-semibold">{courseCode} class record</h2>
           <p className="mt-1 max-w-prose text-sm text-muted-foreground">
@@ -300,16 +307,24 @@ function RecordEditor({
             incomplete.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className={buttonClass} onClick={() => void exportSheet("csv")}>
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+          <button
+            type="button"
+            className={cn(buttonClass, "w-full sm:w-auto")}
+            onClick={() => void exportSheet("csv")}
+          >
             <Download className="h-4 w-4" />
             CSV
           </button>
-          <button type="button" className={buttonClass} onClick={() => void exportSheet("xlsx")}>
+          <button
+            type="button"
+            className={cn(buttonClass, "w-full sm:w-auto")}
+            onClick={() => void exportSheet("xlsx")}
+          >
             <FileSpreadsheet className="h-4 w-4" />
             Excel
           </button>
-          <button type="button" className={buttonClass} onClick={print}>
+          <button type="button" className={cn(buttonClass, "w-full sm:w-auto")} onClick={print}>
             <Printer className="h-4 w-4" />
             Print
           </button>
@@ -317,7 +332,7 @@ function RecordEditor({
             <>
               <button
                 type="button"
-                className={buttonClass}
+                className={cn(buttonClass, "w-full sm:w-auto")}
                 disabled={busy}
                 onClick={() => void save([])}
               >
@@ -328,7 +343,7 @@ function RecordEditor({
                 type="button"
                 className={cn(
                   buttonClass,
-                  "border-primary bg-primary text-primary-foreground hover:bg-primary/90",
+                  "w-full border-primary bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto",
                 )}
                 disabled={
                   busy ||
@@ -354,12 +369,12 @@ function RecordEditor({
       {editable && (
         <fieldset disabled={busy} className="space-y-4 rounded-xl border border-border p-4">
           <legend className="px-2 text-sm font-semibold">Assessments and period</legend>
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col flex-wrap items-stretch gap-3 sm:flex-row sm:items-end">
             <label className="space-y-1 text-sm">
               Period start
               <input
                 type="date"
-                className={cn(inputClass, "block")}
+                className={cn(inputClass, "block w-full sm:w-auto")}
                 value={draft.start}
                 onChange={(e) =>
                   update((d) => {
@@ -372,7 +387,7 @@ function RecordEditor({
               Period end
               <input
                 type="date"
-                className={cn(inputClass, "block")}
+                className={cn(inputClass, "block w-full sm:w-auto")}
                 value={draft.end}
                 min={draft.start}
                 onChange={(e) =>
@@ -384,7 +399,7 @@ function RecordEditor({
             </label>
             <button
               type="button"
-              className={buttonClass}
+              className={cn(buttonClass, "w-full sm:w-auto")}
               aria-expanded={attendanceOpen}
               onClick={() => setAttendanceOpen(!attendanceOpen)}
             >
@@ -392,14 +407,14 @@ function RecordEditor({
             </button>
             <button
               type="button"
-              className={buttonClass}
+              className={cn(buttonClass, "w-full sm:w-auto")}
               onClick={() => void exportSheet("xlsx", true)}
             >
               Blank template
             </button>
             <button
               type="button"
-              className={buttonClass}
+              className={cn(buttonClass, "w-full sm:w-auto")}
               onClick={() => importRef.current?.click()}
             >
               <FileUp className="h-4 w-4" />
@@ -418,11 +433,11 @@ function RecordEditor({
               }}
             />
           </div>
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col flex-wrap items-stretch gap-3 sm:flex-row sm:items-end">
             <label className="space-y-1 text-sm">
               Assessment source
               <select
-                className={cn(inputClass, "block max-w-72")}
+                className={cn(inputClass, "block w-full sm:max-w-72")}
                 value={sourceKey}
                 onChange={(e) => setSourceKey(e.target.value)}
               >
@@ -437,7 +452,7 @@ function RecordEditor({
             <label className="space-y-1 text-sm">
               Category
               <select
-                className={cn(inputClass, "block")}
+                className={cn(inputClass, "block w-full sm:w-auto")}
                 value={category}
                 onChange={(e) => setCategory(e.target.value as RecordCategory)}
               >
@@ -451,7 +466,7 @@ function RecordEditor({
                 <label className="space-y-1 text-sm">
                   Column title
                   <input
-                    className={cn(inputClass, "block w-36")}
+                    className={cn(inputClass, "block w-full sm:w-36")}
                     placeholder={category === "ww" ? "Q1" : category === "pt" ? "PT1" : "Exam"}
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
@@ -464,20 +479,24 @@ function RecordEditor({
                     min="0.01"
                     max="100000"
                     step="any"
-                    className={cn(inputClass, "block w-28")}
+                    className={cn(inputClass, "block w-full sm:w-28")}
                     value={maximum}
                     onChange={(e) => setMaximum(e.target.value)}
                   />
                 </label>
               </>
             )}
-            <button type="button" className={buttonClass} onClick={addColumn}>
+            <button
+              type="button"
+              className={cn(buttonClass, "w-full sm:w-auto")}
+              onClick={addColumn}
+            >
               <Plus className="h-4 w-4" />
               Add column
             </button>
             <button
               type="button"
-              className={buttonClass}
+              className={cn(buttonClass, "w-full sm:w-auto")}
               disabled={!available.some((s) => s.maximum > 0)}
               onClick={() =>
                 update((d) => {
@@ -606,11 +625,11 @@ function RecordEditor({
             Only held sessions within the period count. Present/excused: 100%; late: 85%; absent:
             0%. Unmarked sessions remain incomplete.
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <input
               type="date"
               aria-label="New session date"
-              className={inputClass}
+              className={cn(inputClass, "w-full sm:w-auto")}
               value={sessionDate}
               min={draft.start}
               max={draft.end}
@@ -618,7 +637,7 @@ function RecordEditor({
             />
             <button
               type="button"
-              className={buttonClass}
+              className={cn(buttonClass, "w-full sm:w-auto")}
               disabled={
                 !sessionDate ||
                 !draft.start ||
@@ -641,7 +660,7 @@ function RecordEditor({
               Add class session
             </button>
           </div>
-          <div className="overflow-x-auto">
+          <div className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain">
             <table className="w-full text-sm">
               <thead>
                 <tr>
@@ -704,8 +723,8 @@ function RecordEditor({
           sub="Load LMS assessments or add quiz, examination, and performance-task columns. Then enter class attendance and review the scores."
         />
       )}
-      <Card className="overflow-x-auto">
-        <table className="w-full text-sm tabular-nums" aria-label="Weighted class record">
+      <Card className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain">
+        <table className="w-full min-w-max text-sm tabular-nums" aria-label="Weighted class record">
           <thead>
             <tr className="border-b border-border bg-muted/50">
               <th
@@ -860,14 +879,14 @@ function RecordEditor({
                   />
                 ))}
                 {[
-                  r.contributions.attendance,
-                  r.contributions.ww,
-                  r.contributions.ex,
-                  r.contributions.pt,
-                  r.initial,
-                ].map((n, i) => (
+                  { value: r.contributions.attendance, recorded: r.attendance != null },
+                  { value: r.contributions.ww, recorded: r.categories.ww.scored > 0 },
+                  { value: r.contributions.ex, recorded: r.categories.ex.scored > 0 },
+                  { value: r.contributions.pt, recorded: r.categories.pt.scored > 0 },
+                  { value: r.initial, recorded: r.hasRecordedScores },
+                ].map(({ value, recorded }, i) => (
                   <td className={cn("p-3 text-center", i === 4 && "font-semibold")} key={i}>
-                    {fmt(n)}
+                    {recorded ? fmt(value) : "—"}
                     {i === 4 && !r.complete && (
                       <span className="block text-xs text-muted-foreground">Provisional</span>
                     )}
@@ -888,7 +907,8 @@ function RecordEditor({
         {visibleRoster.length} student{visibleRoster.length === 1 ? "" : "s"} shown. Scroll
         horizontally for all scores and totals. Category percentages use total earned ÷ total
         possible. Each linked assessment uses the student’s effective score; IT10 keeps the highest
-        retake percentage. Student grades change only after publication.
+        retake percentage. A dash means no score is recorded; zero is shown only when a zero was
+        entered. Student grades change only after publication.
       </p>
     </div>
   );

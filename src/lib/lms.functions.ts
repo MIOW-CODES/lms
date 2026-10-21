@@ -591,7 +591,7 @@ export const listGradesForStudentFn = createServerFn({ method: "POST" })
 export const listGradesForCourseFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.courseQuarter.parse(data))
   .handler(async ({ data }) => {
-    await server.requireStaff(data.token);
+    await server.requireCourseOwnerOrAdmin(data.token, data.courseId);
     return server.listGradesForCourse(data.courseId, data.quarter);
   });
 
@@ -600,6 +600,7 @@ export const upsertGradeFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.gradeInput.parse(data))
   .handler(async ({ data }) => {
     const caller = await server.requireTeacher(data.token);
+    await server.requireCourseOwnerOrAdmin(data.token, data.course_id);
     const result = await server.upsertGrade(data, caller.id);
     await server.writeAuditLog(
       caller,

@@ -1,8 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import { courseLevelLabel } from "@/lib/course-levels";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileSpreadsheet, FileUp, Plus, Search, Send } from "lucide-react";
+import {
+  Check,
+  ChevronsUpDown,
+  Download,
+  FileSpreadsheet,
+  FileUp,
+  Plus,
+  Search,
+  Send,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { LoadingSkeleton, UserAvatar } from "@/components/ui-elements";
 import { GradebookImportModal } from "@/components/courses/gradebook-import-modal";
@@ -32,6 +42,15 @@ import {
 import { buildXlsx, downloadBlob, type XlsxCell } from "@/lib/xlsx";
 import { ClassRecord } from "@/components/courses/class-record";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import {
   OverrideFlagToggle,
   BulkColumnMenu,
   BulkFillModal,
@@ -44,6 +63,7 @@ import {
   type OverridesState,
 } from "@/components/courses/grade-overrides";
 import {
+  ADMIN_NAV,
   TEACHER_NAV,
   AppShell,
   Badge,
@@ -80,22 +100,28 @@ interface CellState {
 
 export function GradebookPage() {
   const profile = useProfile(["admin", "teacher"]);
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const isPortalMismatch =
+    !!profile &&
+    ((profile.role === "teacher" && pathname.startsWith("/dashboard/admin/")) ||
+      (profile.role === "admin" && pathname.startsWith("/dashboard/teacher/")));
   const qc = useQueryClient();
   const { data: courses } = useQuery({
     queryKey: ["courses"],
     queryFn: listCourses,
-    enabled: !!profile,
+    enabled: !!profile && !isPortalMismatch,
   });
   const { data: students } = useQuery({
     queryKey: ["students"],
     queryFn: listStudents,
-    enabled: !!profile,
+    enabled: !!profile && !isPortalMismatch,
   });
   // Gate attendance feeds the Attendance (10%) component of the grading scheme.
   const { data: allLogs } = useQuery({
     queryKey: ["all-attendance"],
     queryFn: () => listAllAttendance(ATTENDANCE_LIMIT_GRADES),
-    enabled: !!profile,
+    enabled: !!profile && !isPortalMismatch,
   });
 
   const [courseId, setCourseId] = useState("");
@@ -108,6 +134,7 @@ export function GradebookPage() {
   const [published, setPublished] = useState(false);
   const [gradeTab, setGradeTab] = useState<"grades" | "quizzes" | "class">("class");
   const [search, setSearch] = useState("");
+  const [coursePickerOpen, setCoursePickerOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [quizScoreImportOpen, setQuizScoreImportOpen] = useState(false);
   const [creatingQuizScoreItem, setCreatingQuizScoreItem] = useState(false);
@@ -115,7 +142,25 @@ export function GradebookPage() {
   const [recordDirty, setRecordDirty] = useState(false);
   const leaveRecord = () => !recordDirty || window.confirm("Discard unsaved class-record changes?");
 
-  const course = useMemo(() => (courses ?? []).find((c) => c.id === courseId), [courses, courseId]);
+  const accessibleCourses = useMemo(
+    () =>
+      (courses ?? []).filter((item) =>
+        profile?.role === "teacher" ? item.teacher_id === profile.id : true,
+      ),
+    [courses, profile],
+  );
+  const course = useMemo(
+    () => accessibleCourses.find((item) => item.id === courseId),
+    [accessibleCourses, courseId],
+  );
+
+  useEffect(() => {
+    if (!profile || !isPortalMismatch) return;
+    navigate({
+      to: profile.role === "teacher" ? "/dashboard/teacher/grades" : "/dashboard/admin/grades",
+      replace: true,
+    });
+  }, [isPortalMismatch, navigate, profile]);
 
   const attByStudent = useMemo(() => {
     const grouped = new Map<string, AttendanceLog[]>();
@@ -133,30 +178,33 @@ export function GradebookPage() {
   const { data: enrolledIds } = useQuery({
     queryKey: ["enrollments", courseId],
     queryFn: () => enrollmentsForCourse(courseId),
-    enabled: !!courseId,
+    enabled: !!course,
   });
   const { data: existing } = useQuery({
     queryKey: ["course-grades", courseId, quarter],
     queryFn: () => listGradesForCourse(courseId, quarter),
-    enabled: !!courseId,
+    enabled: !!course,
   });
   const { data: quizScores, error: quizScoresError } = useQuery({
     queryKey: ["quiz-scores", courseId],
     queryFn: () => listQuizScoresForCourse(courseId),
-    enabled: !!courseId,
+    enabled: !!course,
   });
   const quiz4Item = (quizScores ?? []).find(
     (item) => item.kind === "manual" && item.title === "Quiz 4",
   );
 
   useEffect(() => {
-    if (quizScoresError) toast.error("Could not load worksheet scores.");
+    if (quizScoresError) toast.error("Could not load quiz scores for this course.");
   }, [quizScoresError]);
 
   useEffect(() => {
-    if (!courses?.length && courseId) return;
-    if (!courseId && courses?.length) setCourseId(courses[0]?.id ?? "");
-  }, [courses, courseId]);
+    if (!courses) return;
+    if (!accessibleCourses.some((item) => item.id === courseId)) {
+      setCourseId(accessibleCourses[0]?.id ?? "");
+      setRecordDirty(false);
+    }
+  }, [accessibleCourses, courseId, courses]);
 
   useEffect(() => {
     const next: Record<string, CellState> = {};
@@ -196,11 +244,25 @@ export function GradebookPage() {
   const isLoading = !courses || !students || (gradeTab === "grades" && !allLogs);
 
   if (!profile) return null;
+  if (isPortalMismatch) return null;
+
+  const nav = profile.role === "admin" ? ADMIN_NAV : TEACHER_NAV;
+  const subtitle = profile.role === "admin" ? "Admin Console" : "Teacher Portal";
 
   if (isLoading)
     return (
-      <AppShell nav={TEACHER_NAV} profile={profile} subtitle="Teacher Portal">
+      <AppShell nav={nav} profile={profile} subtitle={subtitle}>
         <LoadingSkeleton />
+      </AppShell>
+    );
+
+  if (profile.role === "teacher" && accessibleCourses.length === 0)
+    return (
+      <AppShell nav={nav} profile={profile} subtitle={subtitle}>
+        <EmptyState
+          title="No courses assigned"
+          sub="Your teacher account is active, but no courses are assigned to it yet. Ask an administrator to assign your course before entering grades."
+        />
       </AppShell>
     );
 
@@ -504,36 +566,78 @@ export function GradebookPage() {
   };
 
   return (
-    <AppShell nav={TEACHER_NAV} profile={profile} subtitle="Teacher Portal">
+    <AppShell nav={nav} profile={profile} subtitle={subtitle}>
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <h1 className="font-display text-2xl font-bold sm:text-3xl">Gradebook</h1>
         {published && <Badge tone="green">Published</Badge>}
       </div>
-      <p className="mb-6 mt-1 text-sm text-muted-foreground">
+      <p className="mb-5 mt-1 max-w-4xl text-sm text-muted-foreground">
         {gradeTab === "class"
           ? "Record individual quizzes, examinations and performance tasks, then review class attendance. Save drafts while working; publish complete records when ready. Weights: Attendance 10% · Written Works 20% · Examination 30% · Performance Tasks 40%."
           : "Legacy category summary: enter component percentages (0–100). Records published from Class Record must be revised and republished in that tab."}
       </p>
 
-      <div className="mb-5 flex flex-wrap gap-3">
-        <select
-          value={courseId}
-          onChange={(e) => {
-            if (leaveRecord()) {
-              setRecordDirty(false);
-              setCourseId(e.target.value);
-            }
-          }}
-          aria-label="Select course"
-          className="h-11 min-w-56 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+      <div className="mb-5 grid min-w-0 grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-center">
+        <button
+          type="button"
+          onClick={() => setCoursePickerOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={coursePickerOpen}
+          aria-label={`Choose course${course ? `, current course ${course.code} ${course.title}` : ""}`}
+          className="flex min-h-11 w-full min-w-0 items-center justify-between gap-3 rounded-xl border border-input bg-background px-3 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-w-64 sm:max-w-[28rem]"
         >
-          {(courses ?? []).map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.code} — {c.title} ({courseLevelLabel(c)})
-            </option>
-          ))}
-        </select>
-        <div className="flex flex-wrap gap-1 rounded-xl bg-muted p-1">
+          <span className="min-w-0 truncate">
+            {course
+              ? `${course.code} — ${course.title} (${courseLevelLabel(course)})`
+              : "Choose a course"}
+          </span>
+          <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+        </button>
+        <Dialog open={coursePickerOpen} onOpenChange={setCoursePickerOpen}>
+          <DialogContent className="overflow-hidden p-0">
+            <DialogTitle className="sr-only">Choose a course</DialogTitle>
+            <DialogDescription className="sr-only">
+              Search assigned courses by code, title, or grade level.
+            </DialogDescription>
+            <Command className="h-auto">
+              <CommandInput placeholder="Search course code, title, grade..." />
+              <CommandList className="max-h-[min(60vh,28rem)]">
+                <CommandEmpty>No assigned course matches that search.</CommandEmpty>
+                <CommandGroup>
+                  {accessibleCourses.map((item) => (
+                    <CommandItem
+                      key={item.id}
+                      value={`${item.code} ${item.title} ${courseLevelLabel(item)}`}
+                      onSelect={() => {
+                        if (leaveRecord()) {
+                          setRecordDirty(false);
+                          setCourseId(item.id);
+                        }
+                        setCoursePickerOpen(false);
+                      }}
+                      className="min-h-11"
+                    >
+                      <Check
+                        className={cn(
+                          "h-4 w-4",
+                          item.id === courseId ? "opacity-100" : "opacity-0",
+                        )}
+                        aria-hidden
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{item.title}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {item.code} · {courseLevelLabel(item)}
+                        </span>
+                      </span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </DialogContent>
+        </Dialog>
+        <div className="flex w-full flex-wrap gap-1 rounded-xl bg-muted p-1 sm:w-auto">
           {termOptions(course).map((q) => (
             <button
               key={q}
@@ -544,7 +648,7 @@ export function GradebookPage() {
                 }
               }}
               className={cn(
-                "rounded-lg px-3 py-2 text-xs font-semibold sm:text-sm",
+                "min-h-11 flex-1 rounded-lg px-3 py-2 text-xs font-semibold sm:flex-none sm:text-sm",
                 quarter === q ? "bg-card shadow-sm" : "text-muted-foreground",
               )}
             >
@@ -557,7 +661,7 @@ export function GradebookPage() {
             value={section}
             onChange={(e) => setSection(e.target.value)}
             aria-label="Filter by section"
-            className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring sm:w-auto"
           >
             <option value="all">All sections</option>
             {sections.map((s) => (
@@ -567,7 +671,7 @@ export function GradebookPage() {
             ))}
           </select>
         )}
-        <div className="relative flex-1 min-w-[200px] max-w-xs">
+        <div className="relative min-w-0 w-full flex-1 sm:min-w-56 sm:max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             value={search}
@@ -579,19 +683,20 @@ export function GradebookPage() {
           {search && (
             <button
               onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear student search"
+              className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
             >
-              ×
+              <X className="h-4 w-4" aria-hidden />
             </button>
           )}
         </div>
         {gradeTab !== "class" && (
-          <div className="ml-auto flex flex-wrap gap-2">
+          <div className="flex w-full flex-wrap gap-2 sm:ml-auto sm:w-auto">
             {profile.role === "teacher" && (
               <button
                 onClick={() => setImportOpen(true)}
                 disabled={!courseId || roster.length === 0}
-                className="flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
+                className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/10 disabled:opacity-50 sm:flex-none"
                 title="Import grades from Excel or CSV spreadsheet"
               >
                 <FileUp className="h-4 w-4" /> Import
@@ -600,14 +705,14 @@ export function GradebookPage() {
             <button
               onClick={exportCsv}
               disabled={!courseId || visibleRoster.length === 0}
-              className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50"
+              className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50 sm:flex-none"
             >
               <Download className="h-4 w-4" /> CSV
             </button>
             <button
               onClick={exportXlsx}
               disabled={!courseId || visibleRoster.length === 0}
-              className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50"
+              className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50 sm:flex-none"
             >
               <FileSpreadsheet className="h-4 w-4" /> Excel
             </button>
@@ -615,7 +720,7 @@ export function GradebookPage() {
               <button
                 onClick={saveAll}
                 disabled={saving || !courseId}
-                className="flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 sm:flex-none"
               >
                 <Send className="h-4 w-4" /> {saving ? "Publishing…" : "Save & publish"}
               </button>
@@ -630,7 +735,7 @@ export function GradebookPage() {
 
       {/* ── Tab Switcher ─────────────────────────────────────────── */}
       {courseId && (
-        <div className="flex gap-1 rounded-xl bg-muted p-1 mb-5 w-fit">
+        <div className="mb-5 grid w-full grid-cols-1 gap-1 rounded-xl bg-muted p-1 sm:inline-flex sm:w-fit sm:grid-cols-none">
           <button
             onClick={() => {
               if (leaveRecord()) {
@@ -639,7 +744,7 @@ export function GradebookPage() {
               }
             }}
             className={cn(
-              "rounded-lg px-5 py-2 text-sm font-semibold transition",
+              "min-h-11 rounded-lg px-3 py-2 text-sm font-semibold transition sm:px-5",
               gradeTab === "grades"
                 ? "bg-card shadow-sm text-foreground"
                 : "text-muted-foreground hover:text-foreground",
@@ -655,7 +760,7 @@ export function GradebookPage() {
               }
             }}
             className={cn(
-              "rounded-lg px-5 py-2 text-sm font-semibold transition",
+              "min-h-11 rounded-lg px-3 py-2 text-sm font-semibold transition sm:px-5",
               gradeTab === "quizzes"
                 ? "bg-card shadow-sm text-foreground"
                 : "text-muted-foreground hover:text-foreground",
@@ -666,7 +771,7 @@ export function GradebookPage() {
           <button
             onClick={() => setGradeTab("class")}
             className={cn(
-              "rounded-lg px-5 py-2 text-sm font-semibold transition",
+              "min-h-11 rounded-lg px-3 py-2 text-sm font-semibold transition sm:px-5",
               gradeTab === "class"
                 ? "bg-card shadow-sm text-foreground"
                 : "text-muted-foreground hover:text-foreground",
@@ -686,7 +791,7 @@ export function GradebookPage() {
               sub="Enroll students or pick another course or section."
             />
           ) : (
-            <Card className="overflow-x-auto">
+            <Card className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain">
               <table className="w-full min-w-[760px] text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -867,7 +972,7 @@ export function GradebookPage() {
               sub="Enroll students or pick another course or section."
             />
           ) : (
-            <Card className="overflow-x-auto">
+            <Card className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain">
               <table className="w-full min-w-[600px] text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">

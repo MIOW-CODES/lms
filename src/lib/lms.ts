@@ -807,12 +807,12 @@ export async function refreshSessionProfile(): Promise<Profile | null> {
 
 /**
  * Role-based landing route after RFID/PIN authentication:
- * admin → Admin Console overview, teacher → course management (gradebook
- * one tap away), student → the student dashboard.
+ * admin → Admin Console overview, teacher → Teacher Portal, student → the
+ * student dashboard.
  */
 export function dashboardPathFor(role: Role) {
   if (role === "admin") return "/dashboard/admin";
-  if (role === "teacher") return "/dashboard/admin/courses";
+  if (role === "teacher") return "/dashboard/teacher";
   return "/dashboard/student";
 }
 

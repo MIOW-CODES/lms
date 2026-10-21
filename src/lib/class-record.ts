@@ -152,11 +152,12 @@ export function calculateRecord(
   if (attendance == null) missing.push("Attendance");
   const categories = {} as Record<
     RecordCategory,
-    { earned: number; possible: number; percent: number | null }
+    { earned: number; possible: number; scored: number; percent: number | null }
   >;
   for (const category of ["ww", "ex", "pt"] as const) {
     const cols = draft.columns.filter((c) => c.category === category);
     let earned = 0;
+    let scored = 0;
     const possible = cols.reduce((sum, col) => sum + col.maximum, 0);
     if (!cols.length)
       missing.push(
@@ -169,12 +170,18 @@ export function calculateRecord(
     for (const col of cols) {
       const score = recordCell(draft, sources, studentId, col);
       if (score == null) missing.push(col.title);
-      else earned += score;
+      else {
+        earned += score;
+        scored++;
+      }
     }
     categories[category] = {
       earned,
       possible,
-      percent: possible > 0 ? (earned / possible) * 100 : null,
+      scored,
+      // A category with no entered or linked scores is ungraded, not 0%.
+      // Explicit zero scores still count as recorded scores and remain 0%.
+      percent: possible > 0 && scored > 0 ? (earned / possible) * 100 : null,
     };
   }
   const contributions = {
@@ -191,6 +198,8 @@ export function calculateRecord(
     categories,
     contributions,
     initial,
+    hasRecordedScores:
+      attendance != null || Object.values(categories).some((category) => category.scored > 0),
     final,
     remarks,
     missing,
