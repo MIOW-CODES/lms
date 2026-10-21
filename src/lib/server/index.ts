@@ -121,6 +121,9 @@ export {
   gradeEssay,
   parseKeywordCategories,
   listQuizScoresForCourse,
+  createCourseQuizScoreItem,
+  saveCourseQuizScore,
+  importCourseQuizScores,
 } from "./quizzes.server";
 
 export { listGradesForStudent, listGradesForCourse, upsertGrade } from "./grades.server";

@@ -50,6 +50,9 @@ import {
   listQuizAttemptsFn,
   listQuestionBankFn,
   listQuizScoresForCourseFn,
+  createCourseQuizScoreItemFn,
+  saveCourseQuizScoreFn,
+  importCourseQuizScoresFn,
   listQuizzesFn,
   listSectionsFn,
   listStaffFn,
@@ -1267,11 +1270,34 @@ export async function listStudentAttemptDetail(
 export type QuizCourseScore = {
   quiz_id: string;
   title: string;
-  scores: Record<string, { score: number; total: number }>;
+  kind: "worksheet" | "manual";
+  quiz_number: number;
+  scores: Record<string, { score: number; total: number | null }>;
 };
 
 export async function listQuizScoresForCourse(courseId: string): Promise<QuizCourseScore[]> {
   return listQuizScoresForCourseFn({ data: { courseId, token: sessionToken() } });
+}
+
+export async function createCourseQuizScoreItem(courseId: string, title = "Quiz 4") {
+  return createCourseQuizScoreItemFn({
+    data: { course_id: courseId, title, token: sessionToken() },
+  });
+}
+
+export async function saveCourseQuizScore(input: {
+  item_id: string;
+  student_id: string;
+  score: number | null;
+}) {
+  return saveCourseQuizScoreFn({ data: { ...input, token: sessionToken() } });
+}
+
+export async function importCourseQuizScores(input: {
+  item_id: string;
+  rows: Array<{ student_id: string; score: number }>;
+}) {
+  return importCourseQuizScoresFn({ data: { ...input, token: sessionToken() } });
 }
 
 export async function createQuizWithQuestions(

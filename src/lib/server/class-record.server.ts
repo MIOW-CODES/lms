@@ -75,14 +75,23 @@ async function recordData(courseId: string, quarter: number, token: string) {
         )
       : [],
   ]);
-  const sources: RecordSource[] = quizzes.map((q) => ({
-    id: q.id,
-    kind: "quiz",
-    title: q.title,
-    maximum:
-      q.question_count > 0 ? q.question_count : questions.filter((x) => x.quiz_id === q.id).length,
-    scores: quizScores.find((s) => s.quiz_id === q.id)?.scores ?? {},
-  }));
+  const sources: RecordSource[] = quizzes.map((q) => {
+    const scores: RecordSource["scores"] = {};
+    const worksheet = quizScores.find((s) => s.kind === "worksheet" && s.quiz_id === q.id);
+    for (const [studentId, score] of Object.entries(worksheet?.scores ?? {})) {
+      if (score.total != null) scores[studentId] = { score: score.score, total: score.total };
+    }
+    return {
+      id: q.id,
+      kind: "quiz",
+      title: q.title,
+      maximum:
+        q.question_count > 0
+          ? q.question_count
+          : questions.filter((x) => x.quiz_id === q.id).length,
+      scores,
+    };
+  });
   for (const a of assignments) {
     const scores: RecordSource["scores"] = {};
     for (const sub of subs)

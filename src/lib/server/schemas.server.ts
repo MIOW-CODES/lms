@@ -178,6 +178,29 @@ export const schemas = {
   id: z.object({ id: uuid, ...token }),
   studentScoped: z.object({ studentId: uuid, ...token }),
   courseScoped: z.object({ courseId: uuid, ...token }),
+  courseQuizScoreItem: z.object({
+    course_id: uuid,
+    title: z.string().trim().min(1).max(120),
+    ...token,
+  }),
+  courseQuizScoreSave: z.object({
+    item_id: uuid,
+    student_id: uuid,
+    score: z.number().finite().min(0).max(100000).nullable(),
+    ...token,
+  }),
+  courseQuizScoreImport: z.object({
+    item_id: uuid,
+    rows: z
+      .array(
+        z.object({
+          student_id: uuid,
+          score: z.number().finite().min(0).max(100000),
+        }),
+      )
+      .max(300),
+    ...token,
+  }),
   courseQuarter: z.object({ courseId: uuid, quarter: z.number().int().min(1).max(8), ...token }),
   limit: z.object({ limit: z.number().int().min(1).max(500), ...token }),
   roleUpdate: z.object({ id: uuid, role: z.enum(["student", "teacher", "admin"]), ...token }),

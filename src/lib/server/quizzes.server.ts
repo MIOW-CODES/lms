@@ -17,6 +17,7 @@ import {
   requireEnrollment,
   enrolledCourseIds,
 } from "@/lib/server/auth.server";
+import { requireCourseOwnerOrAdmin } from "@/lib/server/courses.server";
 import { getProfileById } from "@/lib/server/profiles.server";
 import {
   hasOpened,
@@ -156,7 +157,7 @@ export async function getQuizPublic(id: string, studentId?: string) {
         );
       }
       studentAvailabilityWindow = (await getQuizSectionWindow(id, profile.section)) ?? quiz;
-      if (!isTestStudent(profile.email)) requireOpen(studentAvailabilityWindow, new Date());
+      if (!isTestStudent(profile.email)) requireOpen(studentAvailabilityWindow ?? quiz, new Date());
     }
   }
   let questions = await unwrap<any[]>(
@@ -1306,30 +1307,56 @@ export async function listQuizScoresForCourse(course_id: string, token: string) 
   const quizzes = await unwrap<any[]>(
     db
       .from("quizzes")
-      .select("id, title, retake_score_policy")
+      .select("id, title, retake_score_policy, created_at")
       .eq("course_id", course_id)
-      .is("deleted_at", null),
+      .is("deleted_at", null)
+      .order("created_at")
+      .order("id"),
   );
-  if (!quizzes.length) return [];
+  const manualItems = await unwrap<any[]>(
+    db
+      .from("course_quiz_score_items")
+      .select("id, title, sort_order, created_at")
+      .eq("course_id", course_id)
+      .order("sort_order")
+      .order("created_at"),
+  );
+  if (!quizzes.length && !manualItems.length) return [];
 
   const quizIds = quizzes.map((q) => q.id);
-  const [attempts, overrides] = await Promise.all([
-    allDatabaseRows<any>((from, to) =>
-      db
-        .from("quiz_attempts")
-        .select("quiz_id, student_id, attempt_number, score, total")
-        .in("quiz_id", quizIds)
-        .order("id")
-        .range(from, to),
-    ),
-    allDatabaseRows<any>((from, to) =>
-      db
-        .from("quiz_score_overrides")
-        .select("quiz_id, student_id, score, total")
-        .in("quiz_id", quizIds)
-        .order("id")
-        .range(from, to),
-    ),
+  const itemIds = manualItems.map((item) => item.id);
+  const [attempts, overrides, manualScores] = await Promise.all([
+    quizIds.length
+      ? allDatabaseRows<any>((from, to) =>
+          db
+            .from("quiz_attempts")
+            .select("quiz_id, student_id, attempt_number, score, total")
+            .in("quiz_id", quizIds)
+            .order("id")
+            .range(from, to),
+        )
+      : Promise.resolve([]),
+    quizIds.length
+      ? allDatabaseRows<any>((from, to) =>
+          db
+            .from("quiz_score_overrides")
+            .select("quiz_id, student_id, score, total")
+            .in("quiz_id", quizIds)
+            .order("id")
+            .range(from, to),
+        )
+      : Promise.resolve([]),
+    itemIds.length
+      ? allDatabaseRows<any>((from, to) =>
+          db
+            .from("course_quiz_scores")
+            .select("item_id, student_id, score")
+            .in("item_id", itemIds)
+            .order("item_id")
+            .order("student_id")
+            .range(from, to),
+        )
+      : Promise.resolve([]),
   ]);
 
   const byQuizStudent = new Map<string, Map<string, AttemptRow[]>>();
@@ -1363,9 +1390,9 @@ export async function listQuizScoresForCourse(course_id: string, token: string) 
     overrideMap.set(o.quiz_id, m);
   }
 
-  return quizzes.map((q) => {
+  const worksheetColumns = quizzes.map((q) => {
     const studentMap = byQuizStudent.get(q.id)!;
-    const scores: Record<string, { score: number; total: number }> = {};
+    const scores: Record<string, { score: number; total: number | null }> = {};
     for (const [sid, attemptList] of studentMap) {
       const eff = effectiveScore(attemptList, q.retake_score_policy);
       if (eff) scores[sid] = eff;
@@ -1375,9 +1402,130 @@ export async function listQuizScoresForCourse(course_id: string, token: string) 
     return {
       quiz_id: q.id,
       title: q.title,
+      kind: "worksheet" as const,
       scores,
     };
   });
+
+  const scoresByItem = new Map<string, Record<string, { score: number; total: number | null }>>();
+  for (const row of manualScores) {
+    const scores = scoresByItem.get(row.item_id) ?? {};
+    scores[row.student_id] = { score: Number(row.score), total: null };
+    scoresByItem.set(row.item_id, scores);
+  }
+
+  const reservedNumbers = new Set<number>(manualItems.map((item) => Number(item.sort_order)));
+  let nextNumber = 1;
+  const numberedWorksheets = worksheetColumns.map((column) => {
+    while (reservedNumbers.has(nextNumber)) nextNumber++;
+    return { ...column, quiz_number: nextNumber++ };
+  });
+  const numberedManualItems = manualItems.map((item) => ({
+    quiz_id: item.id,
+    title: item.title,
+    kind: "manual" as const,
+    quiz_number: Number(item.sort_order),
+    scores: scoresByItem.get(item.id) ?? {},
+  }));
+
+  return [...numberedWorksheets, ...numberedManualItems].sort(
+    (a, b) => a.quiz_number - b.quiz_number || a.title.localeCompare(b.title),
+  );
+}
+
+/** Create a staff-managed score column such as Quiz 4, without a student-facing worksheet. */
+export async function createCourseQuizScoreItem(course_id: string, title: string, token: string) {
+  await requireCourseOwnerOrAdmin(token, course_id);
+  const existing = await unwrap<any>(
+    db
+      .from("course_quiz_score_items")
+      .select("id, course_id, title, sort_order")
+      .eq("course_id", course_id)
+      .eq("title", title)
+      .maybeSingle(),
+  );
+  if (existing) return existing;
+  return unwrap<any>(
+    db
+      .from("course_quiz_score_items")
+      .insert({ course_id, title, sort_order: 4 })
+      .select("id, course_id, title, sort_order")
+      .single(),
+  );
+}
+
+/** Save or clear one manually entered quiz score. */
+export async function saveCourseQuizScore(
+  item_id: string,
+  student_id: string,
+  score: number | null,
+  token: string,
+) {
+  const item = await unwrap<{ id: string; course_id: string }>(
+    db.from("course_quiz_score_items").select("id, course_id").eq("id", item_id).single(),
+  );
+  const caller = await requireCourseOwnerOrAdmin(token, item.course_id);
+  const enrollment = await unwrap<any>(
+    db
+      .from("enrollments")
+      .select("id")
+      .eq("course_id", item.course_id)
+      .eq("student_id", student_id)
+      .maybeSingle(),
+  );
+  if (!enrollment) throw new Error("Student is not enrolled in this course.");
+  if (score == null) {
+    await unwrap(
+      db.from("course_quiz_scores").delete().eq("item_id", item_id).eq("student_id", student_id),
+    );
+    return;
+  }
+  await unwrap(
+    db
+      .from("course_quiz_scores")
+      .upsert(
+        { item_id, student_id, score, updated_by: caller.id, updated_at: new Date().toISOString() },
+        { onConflict: "item_id,student_id" },
+      ),
+  );
+}
+
+/** Import nonblank scores only; blank CSV cells deliberately preserve stored scores. */
+export async function importCourseQuizScores(
+  item_id: string,
+  rows: Array<{ student_id: string; score: number }>,
+  token: string,
+) {
+  const item = await unwrap<{ id: string; course_id: string }>(
+    db.from("course_quiz_score_items").select("id, course_id").eq("id", item_id).single(),
+  );
+  const caller = await requireCourseOwnerOrAdmin(token, item.course_id);
+  if (!rows.length) return { saved: 0 };
+  const studentIds = [...new Set(rows.map((row) => row.student_id))];
+  const enrolled = await unwrap<any[]>(
+    db
+      .from("enrollments")
+      .select("student_id")
+      .eq("course_id", item.course_id)
+      .in("student_id", studentIds),
+  );
+  const enrolledIds = new Set(enrolled.map((row) => row.student_id as string));
+  if (studentIds.some((studentId) => !enrolledIds.has(studentId))) {
+    throw new Error("One or more students are not enrolled in this course.");
+  }
+  await unwrap(
+    db.from("course_quiz_scores").upsert(
+      rows.map((row) => ({
+        item_id,
+        student_id: row.student_id,
+        score: row.score,
+        updated_by: caller.id,
+        updated_at: new Date().toISOString(),
+      })),
+      { onConflict: "item_id,student_id" },
+    ),
+  );
+  return { saved: rows.length };
 }
 
 const ALLOWED_QUIZ_COLUMNS = new Set([

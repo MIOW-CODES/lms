@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { courseLevelLabel } from "@/lib/course-levels";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileSpreadsheet, FileUp, Search, Send } from "lucide-react";
+import { Download, FileSpreadsheet, FileUp, Plus, Search, Send } from "lucide-react";
 import { toast } from "sonner";
 import { LoadingSkeleton, UserAvatar } from "@/components/ui-elements";
 import { GradebookImportModal } from "@/components/courses/gradebook-import-modal";
+import { QuizScoreImportModal } from "@/components/courses/quiz-score-import-modal";
 import { ATTENDANCE_LIMIT_GRADES } from "@/components/courses/constants";
 import {
   attendancePercent,
@@ -22,6 +23,9 @@ import {
   weightedInitial,
   type AttendanceLog,
   listQuizScoresForCourse,
+  createCourseQuizScoreItem,
+  saveCourseQuizScore,
+  importCourseQuizScores,
   type QuizCourseScore,
   type GradeOverrideFlag,
 } from "@/lib/lms";
@@ -105,6 +109,9 @@ export function GradebookPage() {
   const [gradeTab, setGradeTab] = useState<"grades" | "quizzes" | "class">("class");
   const [search, setSearch] = useState("");
   const [importOpen, setImportOpen] = useState(false);
+  const [quizScoreImportOpen, setQuizScoreImportOpen] = useState(false);
+  const [creatingQuizScoreItem, setCreatingQuizScoreItem] = useState(false);
+  const [quizScoreDrafts, setQuizScoreDrafts] = useState<Record<string, string>>({});
   const [recordDirty, setRecordDirty] = useState(false);
   const leaveRecord = () => !recordDirty || window.confirm("Discard unsaved class-record changes?");
 
@@ -138,6 +145,9 @@ export function GradebookPage() {
     queryFn: () => listQuizScoresForCourse(courseId),
     enabled: !!courseId,
   });
+  const quiz4Item = (quizScores ?? []).find(
+    (item) => item.kind === "manual" && item.title === "Quiz 4",
+  );
 
   useEffect(() => {
     if (quizScoresError) toast.error("Could not load worksheet scores.");
@@ -357,6 +367,53 @@ export function GradebookPage() {
       toast.success(
         `Applied grades for ${appliedCount} student${appliedCount === 1 ? "" : "s"} to gradebook. Review changes and click Save & publish.`,
       );
+    }
+  };
+
+  const addQuiz4Item = async () => {
+    if (!courseId) return;
+    setCreatingQuizScoreItem(true);
+    try {
+      await createCourseQuizScoreItem(courseId, "Quiz 4");
+      await qc.invalidateQueries({ queryKey: ["quiz-scores", courseId] });
+      toast.success("Quiz 4 is ready in the gradebook.");
+    } catch {
+      toast.error("Could not add Quiz 4 to this gradebook.");
+    } finally {
+      setCreatingQuizScoreItem(false);
+    }
+  };
+
+  const saveManualQuizScore = async (item: QuizCourseScore, studentId: string, raw: string) => {
+    const key = `${item.quiz_id}:${studentId}`;
+    const trimmed = raw.trim();
+    const score = trimmed === "" ? null : Number(trimmed);
+    if (score != null && (!Number.isFinite(score) || score < 0 || score > 100000)) {
+      toast.error("Enter a score from 0 to 100000.");
+      return;
+    }
+    try {
+      await saveCourseQuizScore({ item_id: item.quiz_id, student_id: studentId, score });
+      setQuizScoreDrafts((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+      await qc.invalidateQueries({ queryKey: ["quiz-scores", courseId] });
+    } catch {
+      toast.error("Could not save this quiz score.");
+    }
+  };
+
+  const applyQuizScoreImport = async (rows: Array<{ student_id: string; score: number }>) => {
+    if (!quiz4Item) return;
+    try {
+      const result = await importCourseQuizScores({ item_id: quiz4Item.quiz_id, rows });
+      toast.success(`Imported ${result.saved} Quiz 4 score${result.saved === 1 ? "" : "s"}.`);
+      await qc.invalidateQueries({ queryKey: ["quiz-scores", courseId] });
+    } catch {
+      toast.error("Could not import Quiz 4 scores.");
+      throw new Error("Quiz 4 score import failed");
     }
   };
 
@@ -774,14 +831,35 @@ export function GradebookPage() {
       {/* ── Quiz Scores Tab ──────────────────────────────────────── */}
       {gradeTab === "quizzes" && courseId && (
         <div>
-          <p className="mb-4 text-xs text-muted-foreground">
-            Best score per student per worksheet. Use these to inform the Written Work (WW)
-            component in the Grades tab.
-          </p>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="max-w-2xl text-xs text-muted-foreground">
+              Best score per student for each worksheet. Manually entered quiz scores are saved as
+              you leave a score cell. Use these scores to inform Written Work (WW).
+            </p>
+            {quiz4Item ? (
+              <button
+                type="button"
+                onClick={() => setQuizScoreImportOpen(true)}
+                className="flex h-10 items-center gap-2 rounded-xl border border-border bg-card px-4 text-xs font-semibold hover:bg-muted"
+              >
+                <FileUp className="h-4 w-4" /> Import Quiz 4 scores
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={creatingQuizScoreItem}
+                onClick={() => void addQuiz4Item()}
+                className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" />
+                {creatingQuizScoreItem ? "Adding…" : "Add Quiz 4"}
+              </button>
+            )}
+          </div>
           {!quizScores || quizScores.length === 0 ? (
             <EmptyState
-              title="No worksheet scores yet"
-              sub="Students need to submit worksheets for scores to appear here."
+              title="No quiz columns yet"
+              sub="Add Quiz 4 or have students submit worksheets to populate quiz scores."
             />
           ) : visibleRoster.length === 0 ? (
             <EmptyState
@@ -795,12 +873,13 @@ export function GradebookPage() {
                   <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                     <th className="p-4 sticky left-0 bg-card z-10">Student</th>
                     {quizScores.map((q) => (
-                      <th
-                        key={q.quiz_id}
-                        className="p-4 text-center max-w-[140px] truncate"
-                        title={q.title}
-                      >
-                        {q.title}
+                      <th key={q.quiz_id} className="p-4 text-center max-w-[180px]" title={q.title}>
+                        <span className="block font-bold normal-case">Quiz {q.quiz_number}</span>
+                        {q.title !== `Quiz ${q.quiz_number}` && (
+                          <span className="mt-1 block truncate text-[10px] font-normal normal-case text-muted-foreground">
+                            {q.title}
+                          </span>
+                        )}
                       </th>
                     ))}
                   </tr>
@@ -814,6 +893,35 @@ export function GradebookPage() {
                       </td>
                       {quizScores.map((q) => {
                         const score = q.scores[s.id];
+                        if (q.kind === "manual") {
+                          const draftKey = `${q.quiz_id}:${s.id}`;
+                          const value =
+                            quizScoreDrafts[draftKey] ?? (score ? String(score.score) : "");
+                          return (
+                            <td key={q.quiz_id} className="p-2 text-center">
+                              <input
+                                type="number"
+                                min="0"
+                                max="100000"
+                                step="0.01"
+                                inputMode="decimal"
+                                aria-label={`Quiz ${q.quiz_number} score for ${s.full_name}`}
+                                value={value}
+                                onChange={(event) =>
+                                  setQuizScoreDrafts((current) => ({
+                                    ...current,
+                                    [draftKey]: event.target.value,
+                                  }))
+                                }
+                                onBlur={() => {
+                                  const draft = quizScoreDrafts[draftKey];
+                                  if (draft !== undefined) void saveManualQuizScore(q, s.id, draft);
+                                }}
+                                className="h-9 w-20 rounded-lg border border-border bg-background px-2 text-center text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                              />
+                            </td>
+                          );
+                        }
                         if (!score)
                           return (
                             <td key={q.quiz_id} className="p-4 text-center text-muted-foreground">
@@ -821,7 +929,9 @@ export function GradebookPage() {
                             </td>
                           );
                         const pct =
-                          score.total > 0 ? Math.round((score.score / score.total) * 100) : 0;
+                          score.total != null && score.total > 0
+                            ? Math.round((score.score / score.total) * 100)
+                            : 0;
                         return (
                           <td key={q.quiz_id} className="p-4 text-center">
                             <span
@@ -834,9 +944,11 @@ export function GradebookPage() {
                                     : "text-rose-600 dark:text-rose-400",
                               )}
                             >
-                              {score.score}/{score.total}
+                              {score.total == null ? score.score : `${score.score}/${score.total}`}
                             </span>
-                            <span className="ml-1 text-xs text-muted-foreground">({pct}%)</span>
+                            {score.total != null && (
+                              <span className="ml-1 text-xs text-muted-foreground">({pct}%)</span>
+                            )}
                           </td>
                         );
                       })}
@@ -887,6 +999,15 @@ export function GradebookPage() {
         currentOverrides={overrides}
         attOf={attOf}
         onApply={handleApplyImport}
+      />
+
+      <QuizScoreImportModal
+        open={quizScoreImportOpen}
+        onClose={() => setQuizScoreImportOpen(false)}
+        item={quiz4Item ?? null}
+        roster={roster}
+        section={section}
+        onApply={applyQuizScoreImport}
       />
     </AppShell>
   );

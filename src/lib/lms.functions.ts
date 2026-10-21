@@ -785,6 +785,22 @@ export const listQuizScoresForCourseFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.courseScoped.parse(data))
   .handler(async ({ data }) => server.listQuizScoresForCourse(data.courseId, data.token));
 
+export const createCourseQuizScoreItemFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.courseQuizScoreItem.parse(data))
+  .handler(async ({ data }) =>
+    server.createCourseQuizScoreItem(data.course_id, data.title, data.token),
+  );
+
+export const saveCourseQuizScoreFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.courseQuizScoreSave.parse(data))
+  .handler(async ({ data }) =>
+    server.saveCourseQuizScore(data.item_id, data.student_id, data.score, data.token),
+  );
+
+export const importCourseQuizScoresFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.courseQuizScoreImport.parse(data))
+  .handler(async ({ data }) => server.importCourseQuizScores(data.item_id, data.rows, data.token));
+
 /* ---------- Course Meetings ---------- */
 
 export const listCourseMeetingsFn = createServerFn({ method: "POST" })
