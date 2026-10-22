@@ -31,7 +31,7 @@ test("test account switches cookie-backed role views and keeps them after reload
   for (const [label, path] of [
     ["Admin", "/dashboard/admin"],
     ["Student", "/dashboard/student"],
-    ["Teacher", "/dashboard/admin/courses"],
+    ["Teacher", "/dashboard/teacher"],
   ]) {
     await switcher.getByRole("button", { name: label, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`${path}$`));

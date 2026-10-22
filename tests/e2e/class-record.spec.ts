@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { Pool } from "pg";
 const databaseUrl = process.env["DATABASE_URL"];
 const local =
@@ -7,6 +7,12 @@ const describeLocal = local ? test.describe : test.describe.skip;
 const teacher = "ce800000-0000-4000-8000-000000000001",
   student = "ce800000-0000-4000-8000-000000000002",
   course = "ce800000-0000-4000-8000-000000000003";
+
+async function selectClassRecordCourse(page: Page) {
+  await page.getByRole("button", { name: /Choose course/ }).click();
+  await page.getByRole("option", { name: /Class Record Regression/ }).click();
+}
+
 test.use({
   headless: true,
   ...(process.env["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"]
@@ -50,7 +56,7 @@ describeLocal("worksheet-style class record", () => {
     await page.getByRole("button", { name: "Sign In", exact: true }).click();
     await expect(page).toHaveURL(/dashboard/);
     await page.goto("/dashboard/teacher/grades");
-    await page.getByLabel("Select course").selectOption(course);
+    await selectClassRecordCourse(page);
     await expect(page.getByRole("heading", { name: "CRTEST class record" })).toBeVisible();
     await page.getByLabel("Column title", { exact: true }).fill("Q1");
     await page.getByLabel("Maximum", { exact: true }).fill("20");
@@ -82,7 +88,7 @@ describeLocal("worksheet-style class record", () => {
       await p.end();
     }
     await page.reload();
-    await page.getByLabel("Select course").selectOption(course);
+    await selectClassRecordCourse(page);
     await expect(page.getByLabel("Class Record Student Q1", { exact: true })).toHaveValue("16");
     await page.getByLabel("Select Class Record Student", { exact: true }).check();
     page.once("dialog", (d) => d.accept());
