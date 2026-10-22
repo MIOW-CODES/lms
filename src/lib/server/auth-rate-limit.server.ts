@@ -11,7 +11,7 @@ function bucketKey(rawKey: string): string {
 async function rpc(name: string, args: Record<string, unknown>): Promise<unknown> {
   const { data, error } = await db.rpc(name, args);
   if (error)
-    throw new Error(`Authentication rate limit unavailable: ${error.message ?? error.code}`);
+    throw new Error(`Shared rate limit unavailable: ${error.message ?? error.code}`);
   return data;
 }
 
@@ -41,13 +41,22 @@ export async function clearAuthFailures(key: string): Promise<void> {
   await rpc("clear_auth_rate_limit", { p_bucket_key: bucketKey(key) });
 }
 
-/** Shared 5-per-15-minute limiter for actions that count every attempt. */
-export async function consumeAuthAttempt(key: string): Promise<boolean> {
+/** Shared fixed-window limiter backed by the database rate-limit table. */
+export async function consumeSharedRateLimit(
+  key: string,
+  maxAttempts: number,
+  windowSeconds: number,
+): Promise<boolean> {
   const data = await rpc("consume_auth_rate_attempt", {
     p_bucket_key: bucketKey(key),
-    p_max_attempts: MAX_FAILURES,
-    p_window_seconds: WINDOW_SECONDS,
+    p_max_attempts: maxAttempts,
+    p_window_seconds: windowSeconds,
   });
   const row = Array.isArray(data) ? data[0] : data;
   return !!row && typeof row === "object" && (row as { allowed?: unknown }).allowed === true;
+}
+
+/** Shared 5-per-15-minute limiter for authentication actions. */
+export function consumeAuthAttempt(key: string): Promise<boolean> {
+  return consumeSharedRateLimit(key, MAX_FAILURES, WINDOW_SECONDS);
 }

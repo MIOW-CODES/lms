@@ -1,21 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
+import { isIP } from "node:net";
+import { consumeSharedRateLimit } from "@/lib/server/auth-rate-limit.server";
 import { verifyRfidDeviceKey, touchRfidDevice } from "@/lib/server/rfid-devices.server";
 
 const RATE_LIMIT_MAX = 60;
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const _rate = new Map<string, number[]>();
-
-export function hitRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const hits = (_rate.get(ip) ?? []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
-  hits.push(now);
-  _rate.set(ip, hits);
-  for (const [k, v] of _rate) {
-    const last = v[v.length - 1];
-    if (!v.length || (last != null && now - last > RATE_LIMIT_WINDOW_MS)) _rate.delete(k);
-  }
-  return hits.length > RATE_LIMIT_MAX;
-}
+const RATE_LIMIT_WINDOW_SECONDS = 60;
 
 export function authorized(request: Request): boolean {
   const expected = process.env["HARDWARE_API_KEY"];
@@ -48,17 +37,38 @@ export async function authorizedAny(request: Request): Promise<{ ok: boolean; to
 
 export async function guardHardwareRequest(
   request: Request,
+  consumeLimit: typeof consumeSharedRateLimit = consumeSharedRateLimit,
 ): Promise<{ ok: true; ip: string } | { ok: false; response: Response }> {
+  const ipCandidates = [
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim(),
+    request.headers.get("x-real-ip")?.trim(),
+  ];
   const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
+    ipCandidates.find((candidate): candidate is string => !!candidate && isIP(candidate) !== 0) ??
     "unknown";
-  if (hitRateLimit(ip)) {
+
+  let allowed: boolean;
+  try {
+    allowed = await consumeLimit(`hardware-ip:${ip}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_SECONDS);
+  } catch {
+    // Fail closed when the shared limiter is unavailable so a serverless
+    // instance failure cannot silently remove the hardware endpoint guard.
+    console.error("[hardware] shared rate limiter unavailable");
+    return {
+      ok: false,
+      response: new Response("Service Unavailable", {
+        status: 503,
+        headers: { "Retry-After": "60", "Cache-Control": "no-store" },
+      }),
+    };
+  }
+
+  if (!allowed) {
     return {
       ok: false,
       response: new Response("Too Many Requests", {
         status: 429,
-        headers: { "Retry-After": "60" },
+        headers: { "Retry-After": "60", "Cache-Control": "no-store" },
       }),
     };
   }

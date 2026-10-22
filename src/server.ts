@@ -47,11 +47,18 @@ function isH3SwallowedErrorBody(body: string): boolean {
   }
 }
 
-function applySecurityHeaders(res: Response) {
+function applySecurityHeaders(res: Response, request?: Request) {
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  const pathname = request ? new URL(request.url).pathname : "";
+  if (
+    (pathname === "/api" || pathname.startsWith("/api/")) &&
+    !res.headers.has("Cache-Control")
+  ) {
+    res.headers.set("Cache-Control", "private, no-store");
+  }
   if (res.headers.get("content-type")?.includes("text/html")) {
     const isProd = process.env["NODE_ENV"] === "production";
     // 'unsafe-inline' is required for TanStack Start hydration scripts.
@@ -73,7 +80,7 @@ export default {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       const normalized = await normalizeCatastrophicSsrResponse(response);
-      return applySecurityHeaders(normalized);
+      return applySecurityHeaders(normalized, request);
     } catch (error) {
       console.error(error);
       return applySecurityHeaders(
@@ -81,6 +88,7 @@ export default {
           status: 500,
           headers: { "content-type": "text/html; charset=utf-8" },
         }),
+        request,
       );
     }
   },
