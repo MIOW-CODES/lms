@@ -22,14 +22,9 @@ test.describe("MIOW – public routes (MIOW retained)", () => {
     expect(body.toLowerCase()).not.toContain("lovable");
   });
 
-  test("sitemap returns xml", async ({ request }) => {
+  test("sitemap is not published", async ({ request }) => {
     const res = await request.get("/sitemap.xml");
-    expect(res.status()).toBe(200);
-    expect(res.headers()["content-type"]).toContain("xml");
-    const text = await res.text();
-    expect(text).toContain("<urlset");
-    expect(text).not.toContain("lovable.app");
-    expect(text).not.toContain("classsync-guardian");
+    expect(res.status()).toBe(404);
   });
 
   test("404 page works", async ({ page }) => {

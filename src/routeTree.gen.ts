@@ -11,7 +11,6 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
-import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as DashboardAdminRouteImport } from './routes/dashboard.admin'
 import { Route as DashboardStudentRouteImport } from './routes/dashboard.student'
@@ -61,11 +60,6 @@ const IndexRoute = IndexRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: '/sitemap.xml',
-  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiChatRoute = ApiChatRouteImport.update({
@@ -285,7 +279,6 @@ const ApiPublicHardwareSyncUsersRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
-  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/chat': typeof ApiChatRoute
   '/dashboard/admin': typeof DashboardAdminRouteWithChildren
   '/dashboard/student': typeof DashboardStudentRouteWithChildren
@@ -330,7 +323,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
-  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/chat': typeof ApiChatRoute
   '/api/public/avatar': typeof ApiPublicAvatarRoute
   '/api/public/material': typeof ApiPublicMaterialRoute
@@ -373,7 +365,6 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
-  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/chat': typeof ApiChatRoute
   '/dashboard/admin': typeof DashboardAdminRouteWithChildren
   '/dashboard/student': typeof DashboardStudentRouteWithChildren
@@ -420,7 +411,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
-    | '/sitemap.xml'
     | '/api/chat'
     | '/dashboard/admin'
     | '/dashboard/student'
@@ -465,7 +455,6 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
-    | '/sitemap.xml'
     | '/api/chat'
     | '/api/public/avatar'
     | '/api/public/material'
@@ -507,7 +496,6 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/auth'
-    | '/sitemap.xml'
     | '/api/chat'
     | '/dashboard/admin'
     | '/dashboard/student'
@@ -553,7 +541,6 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
-  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ApiChatRoute: typeof ApiChatRoute
   DashboardAdminRoute: typeof DashboardAdminRouteWithChildren
   DashboardStudentRoute: typeof DashboardStudentRouteWithChildren
@@ -579,13 +566,6 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sitemap.xml': {
-      id: '/sitemap.xml'
-      path: '/sitemap.xml'
-      fullPath: '/sitemap.xml'
-      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/chat': {
@@ -964,7 +944,6 @@ const DashboardTeacherRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
-  SitemapDotxmlRoute: SitemapDotxmlRoute,
   ApiChatRoute: ApiChatRoute,
   DashboardAdminRoute: DashboardAdminRouteWithChildren,
   DashboardStudentRoute: DashboardStudentRouteWithChildren,

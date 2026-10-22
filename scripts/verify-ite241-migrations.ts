@@ -63,8 +63,38 @@ try {
   assert.ok(course.program.includes("Master of Arts in Education"));
   assert.equal(course.enrolled, 14);
   assert.equal(course.tos_items, 5);
+
+  const {
+    rows: [ict1],
+  } = await client.query(
+    `INSERT INTO public.courses (code, title, grade_level)
+     VALUES ('ICT1', 'ICT1 migration fixture', 13)
+     RETURNING id`,
+  );
+  const {
+    rows: [finalExam],
+  } = await client.query(
+    `INSERT INTO public.quizzes (course_id, title, closes_at)
+     VALUES ($1, 'ICT1 Final Exam', now() + interval '1 hour')
+     RETURNING id`,
+    [ict1.id],
+  );
+  await client.query(
+    await readFile(
+      new URL(
+        "../supabase/migrations/20261020021400_close_ict1_final_exam_now.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const {
+    rows: [closedExam],
+  } = await client.query("SELECT closes_at FROM public.quizzes WHERE id = $1", [finalExam.id]);
+  assert.ok(new Date(closedExam.closes_at).getTime() < Date.now());
+
   console.log(
-    "ITE241 migrations verified: five assessments, 50 MC exam items, TOS, 14 Master's students, repeat-safe",
+    "Data migrations verified: ITE241 assessments and cohort, repeat-safe, ICT1 final close",
   );
 } finally {
   await client.query("ROLLBACK");

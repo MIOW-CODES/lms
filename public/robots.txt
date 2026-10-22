@@ -1,7 +1,2 @@
 User-agent: *
-Allow: /
-Allow: /auth
-Disallow: /dashboard/
-Disallow: /api/
-
-Sitemap: https://miow-lms.ter-ids.online/sitemap.xml
+Disallow: /

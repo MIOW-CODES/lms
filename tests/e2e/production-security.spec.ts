@@ -1,6 +1,19 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("production security smoke checks", () => {
+  test("robots.txt declares a site-wide crawler block", async ({ request }) => {
+    const response = await request.get("/robots.txt");
+    expect(response.status()).toBe(200);
+    const body = await response.text();
+    expect(body.trim()).toBe("User-agent: *\nDisallow: /");
+    expect(body).not.toContain("Sitemap:");
+  });
+
+  test("the old sitemap is no longer published", async ({ request }) => {
+    const response = await request.get("/sitemap.xml");
+    expect(response.status()).toBe(404);
+  });
+
   test("auth page is available with baseline security headers", async ({ page }) => {
     const response = await page.goto("/auth");
     expect(response?.status()).toBe(200);
@@ -20,5 +33,7 @@ test.describe("production security smoke checks", () => {
   test("material path traversal is rejected", async ({ request }) => {
     const response = await request.get("/api/public/material?p=../etc/passwd");
     expect(response.status()).toBe(400);
+    expect(response.headers()["cache-control"]).toContain("private");
+    expect(response.headers()["cache-control"]).toContain("no-store");
   });
 });
