@@ -96,11 +96,21 @@ async function main() {
 
     const { rows: applied } = await pool.query("SELECT name FROM _migrations");
     const appliedSet = new Set(applied.map((r: { name: string }) => r.name));
+    const excludedFiles = new Set(
+      (process.env["MIGRATIONS_SKIP_FILES"] ?? "")
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean),
+    );
 
     let ran = 0;
     for (const file of files) {
       if (appliedSet.has(file)) {
         console.log(`[migrate] skip ${file} (already applied)`);
+        continue;
+      }
+      if (excludedFiles.has(file)) {
+        console.log(`[migrate] skip ${file} (excluded by MIGRATIONS_SKIP_FILES)`);
         continue;
       }
       const full = path.join(dir, file);
