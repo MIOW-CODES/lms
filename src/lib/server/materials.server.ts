@@ -14,6 +14,7 @@ import {
   type AvailabilityRow,
 } from "@/lib/server/availability";
 import { sessionSecret } from "@/lib/server/sessions.server";
+import { listQuizSectionWindows } from "@/lib/server/quiz-section-windows.server";
 
 const MATERIAL_BUCKET = "course-materials";
 const MATERIAL_EXT: Record<string, string> = {
@@ -440,7 +441,7 @@ function attachmentsIncludePath(attachments: unknown, path: string): boolean {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function canAccessCourseMaterialPath(
-  caller: { id: string; role: string },
+  caller: { id: string; role: string; section?: string | null },
   path: string,
   now: Date = new Date(),
 ): Promise<boolean> {
@@ -458,10 +459,10 @@ export async function canAccessCourseMaterialPath(
   if (!(await isEnrolledIn(caller.id, courseId))) return false;
   // Reverse lookup: which ACTIVE assessments in this course reference the path?
   const [quizzes, assignments] = await Promise.all([
-    unwrap<Array<{ attachments: unknown } & AvailabilityRow>>(
+    unwrap<Array<{ id: string; attachments: unknown } & AvailabilityRow>>(
       db
         .from("quizzes")
-        .select("opens_at, closes_at, attachments")
+        .select("id, opens_at, closes_at, attachments")
         .eq("course_id", courseId)
         .is("deleted_at", null),
     ),
@@ -473,7 +474,18 @@ export async function canAccessCourseMaterialPath(
         .is("deleted_at", null),
     ),
   ]);
-  const referencing = [...quizzes, ...assignments].filter((row) =>
+  const sectionWindows = await listQuizSectionWindows(
+    quizzes.map((quiz) => quiz.id),
+    caller.section,
+  );
+  const sectionWindowByQuiz = new Map(sectionWindows.map((row) => [row.quiz_id, row]));
+  const effectiveQuizzes = quizzes.map((quiz) => {
+    const sectionWindow = sectionWindowByQuiz.get(quiz.id);
+    return sectionWindow
+      ? { ...quiz, opens_at: sectionWindow.opens_at, closes_at: sectionWindow.closes_at }
+      : quiz;
+  });
+  const referencing = [...effectiveQuizzes, ...assignments].filter((row) =>
     attachmentsIncludePath(row.attachments, path),
   );
   return isMaterialOpen(referencing, now);

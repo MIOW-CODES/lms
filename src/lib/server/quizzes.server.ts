@@ -1,14 +1,23 @@
+import { matchesIdentification, matchesOption } from "@/lib/answer-matching";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Quizzes — CRUD, attempts, retake policy engine, essay grading, scoring.
 import { z } from "zod";
 import { db } from "@/integrations/db/client.server";
-import { unwrap, withoutToken, isUniqueViolation, asJsonParam } from "@/lib/server/utils.server";
 import {
+  unwrap,
+  withoutToken,
+  isUniqueViolation,
+  asJsonParam,
+  allDatabaseRows,
+} from "@/lib/server/utils.server";
+import {
+  requireTeacher,
   requireSession,
   requireStaff,
   requireEnrollment,
   enrolledCourseIds,
 } from "@/lib/server/auth.server";
+import { requireCourseOwnerOrAdmin } from "@/lib/server/courses.server";
 import { getProfileById } from "@/lib/server/profiles.server";
 import {
   hasOpened,
@@ -23,8 +32,16 @@ import type { IntegrityEventType } from "@/lib/integrity";
 import type { ProfileRole } from "@/lib/server/db-types";
 import { dispatchNotification } from "@/lib/server/notifications.server";
 import { writeAuditLog } from "@/lib/server/audit.server";
+import {
+  getQuizSectionWindow,
+  listQuizSectionWindows,
+} from "@/lib/server/quiz-section-windows.server";
 
-export async function listQuizzes(caller: { id: string; role: ProfileRole }) {
+export async function listQuizzes(caller: {
+  id: string;
+  role: ProfileRole;
+  section?: string | null;
+}) {
   const rows = await unwrap<any[]>(db.from("quizzes").select("*").is("deleted_at", null));
   // Staff (teacher/admin) see every course's rows; students only see items in
   // courses they are enrolled in AND that have opened (closed items stay
@@ -32,7 +49,18 @@ export async function listQuizzes(caller: { id: string; role: ProfileRole }) {
   if (caller.role !== "student") return rows;
   const enrolled = new Set(await enrolledCourseIds(caller.id));
   const now = new Date();
-  return rows.filter((q) => enrolled.has(q.course_id) && canViewAssessment(q, caller.role, now));
+  const visible = rows.filter(
+    (q) => enrolled.has(q.course_id) && canViewAssessment(q, caller.role, now),
+  );
+  const sectionWindows = await listQuizSectionWindows(
+    visible.map((q) => q.id as string),
+    caller.section,
+  );
+  const windowsByQuiz = new Map(sectionWindows.map((row) => [row.quiz_id, row]));
+  return visible.map((quiz) => ({
+    ...quiz,
+    section_window: windowsByQuiz.get(quiz.id) ?? null,
+  }));
 }
 
 /** In-place Fisher-Yates shuffle (uniform random permutation). */
@@ -106,6 +134,10 @@ export async function getQuizPublic(id: string, studentId?: string) {
   const quiz = await unwrap<any>(
     db.from("quizzes").select("*").eq("id", id).is("deleted_at", null).single(),
   );
+  let studentAvailabilityWindow: {
+    opens_at: string | null;
+    closes_at: string | null;
+  } | null = null;
   // Enforcement (user policy 2026-10-06): students must be enrolled in the
   // course and may only open the worksheet inside its availability window.
   // Staff (teacher/admin) bypass for grading/preview.
@@ -124,9 +156,8 @@ export async function getQuizPublic(id: string, studentId?: string) {
           "This worksheet has already been submitted. Ask your teacher to grant a retake.",
         );
       }
-      if (!isTestStudent(profile.email)) {
-        requireOpen(quiz, new Date());
-      }
+      studentAvailabilityWindow = (await getQuizSectionWindow(id, profile.section)) ?? quiz;
+      if (!isTestStudent(profile.email)) requireOpen(studentAvailabilityWindow ?? quiz, new Date());
     }
   }
   let questions = await unwrap<any[]>(
@@ -169,7 +200,13 @@ export async function getQuizPublic(id: string, studentId?: string) {
   // full-length exam (question_count === bank size) renders in authored order
   // and, if the seed placed the correct option first, every answer is "A".
   questions = randomizeQuestions(selected);
-  return { quiz, questions };
+  // The worksheet timer reads quiz.closes_at in the browser. Return the same
+  // section-specific window that passed the server gate, so students do not
+  // get blocked by the course-wide deadline after opening the worksheet.
+  return {
+    quiz: studentAvailabilityWindow ? { ...quiz, ...studentAvailabilityWindow } : quiz,
+    questions,
+  };
 }
 
 /* ---------- Essay auto-grading (strict) ---------- */
@@ -194,7 +231,7 @@ function isCoherentEssayAnswer(answer: string, words: string[]): boolean {
   // A readable response needs a predicate or explanatory connector; a bare
   // list of rubric terms should not receive credit just because it hits keys.
   const hasPredicate =
-    /\b(is|are|was|were|be|being|been|means?|causes?|allows?|helps?|shows?|makes?|uses?|involves?|includes?|because|therefore|so|which|that|when|while|by|converts?|produces?|occurs?|undergoes?|replicates?|separates?|attaches?|moves?|forms?|provides?|creates?|prevents?|supports?|enables?|absorbs?|releases?|transfers?|depends?|results?|leads?)\b/i.test(
+    /\b(is|are|was|were|be|being|been|means?|gives?|causes?|allows?|helps?|shows?|makes?|uses?|involves?|includes?|because|therefore|so|which|that|when|while|by|converts?|produces?|occurs?|undergoes?|replicates?|separates?|attaches?|moves?|forms?|provides?|creates?|prevents?|supports?|enables?|absorbs?|releases?|transfers?|depends?|results?|leads?)\b/i.test(
       lower,
     );
   if (!hasPredicate) return false;
@@ -372,21 +409,18 @@ async function scoreQuiz(quiz_id: string, answers: Record<string, string>, quest
       image_url: string | null;
     }>
   >(query);
-  const norm = (s: string) =>
-    s
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .replace(/[.,;:!?]+$/, "");
-  const results = questions.map((q) => {
+  const orderedQuestions = questionIds
+    ? [...questions].sort((a, b) => questionIds.indexOf(a.id) - questionIds.indexOf(b.id))
+    : questions;
+  const results = orderedQuestions.map((q) => {
     const chosen = answers[q.id] ?? null;
     const options = (Array.isArray(q.options) ? q.options : []) as string[];
     const key = q.correct_answer as string;
     const isEssay = options.length === 0 && key.startsWith("Rubric:");
-    const variants = key.split("||").map(norm);
     const correct = isEssay
       ? !!chosen && gradeEssay(chosen, key.slice("Rubric:".length).trim())
-      : chosen != null && variants.includes(norm(chosen));
+      : chosen != null &&
+        (options.length ? matchesOption(chosen, key) : matchesIdentification(chosen, key));
     return {
       id: q.id as string,
       question: q.question as string,
@@ -481,7 +515,7 @@ type ScoredResult = {
   image_url?: string | null;
 };
 
-function effectiveScore(
+export function effectiveScore(
   attempts: AttemptRow[],
   policy: RetakePolicy,
 ): { score: number; total: number } | null {
@@ -609,7 +643,7 @@ export async function submitQuizAttempt(
   if (caller.role === "student") {
     await requireEnrollment(quiz.course_id, caller);
     if (!isTestStudent(caller.email)) {
-      requireOpen(quiz, new Date());
+      requireOpen((await getQuizSectionWindow(quiz_id, caller.section)) ?? quiz, new Date());
     }
   }
 
@@ -729,7 +763,8 @@ export async function quizAttemptInfo(quiz_id: string, token: string) {
   // worksheets stay readable so scores remain reviewable; staff bypass.
   if (caller.role === "student") {
     await requireEnrollment(quiz.course_id, caller);
-    if (!hasOpened(quiz, new Date())) throw new AvailabilityError("not_yet_open");
+    const window = (await getQuizSectionWindow(quiz_id, caller.section)) ?? quiz;
+    if (!hasOpened(window, new Date())) throw new AvailabilityError("not_yet_open");
   }
   const [attempts, extra] = await Promise.all([
     attemptsFor(quiz_id, caller.id),
@@ -863,7 +898,7 @@ export async function requestQuizRetake(quiz_id: string, token: string) {
 }
 
 export async function listQuizRetakeRequests(quiz_id: string, token: string) {
-  await requireQuizOwnerOrAdmin(token, quiz_id);
+  await requireQuizViewer(token, quiz_id);
   const requests = await unwrap<any[]>(
     db
       .from("quiz_retake_requests")
@@ -876,13 +911,15 @@ export async function listQuizRetakeRequests(quiz_id: string, token: string) {
   const students = await unwrap<any[]>(
     db
       .from("profiles")
-      .select("id, full_name, student_no, section")
+      .select("id, full_name, student_id, section")
       .in(
         "id",
         requests.map((request) => request.student_id),
       ),
   );
-  const byId = new Map(students.map((student) => [student.id, student]));
+  const byId = new Map(
+    students.map((student) => [student.id, { ...student, student_no: student.student_id ?? null }]),
+  );
   return requests.map((request) => ({
     ...request,
     student: byId.get(request.student_id) ?? null,
@@ -923,8 +960,18 @@ export async function reviewQuizRetakeRequest(
 }
 
 export async function requireQuizOwnerOrAdmin(token: string, quizId: string) {
+  return requireQuizAccess(token, quizId, false);
+}
+
+/** Read access used by LiveUser/Test View without granting mutation rights. */
+async function requireQuizViewer(token: string, quizId: string) {
+  return requireQuizAccess(token, quizId, true);
+}
+
+async function requireQuizAccess(token: string, quizId: string, allowTestViewer: boolean) {
   const caller = await requireStaff(token);
   if (caller.role === "teacher") {
+    if (allowTestViewer && isTestAccount(caller.email)) return caller;
     const quiz = await getQuizConfig(quizId);
     const course = await unwrap<any>(
       db.from("courses").select("teacher_id").eq("id", quiz.course_id).maybeSingle(),
@@ -952,7 +999,7 @@ export async function updateQuizRetakePolicy(
 }
 
 export async function listQuizAttemptsForQuiz(quiz_id: string, token: string) {
-  await requireQuizOwnerOrAdmin(token, quiz_id);
+  await requireQuizViewer(token, quiz_id);
   const quiz = await getQuizConfig(quiz_id);
   const [attempts, grants, overrides] = await Promise.all([
     unwrap<any[]>(
@@ -1050,6 +1097,9 @@ export async function overrideQuizAttempt(
   token: string,
 ) {
   const caller = await requireQuizOwnerOrAdmin(token, quiz_id);
+  if (!notes?.trim()) throw new Error("Enter a reason for changing this score.");
+  if (score != null && total != null && score > total)
+    throw new Error("Score cannot exceed the maximum.");
   const existing = await unwrap<any>(
     db
       .from("quiz_score_overrides")
@@ -1090,7 +1140,7 @@ export async function overrideQuizAttempt(
 
 /** Full attempt detail incl. per-question results for one student. */
 export async function listStudentAttemptDetail(quiz_id: string, student_id: string, token: string) {
-  await requireQuizOwnerOrAdmin(token, quiz_id);
+  await requireQuizViewer(token, quiz_id);
   const [quiz, profile, attempts, override] = await Promise.all([
     unwrap<any>(db.from("quizzes").select("id, title").eq("id", quiz_id).maybeSingle()),
     unwrap<any>(
@@ -1104,7 +1154,7 @@ export async function listStudentAttemptDetail(quiz_id: string, student_id: stri
       db
         .from("quiz_attempts")
         .select(
-          "attempt_number, score, raw_score, integrity_penalty, total, created_at, results, tab_switches",
+          "id, attempt_number, score, raw_score, integrity_penalty, total, created_at, results, tab_switches",
         )
         .eq("quiz_id", quiz_id)
         .eq("student_id", student_id)
@@ -1128,6 +1178,7 @@ export async function listStudentAttemptDetail(quiz_id: string, student_id: stri
       section: profile?.section ?? null,
     },
     attempts: (attempts ?? []).map((a: any) => ({
+      id: a.id as string,
       attempt_number: a.attempt_number as number,
       score: a.score as number,
       raw_score: (a.raw_score as number | null) ?? (a.score as number),
@@ -1252,30 +1303,60 @@ export async function createQuizWithQuestions(
 
 /** List all quiz scores for a course — used by the gradebook. */
 export async function listQuizScoresForCourse(course_id: string, token: string) {
-  await requireStaff(token);
+  await requireCourseOwnerOrAdmin(token, course_id);
   const quizzes = await unwrap<any[]>(
     db
       .from("quizzes")
-      .select("id, title, retake_score_policy")
+      .select("id, title, retake_score_policy, created_at")
       .eq("course_id", course_id)
-      .is("deleted_at", null),
+      .is("deleted_at", null)
+      .order("created_at")
+      .order("id"),
   );
-  if (!quizzes.length) return [];
+  const manualItems = await unwrap<any[]>(
+    db
+      .from("course_quiz_score_items")
+      .select("id, title, sort_order, created_at")
+      .eq("course_id", course_id)
+      .order("sort_order")
+      .order("created_at"),
+  );
+  if (!quizzes.length && !manualItems.length) return [];
 
   const quizIds = quizzes.map((q) => q.id);
-  const [attempts, overrides] = await Promise.all([
-    unwrap<any[]>(
-      db
-        .from("quiz_attempts")
-        .select("quiz_id, student_id, attempt_number, score, total")
-        .in("quiz_id", quizIds),
-    ),
-    unwrap<any[]>(
-      db
-        .from("quiz_score_overrides")
-        .select("quiz_id, student_id, score, total")
-        .in("quiz_id", quizIds),
-    ),
+  const itemIds = manualItems.map((item) => item.id);
+  const [attempts, overrides, manualScores] = await Promise.all([
+    quizIds.length
+      ? allDatabaseRows<any>((from, to) =>
+          db
+            .from("quiz_attempts")
+            .select("quiz_id, student_id, attempt_number, score, total")
+            .in("quiz_id", quizIds)
+            .order("id")
+            .range(from, to),
+        )
+      : Promise.resolve([]),
+    quizIds.length
+      ? allDatabaseRows<any>((from, to) =>
+          db
+            .from("quiz_score_overrides")
+            .select("quiz_id, student_id, score, total")
+            .in("quiz_id", quizIds)
+            .order("id")
+            .range(from, to),
+        )
+      : Promise.resolve([]),
+    itemIds.length
+      ? allDatabaseRows<any>((from, to) =>
+          db
+            .from("course_quiz_scores")
+            .select("item_id, student_id, score")
+            .in("item_id", itemIds)
+            .order("item_id")
+            .order("student_id")
+            .range(from, to),
+        )
+      : Promise.resolve([]),
   ]);
 
   const byQuizStudent = new Map<string, Map<string, AttemptRow[]>>();
@@ -1309,9 +1390,9 @@ export async function listQuizScoresForCourse(course_id: string, token: string) 
     overrideMap.set(o.quiz_id, m);
   }
 
-  return quizzes.map((q) => {
+  const worksheetColumns = quizzes.map((q) => {
     const studentMap = byQuizStudent.get(q.id)!;
-    const scores: Record<string, { score: number; total: number }> = {};
+    const scores: Record<string, { score: number; total: number | null }> = {};
     for (const [sid, attemptList] of studentMap) {
       const eff = effectiveScore(attemptList, q.retake_score_policy);
       if (eff) scores[sid] = eff;
@@ -1321,9 +1402,130 @@ export async function listQuizScoresForCourse(course_id: string, token: string) 
     return {
       quiz_id: q.id,
       title: q.title,
+      kind: "worksheet" as const,
       scores,
     };
   });
+
+  const scoresByItem = new Map<string, Record<string, { score: number; total: number | null }>>();
+  for (const row of manualScores) {
+    const scores = scoresByItem.get(row.item_id) ?? {};
+    scores[row.student_id] = { score: Number(row.score), total: null };
+    scoresByItem.set(row.item_id, scores);
+  }
+
+  const reservedNumbers = new Set<number>(manualItems.map((item) => Number(item.sort_order)));
+  let nextNumber = 1;
+  const numberedWorksheets = worksheetColumns.map((column) => {
+    while (reservedNumbers.has(nextNumber)) nextNumber++;
+    return { ...column, quiz_number: nextNumber++ };
+  });
+  const numberedManualItems = manualItems.map((item) => ({
+    quiz_id: item.id,
+    title: item.title,
+    kind: "manual" as const,
+    quiz_number: Number(item.sort_order),
+    scores: scoresByItem.get(item.id) ?? {},
+  }));
+
+  return [...numberedWorksheets, ...numberedManualItems].sort(
+    (a, b) => a.quiz_number - b.quiz_number || a.title.localeCompare(b.title),
+  );
+}
+
+/** Create a staff-managed score column such as Quiz 4, without a student-facing worksheet. */
+export async function createCourseQuizScoreItem(course_id: string, title: string, token: string) {
+  await requireCourseOwnerOrAdmin(token, course_id);
+  const existing = await unwrap<any>(
+    db
+      .from("course_quiz_score_items")
+      .select("id, course_id, title, sort_order")
+      .eq("course_id", course_id)
+      .eq("title", title)
+      .maybeSingle(),
+  );
+  if (existing) return existing;
+  return unwrap<any>(
+    db
+      .from("course_quiz_score_items")
+      .insert({ course_id, title, sort_order: 4 })
+      .select("id, course_id, title, sort_order")
+      .single(),
+  );
+}
+
+/** Save or clear one manually entered quiz score. */
+export async function saveCourseQuizScore(
+  item_id: string,
+  student_id: string,
+  score: number | null,
+  token: string,
+) {
+  const item = await unwrap<{ id: string; course_id: string }>(
+    db.from("course_quiz_score_items").select("id, course_id").eq("id", item_id).single(),
+  );
+  const caller = await requireCourseOwnerOrAdmin(token, item.course_id);
+  const enrollment = await unwrap<any>(
+    db
+      .from("enrollments")
+      .select("id")
+      .eq("course_id", item.course_id)
+      .eq("student_id", student_id)
+      .maybeSingle(),
+  );
+  if (!enrollment) throw new Error("Student is not enrolled in this course.");
+  if (score == null) {
+    await unwrap(
+      db.from("course_quiz_scores").delete().eq("item_id", item_id).eq("student_id", student_id),
+    );
+    return;
+  }
+  await unwrap(
+    db
+      .from("course_quiz_scores")
+      .upsert(
+        { item_id, student_id, score, updated_by: caller.id, updated_at: new Date().toISOString() },
+        { onConflict: "item_id,student_id" },
+      ),
+  );
+}
+
+/** Import nonblank scores only; blank CSV cells deliberately preserve stored scores. */
+export async function importCourseQuizScores(
+  item_id: string,
+  rows: Array<{ student_id: string; score: number }>,
+  token: string,
+) {
+  const item = await unwrap<{ id: string; course_id: string }>(
+    db.from("course_quiz_score_items").select("id, course_id").eq("id", item_id).single(),
+  );
+  const caller = await requireCourseOwnerOrAdmin(token, item.course_id);
+  if (!rows.length) return { saved: 0 };
+  const studentIds = [...new Set(rows.map((row) => row.student_id))];
+  const enrolled = await unwrap<any[]>(
+    db
+      .from("enrollments")
+      .select("student_id")
+      .eq("course_id", item.course_id)
+      .in("student_id", studentIds),
+  );
+  const enrolledIds = new Set(enrolled.map((row) => row.student_id as string));
+  if (studentIds.some((studentId) => !enrolledIds.has(studentId))) {
+    throw new Error("One or more students are not enrolled in this course.");
+  }
+  await unwrap(
+    db.from("course_quiz_scores").upsert(
+      rows.map((row) => ({
+        item_id,
+        student_id: row.student_id,
+        score: row.score,
+        updated_by: caller.id,
+        updated_at: new Date().toISOString(),
+      })),
+      { onConflict: "item_id,student_id" },
+    ),
+  );
+  return { saved: rows.length };
 }
 
 const ALLOWED_QUIZ_COLUMNS = new Set([
@@ -1423,4 +1625,117 @@ export async function deleteQuiz(tokenStr: string, id: string, mode: "soft" | "h
     }
   }
   return { mode };
+}
+
+/** Explicit, audited teacher decisions; corrections never republish course grades. */
+export async function reviewAttemptQuestion(input: z.infer<typeof schemas.questionReview>) {
+  await requireTeacher(input.token);
+  const caller = await requireQuizOwnerOrAdmin(input.token, input.quizId);
+  const attempt = await unwrap<{ quiz_id: string; student_id: string }>(
+    db.from("quiz_attempts").select("quiz_id,student_id").eq("id", input.attemptId).single(),
+  );
+  if (attempt.quiz_id !== input.quizId)
+    throw new Error("Attempt does not belong to this worksheet.");
+  const response = await db.rpc("review_attempt_question", {
+    p_attempt: input.attemptId,
+    p_question: input.questionId,
+    p_correct: input.correct,
+    p_expected: input.expected,
+    p_reason: input.reason,
+    p_actor: caller.id,
+  });
+  if (response.error)
+    throw new Error(
+      response.error.message?.includes("already reviewed")
+        ? "This answer was already reviewed. Reload before applying."
+        : "Could not review this answer.",
+    );
+  await writeAuditLog(
+    caller,
+    "Question grade reviewed",
+    `Attempt ${input.attemptId} · question ${input.questionId} · ${input.expected} → ${input.correct} · ${input.reason}`,
+  );
+}
+export async function previewIdentificationRegrade(
+  input: z.infer<typeof schemas.regradeIdentification>,
+) {
+  await requireQuizOwnerOrAdmin(input.token, input.quizId);
+  const [questions, attempts] = await Promise.all([
+    unwrap<Array<{ id: string; correct_answer: string; options: string[] }>>(
+      db.from("quiz_questions").select("id,correct_answer,options").eq("quiz_id", input.quizId),
+    ),
+    unwrap<
+      Array<{
+        id: string;
+        student_id: string;
+        attempt_number: number;
+        results: ScoredResult[];
+        score: number;
+        total: number;
+      }>
+    >(
+      db
+        .from("quiz_attempts")
+        .select("id,student_id,attempt_number,results,score,total")
+        .eq("quiz_id", input.quizId),
+    ),
+  ]);
+  // Previously reviewed answers require a new explicit academic judgment.
+  const reviewed = attempts.length
+    ? await unwrap<Array<{ attempt_id: string; question_id: string }>>(
+        db
+          .from("quiz_question_reviews")
+          .select("attempt_id,question_id")
+          .in(
+            "attempt_id",
+            attempts.map((a) => a.id),
+          ),
+      )
+    : [];
+  const people = attempts.length
+    ? await unwrap<Array<{ id: string; full_name: string }>>(
+        db
+          .from("profiles")
+          .select("id,full_name")
+          .in("id", [...new Set(attempts.map((a) => a.student_id))]),
+      )
+    : [];
+  const proposals: Array<{
+    attemptId: string;
+    questionId: string;
+    studentId: string;
+    studentName: string;
+    attemptNumber: number;
+    answer: string;
+    key: string;
+    before: number;
+    after: number;
+  }> = [];
+  for (const attempt of attempts)
+    for (const r of attempt.results ?? []) {
+      const question = questions.find((q) => q.id === r.id);
+      if (
+        !r.correct &&
+        r.chosen &&
+        question &&
+        question.options.length === 0 &&
+        !question.correct_answer.startsWith("Rubric:") &&
+        !reviewed.some((v) => v.attempt_id === attempt.id && v.question_id === r.id) &&
+        matchesIdentification(r.chosen, question.correct_answer)
+      ) {
+        proposals.push({
+          attemptId: attempt.id,
+          questionId: r.id,
+          studentId: attempt.student_id,
+          studentName:
+            people.find((p) => p.id === attempt.student_id)?.full_name ?? "Unknown student",
+          attemptNumber: attempt.attempt_number,
+          answer: r.chosen,
+          key: question.correct_answer,
+          before: attempt.score,
+          after: Math.min(attempt.total, attempt.score + 1),
+        });
+      }
+    }
+  return proposals;
 }

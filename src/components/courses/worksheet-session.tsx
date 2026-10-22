@@ -60,6 +60,19 @@ function newSubmissionId(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+function storedSubmissionId(id: string): string {
+  try {
+    const key = `miow_quiz_submission_${id}`;
+    const saved = localStorage.getItem(key);
+    if (saved && /^[a-f0-9-]{36}$/i.test(saved)) return saved;
+    const fresh = newSubmissionId();
+    localStorage.setItem(key, fresh);
+    return fresh;
+  } catch {
+    return newSubmissionId();
+  }
+}
+
 /** "Attempt 2 of 3", "Attempt 2", or "Unlimited attempts". */
 function attemptLabel(used: number, allowed: number | null, next = false): string {
   const n = next ? used + 1 : used;
@@ -188,6 +201,9 @@ const clearStoredProgress = (id: string) => {
     localStorage.removeItem(`miow_quiz_timer_${id}`);
     localStorage.removeItem(`miow_quiz_answers_${id}`);
     localStorage.removeItem(`miow_quiz_questions_${id}`);
+    localStorage.removeItem(`miow_quiz_submission_${id}`);
+    for (const key of Object.keys(sessionStorage))
+      if (key.startsWith(`miow_lab_${id}:`)) sessionStorage.removeItem(key);
   } catch {
     /* ignore storage access error */
   }
@@ -233,6 +249,10 @@ const setStoredQuestions = (id: string, qs: QuizQuestionPublic[]) => {
 
 export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () => void }) {
   const profile = useProfile(["student"]);
+  const progressKey = useCallback(
+    (id: string) => `${profile?.id ?? "signed-out"}:${id}`,
+    [profile?.id],
+  );
   const queryClient = useQueryClient();
   const [activeId, setActiveId] = useState<string | null>(quiz.id);
   const activeQuiz = quiz;
@@ -306,9 +326,16 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
   // Anti-cheat: detect tab switches / devtools / paste during active assessment
   const integrityActive =
     taking && readyQuizId === activeId && !loadingAttempt && questions.length > 0;
-  const handleFirstIntegrityEvent = useCallback(
-    (event: { type: Parameters<typeof integrityLabel>[0] }) => {
-      toast.warning("Integrity rule triggered", {
+  const handleIntegrityWarning = useCallback(
+    (event: { type: Parameters<typeof integrityLabel>[0] }, warningNumber: number) => {
+      if (warningNumber === 1) {
+        toast.warning("Integrity warning 1 of 2", {
+          description: `${integrityLabel(event.type)} detected. A second warning will submit your worksheet automatically.`,
+          duration: 6000,
+        });
+        return;
+      }
+      toast.warning("Integrity warning 2 of 2", {
         description: `${integrityLabel(event.type)} detected. Your worksheet is being submitted automatically.`,
         duration: 6000,
       });
@@ -318,7 +345,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
   );
   const { tabSwitches, switchCount, counts, showFlash, flashType } = useAntiCheat(
     integrityActive,
-    handleFirstIntegrityEvent,
+    handleIntegrityWarning,
   );
   // Hard lock while taking: fullscreen + input blocking (installed PWA kiosk).
   // The exam demand joins the app-wide kiosk lockdown through the single
@@ -341,7 +368,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
         // A reload mid-exam must resume the SAME drawn subset — prefer the
         // persisted set over the server's fresh draw. Cleared on submit/retake,
         // so a NEW attempt still fetches a fresh set.
-        let persisted = getStoredQuestions(id);
+        let persisted = getStoredQuestions(progressKey(id));
         // An older cached paper must not hide formats added to the IT10 bank.
         // This applies only to banks explicitly carrying all four formats.
         const formats = Object.keys(QUESTION_TYPE_LABELS);
@@ -351,7 +378,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
           !formats.every((type) => persisted!.some((q) => q.question_type === type))
         ) {
           persisted = null;
-          clearStoredProgress(id);
+          clearStoredProgress(progressKey(id));
           savedAnswersRef.current.delete(id);
           savedTimerRef.current.delete(id);
           toast.info(
@@ -365,16 +392,16 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
             !isTestStudent(profile?.email) && quiz.closes_at
               ? new Date(quiz.closes_at).getTime()
               : null,
-          submissionId: newSubmissionId(),
+          submissionId: storedSubmissionId(progressKey(id)),
         };
-        if (!persisted) setStoredQuestions(id, attempt.questions);
+        if (!persisted) setStoredQuestions(progressKey(id), attempt.questions);
         savedAttemptRef.current.set(id, attempt);
       }
       if (loadId !== attemptLoadRef.current) return;
       setQuestions(attempt.questions);
       setResult(null);
       // Restore saved answers if they exist for this quiz
-      const localAnswers = getStoredAnswers(id);
+      const localAnswers = getStoredAnswers(progressKey(id));
       const inMemAnswers = savedAnswersRef.current.get(id);
       const restoredAnswers =
         Object.keys(localAnswers).length > 0 ? localAnswers : (inMemAnswers ?? {});
@@ -392,7 +419,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
         throw new Error("This worksheet is no longer available.");
       // Restore saved timer or start fresh. Restored time is clamped to the
       // window too, so a resumed attempt can't exceed closes_at either.
-      const localTimer = getStoredTimer(id);
+      const localTimer = getStoredTimer(progressKey(id));
       const saved = savedTimerRef.current.get(id);
       const activeSec = localTimer ?? saved;
       if (activeSec != null && activeSec > 0) {
@@ -404,7 +431,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
       // all applied, so the persistence effects never write them under another id.
       setReadyQuizId(id);
     },
-    [profile?.email],
+    [profile?.email, progressKey],
   );
 
   useEffect(() => {
@@ -448,7 +475,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
       warnedAttemptRef.current = activeId;
       toast.warning("Before you begin", {
         description:
-          "Keep this worksheet tab focused. Leaving the tab, pasting, opening developer tools, or exiting fullscreen triggers one warning and submits your attempt automatically.",
+          "Keep this worksheet tab focused. Leaving the tab, pasting, opening developer tools, or exiting fullscreen triggers an integrity warning. A second warning submits your attempt automatically.",
         duration: 9000,
       });
     }
@@ -460,21 +487,21 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
       return;
     // Persist remaining time so closing/reopening or reload preserves it
     savedTimerRef.current.set(activeId, secondsLeft);
-    setStoredTimer(activeId, secondsLeft);
+    setStoredTimer(progressKey(activeId), secondsLeft);
     const t = setTimeout(
       () => setSecondsLeft((s) => (s == null ? null : Math.max(0, s - 1))),
       1000,
     );
     return () => clearTimeout(t);
-  }, [activeId, readyQuizId, secondsLeft, result]);
+  }, [activeId, readyQuizId, secondsLeft, result, progressKey]);
 
   // Persist answers per quiz so closing/reopening preserves progress
   useEffect(() => {
     if (activeId && readyQuizId === activeId && !result && Object.keys(answers).length > 0) {
       savedAnswersRef.current.set(activeId, answers);
-      setStoredAnswers(activeId, answers);
+      setStoredAnswers(progressKey(activeId), answers);
     }
-  }, [activeId, readyQuizId, answers, result]);
+  }, [activeId, readyQuizId, answers, result, progressKey]);
 
   // Clear saved progress on successful submission
   useEffect(() => {
@@ -482,9 +509,9 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
       savedTimerRef.current.delete(activeId);
       savedAnswersRef.current.delete(activeId);
       savedAttemptRef.current.delete(activeId);
-      clearStoredProgress(activeId);
+      clearStoredProgress(progressKey(activeId));
     }
-  }, [result, activeId]);
+  }, [result, activeId, progressKey]);
 
   const submittedRef = useRef(false);
 
@@ -583,6 +610,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
                   your teacher releases it.
                 </p>
                 <button
+                  type="button"
                   onClick={() => setActiveId(null)}
                   className="h-11 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90"
                 >
@@ -708,6 +736,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
               <div className="mt-5 flex flex-col gap-2">
                 {result.can_retake ? (
                   <button
+                    type="button"
                     onClick={() => {
                       examLock.lock();
                       if (activeId) void beginAttempt(activeId);
@@ -724,6 +753,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
                   </p>
                 )}
                 <button
+                  type="button"
                   onClick={() => setActiveId(null)}
                   className={cn(
                     "h-11 w-full rounded-xl text-sm font-semibold",
@@ -758,10 +788,11 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
               </p>
             </div>
             <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-200">
-              <p className="font-semibold">One integrity warning</p>
+              <p className="font-semibold">Two integrity warnings</p>
               <p className="mt-0.5">
                 Keep this worksheet focused. Leaving the tab, pasting, opening developer tools, or
-                exiting fullscreen submits this attempt automatically.
+                exiting fullscreen triggers a warning. A second warning submits this attempt
+                automatically.
               </p>
             </div>
             <p className="mb-4 flex items-center gap-1.5 rounded-xl border border-border/60 bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
@@ -809,6 +840,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
             <div className="mb-5 flex flex-wrap items-center gap-1.5">
               {questions.map((q, i) => (
                 <button
+                  type="button"
                   key={q.id}
                   onClick={() => setIdx(i)}
                   aria-label={`Go to question ${i + 1}`}
@@ -874,6 +906,10 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
                     value={answers[current.id] ?? ""}
                     onChange={(e) => setAnswers((a) => ({ ...a, [current.id]: e.target.value }))}
                     data-testid="answer-input"
+                    aria-label={`Answer to question ${idx + 1}`}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.stopPropagation();
+                    }}
                     placeholder={
                       current.lab_task
                         ? "Type or paste your final code / circuit description here…"
@@ -889,6 +925,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {currentOptions.map((opt) => (
                       <button
+                        type="button"
                         key={opt}
                         onClick={() => setAnswers((a) => ({ ...a, [current.id]: opt }))}
                         className={cn(
@@ -997,7 +1034,12 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
                             labFullscreen ? "min-h-0 flex-1" : "max-h-[70vh]",
                           )}
                         >
-                          <ArduinoLab initialTask={null} onConnectionsChange={setConnSummary} />
+                          <ArduinoLab
+                            key={`${activeId}:${current.id}`}
+                            persistenceKey={`${progressKey(activeId ?? quiz.id)}:${current.id}`}
+                            initialTask={null}
+                            onConnectionsChange={setConnSummary}
+                          />
                         </div>
                       )}
                     </div>
@@ -1092,6 +1134,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
 
             <div className="mt-6 flex items-center gap-2">
               <button
+                type="button"
                 onClick={() => setIdx((i) => Math.max(0, i - 1))}
                 disabled={idx === 0}
                 className="flex h-11 items-center gap-1 rounded-xl border border-border px-4 text-sm font-semibold hover:bg-muted disabled:opacity-40"
@@ -1100,6 +1143,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
               </button>
               {idx < questions.length - 1 ? (
                 <button
+                  type="button"
                   onClick={() => setIdx((i) => Math.min(questions.length - 1, i + 1))}
                   className="flex h-11 flex-1 items-center justify-center gap-1 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90"
                 >
@@ -1107,6 +1151,7 @@ export function WorksheetSession({ quiz, onClose }: { quiz: Quiz; onClose: () =>
                 </button>
               ) : (
                 <button
+                  type="button"
                   onClick={() => {
                     const unans = questions.length - answeredCount;
                     const warn =

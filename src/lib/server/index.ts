@@ -121,6 +121,9 @@ export {
   gradeEssay,
   parseKeywordCategories,
   listQuizScoresForCourse,
+  createCourseQuizScoreItem,
+  saveCourseQuizScore,
+  importCourseQuizScores,
 } from "./quizzes.server";
 
 export { listGradesForStudent, listGradesForCourse, upsertGrade } from "./grades.server";
@@ -147,6 +150,7 @@ export {
   listAttendance,
   listAllAttendance,
   logAttendance,
+  bulkLogAttendance,
   recordTap,
   recordTapByProfileId,
   updateAttendanceLog,
@@ -191,3 +195,7 @@ export type { TosItem, TosRow, UpsertTosInput, CognitiveLevel } from "./tos.serv
 
 export { listQuestionBank, updateQuestion } from "./question-bank.server";
 export type { QuestionBankRow, QuestionPatch } from "./question-bank.server";
+
+export { getClassRecord, saveClassRecord } from "./class-record.server";
+
+export { reviewAttemptQuestion, previewIdentificationRegrade } from "./quizzes.server";

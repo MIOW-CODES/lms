@@ -81,3 +81,19 @@ export function withoutToken<T extends { token?: string }>(input: T): Omit<T, "t
   const { token: _ignored, ...row } = input;
   return row;
 }
+
+/** Page past PostgREST's row cap so older high retakes can never be truncated. */
+export async function allDatabaseRows<T>(
+  page: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  const size = 500;
+  for (let offset = 0; ; offset += size) {
+    const batch = await unwrap<T[]>(page(offset, offset + size - 1));
+    rows.push(...batch);
+    if (batch.length < size) return rows;
+  }
+}

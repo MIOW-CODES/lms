@@ -320,6 +320,18 @@ export function AppShell({
   const totalPending = pending
     ? pending.activities + pending.worksheets + pending.grading + pending.scoreReleases
     : 0;
+  const reportPath =
+    profile.role === "student"
+      ? "/dashboard/student/report"
+      : profile.role === "teacher"
+        ? "/dashboard/teacher/report"
+        : "/dashboard/admin/report";
+  const reportNotice =
+    profile.role === "admin"
+      ? "Review bug, exam, and other reports from the inbox."
+      : "Having a bug, exam problem, or other issue? Tell us so we can help.";
+  const reportAction = profile.role === "admin" ? "Open report inbox" : "Report an issue";
+  const reportTickerText = `${reportNotice}  •  ${reportAction}`;
 
   useEffect(() => {
     try {
@@ -370,7 +382,7 @@ export function AppShell({
   });
 
   return (
-    <div className="relative min-h-screen bg-background lg:flex">
+    <div className="relative min-h-screen min-h-[100dvh] bg-background lg:flex">
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-40 right-[-10%] h-[28rem] w-[28rem] rounded-full bg-indigo-400/15 blur-3xl dark:bg-indigo-500/10" />
         <div className="absolute bottom-[-20%] left-[-10%] h-[26rem] w-[26rem] rounded-full bg-sky-400/10 blur-3xl dark:bg-violet-500/10" />
@@ -600,7 +612,35 @@ export function AppShell({
             );
           })}
         </nav>
-        <main className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        <aside
+          aria-label="Help and issue reporting"
+          className="border-b border-border/50 bg-sidebar-accent/40 px-4 sm:px-6"
+        >
+          <div className="mx-auto max-w-6xl">
+            <Link
+              to={reportPath}
+              aria-label={`${reportNotice} ${reportAction}.`}
+              className="block rounded-lg text-foreground transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              <span className="sr-only">
+                {reportNotice} {reportAction}.
+              </span>
+              <div aria-hidden="true" className="overflow-hidden">
+                <div className="flex w-max animate-marquee whitespace-nowrap motion-reduce:block motion-reduce:w-full motion-reduce:animate-none">
+                  <span className="px-5 py-2.5 text-sm font-medium motion-reduce:block motion-reduce:whitespace-normal">
+                    {reportTickerText}
+                  </span>
+                  <span className="px-5 py-2.5 text-sm font-medium motion-reduce:hidden">
+                    {reportTickerText}
+                  </span>
+                </div>
+              </div>
+            </Link>
+          </div>
+        </aside>
+        <main className="mx-auto w-full max-w-6xl flex-1 p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8 lg:pb-24">
+          {children}
+        </main>
         <footer className="border-t border-border/40 py-4 text-center text-xs text-muted-foreground">
           <p>© {new Date().getFullYear()} Integrated Developmental School (MIOW)</p>
           <p className="mt-1 text-xs text-muted-foreground">

@@ -26,16 +26,18 @@ export async function upsertGrade(input: z.infer<typeof schemas.gradeInput>, cal
     }
   }
 
-  const existing = await unwrap<{ id: string } | null>(
+  const existing = await unwrap<{ id: string; class_record_snapshot?: unknown } | null>(
     db
       .from("grades")
-      .select("id")
+      .select("id,class_record_snapshot")
       .eq("student_id", input.student_id)
       .eq("course_id", input.course_id)
       .eq("quarter", input.quarter)
       .maybeSingle(),
   );
 
+  if (existing?.class_record_snapshot)
+    throw new Error("Use the Class Record tab to revise and republish these grades.");
   const row: Record<string, any> = withoutToken(input);
 
   if (input.override_flags !== undefined) {

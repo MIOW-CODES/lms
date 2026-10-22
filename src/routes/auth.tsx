@@ -44,10 +44,9 @@ const MODES: readonly Mode[] = ["scan", "pin"];
 
 function AuthPage() {
   const navigate = useNavigate();
-  // PIN-first is the everyday sign-in; the reader-first RFID screen belongs to
-  // the gate kiosk. Start PIN everywhere (SSR-stable), then hand the screen to
-  // the reader on wide, kiosk-like viewports after hydration. Phones and small
-  // screens never flip — they keep PIN as the default.
+  // PIN-first is the everyday sign-in and must remain stable through hydration.
+  // RFID remains available as an explicit tab; automatically switching modes
+  // after mount can hide a PIN form while a student is filling or submitting it.
   const [mode, setMode] = useState<Mode>("pin");
   const [uid, setUid] = useState("");
   const [login, setLogin] = useState("");
@@ -55,6 +54,7 @@ function AuthPage() {
   const [showPin, setShowPin] = useState(false);
   const [showPinHelp, setShowPinHelp] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const modeTabs = useRef<Partial<Record<Mode, HTMLButtonElement | null>>>({});
   // Live DOM refs for the sign-in inputs. Browser/password-manager autofill
   // can populate the fields without firing React onChange (mobile autofill
@@ -75,14 +75,10 @@ function AuthPage() {
   });
 
   useEffect(() => {
+    setHydrated(true);
     const existing = loadSession();
     if (existing) navigate({ to: dashboardPathFor(existing.role), replace: true });
   }, [navigate]);
-
-  // Reader-first (RFID) stays the default on wide, kiosk-like screens only.
-  useEffect(() => {
-    if (window.matchMedia("(min-width: 1024px)").matches) setMode("scan");
-  }, []);
 
   const handleModeKeyDown = (e: React.KeyboardEvent) => {
     const i = MODES.indexOf(mode);
@@ -169,7 +165,11 @@ function AuthPage() {
     }
   };
 
-  const marqueeText = (announcements ?? []).map((a) => a.title).join("  •  ");
+  const announcementTitles = (announcements ?? []).map((a) => a.title).join("  •  ");
+  const marqueeText = [
+    announcementTitles || "Welcome to MIOW — SY 2026–2027 enrollment now open",
+    "Having a bug, exam problem, or other issue? After signing in, choose Report an issue from your dashboard. If you can’t sign in, contact your teacher or ICT admin.",
+  ].join("  •  ");
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -202,11 +202,18 @@ function AuthPage() {
           </div>
         </div>
         <div className="relative overflow-hidden rounded-xl border border-sidebar-border bg-sidebar-accent/60 py-2.5">
-          <div className="animate-marquee whitespace-nowrap text-xs font-medium text-sidebar-foreground/70">
-            <span className="px-4">
-              {marqueeText || "Welcome to MIOW — SY 2026–2027 enrollment now open"}
+          <div className="flex w-max animate-marquee whitespace-nowrap text-xs font-medium text-sidebar-foreground/70 motion-reduce:block motion-reduce:w-full motion-reduce:animate-none">
+            <span
+              aria-hidden="true"
+              className="px-4 motion-reduce:block motion-reduce:whitespace-normal"
+            >
+              {marqueeText}
+            </span>
+            <span aria-hidden="true" className="px-4 motion-reduce:hidden">
+              {marqueeText}
             </span>
           </div>
+          <span className="sr-only">{marqueeText}</span>
         </div>
       </div>
 
@@ -436,7 +443,7 @@ function AuthPage() {
                 </div>
                 <button
                   type="submit"
-                  disabled={busy}
+                  disabled={!hydrated || busy}
                   className="h-11 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
                 >
                   Sign In

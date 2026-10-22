@@ -15,6 +15,7 @@ import { SpeedInsights } from "@vercel/speed-insights/react";
 
 import appCss from "../styles.css?url";
 import { reportError } from "../lib/error-reporting";
+import { isAssessmentActive, subscribeAssessmentMode } from "../lib/assessment-mode";
 import { clearLegacyPreferences } from "../lib/settings";
 
 function NotFoundComponent() {
@@ -164,8 +165,29 @@ function RootComponent() {
     if (import.meta.env.PROD && typeof window !== "undefined" && "serviceWorker" in navigator) {
       import("virtual:pwa-register")
         .then(({ registerSW }) => {
-          registerSW({
+          let pendingActivation = false;
+          let pendingReload = false;
+          const flushUpdate = () => {
+            if (isAssessmentActive()) return;
+            if (pendingReload) {
+              window.location.reload();
+              return;
+            }
+            if (pendingActivation) {
+              pendingActivation = false;
+              void updateSW(true);
+            }
+          };
+          const updateSW = registerSW({
             immediate: true,
+            onNeedRefresh() {
+              pendingActivation = true;
+              flushUpdate();
+            },
+            onNeedReload() {
+              pendingReload = true;
+              flushUpdate();
+            },
             onRegisteredSW(_swUrl, registration) {
               // Long-running kiosk displays stay open for days — poll hourly
               // so a redeploy is picked up without a manual refresh.
@@ -177,6 +199,7 @@ function RootComponent() {
               reportError(error, { boundary: "pwa_service_worker_registration" });
             },
           });
+          subscribeAssessmentMode(flushUpdate);
         })
         .catch((error) => {
           reportError(error, { boundary: "pwa_register_module_load" });

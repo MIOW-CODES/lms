@@ -591,7 +591,7 @@ export const listGradesForStudentFn = createServerFn({ method: "POST" })
 export const listGradesForCourseFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.courseQuarter.parse(data))
   .handler(async ({ data }) => {
-    await server.requireStaff(data.token);
+    await server.requireCourseOwnerOrAdmin(data.token, data.courseId);
     return server.listGradesForCourse(data.courseId, data.quarter);
   });
 
@@ -600,6 +600,7 @@ export const upsertGradeFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.gradeInput.parse(data))
   .handler(async ({ data }) => {
     const caller = await server.requireTeacher(data.token);
+    await server.requireCourseOwnerOrAdmin(data.token, data.course_id);
     const result = await server.upsertGrade(data, caller.id);
     await server.writeAuditLog(
       caller,
@@ -629,7 +630,20 @@ export const logAttendanceFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.attendance.parse(data))
   .handler(async ({ data }) => {
     await server.requireStaff(data.token);
-    return server.logAttendance(data.student_id, data.scan_type, data.status);
+    return server.logAttendance(
+      data.student_id,
+      data.scan_type,
+      data.status,
+      data.timestamp,
+      data.course_id,
+    );
+  });
+
+export const bulkLogAttendanceFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.bulkAttendanceLog.parse(data))
+  .handler(async ({ data }) => {
+    await server.requireStaff(data.token);
+    return server.bulkLogAttendance(data.items);
   });
 
 // Kiosk tap endpoint — the staff-operated gate kiosk submits a card UID plus
@@ -771,6 +785,22 @@ export const deleteAssignmentFn = createServerFn({ method: "POST" })
 export const listQuizScoresForCourseFn = createServerFn({ method: "POST" })
   .validator((data) => server.schemas.courseScoped.parse(data))
   .handler(async ({ data }) => server.listQuizScoresForCourse(data.courseId, data.token));
+
+export const createCourseQuizScoreItemFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.courseQuizScoreItem.parse(data))
+  .handler(async ({ data }) =>
+    server.createCourseQuizScoreItem(data.course_id, data.title, data.token),
+  );
+
+export const saveCourseQuizScoreFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.courseQuizScoreSave.parse(data))
+  .handler(async ({ data }) =>
+    server.saveCourseQuizScore(data.item_id, data.student_id, data.score, data.token),
+  );
+
+export const importCourseQuizScoresFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.courseQuizScoreImport.parse(data))
+  .handler(async ({ data }) => server.importCourseQuizScores(data.item_id, data.rows, data.token));
 
 /* ---------- Course Meetings ---------- */
 
@@ -932,3 +962,17 @@ export const pendingTasksFn = createServerFn({ method: "POST" })
     const { pendingTasks } = await import("./server/pending-tasks.server");
     return pendingTasks(caller);
   });
+
+export const getClassRecordFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.classRecordRead.parse(data))
+  .handler(({ data }) => server.getClassRecord(data));
+export const saveClassRecordFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.classRecordSave.parse(data))
+  .handler(({ data }) => server.saveClassRecord(data));
+
+export const reviewAttemptQuestionFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.questionReview.parse(data))
+  .handler(({ data }) => server.reviewAttemptQuestion(data));
+export const previewIdentificationRegradeFn = createServerFn({ method: "POST" })
+  .validator((data) => server.schemas.regradeIdentification.parse(data))
+  .handler(({ data }) => server.previewIdentificationRegrade(data));
