@@ -10,8 +10,7 @@ function bucketKey(rawKey: string): string {
 
 async function rpc(name: string, args: Record<string, unknown>): Promise<unknown> {
   const { data, error } = await db.rpc(name, args);
-  if (error)
-    throw new Error(`Shared rate limit unavailable: ${error.message ?? error.code}`);
+  if (error) throw new Error(`Shared rate limit unavailable: ${error.message ?? error.code}`);
   return data;
 }
 

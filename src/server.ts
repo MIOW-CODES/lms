@@ -53,10 +53,7 @@ function applySecurityHeaders(res: Response, request?: Request) {
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   const pathname = request ? new URL(request.url).pathname : "";
-  if (
-    (pathname === "/api" || pathname.startsWith("/api/")) &&
-    !res.headers.has("Cache-Control")
-  ) {
+  if ((pathname === "/api" || pathname.startsWith("/api/")) && !res.headers.has("Cache-Control")) {
     res.headers.set("Cache-Control", "private, no-store");
   }
   if (res.headers.get("content-type")?.includes("text/html")) {
